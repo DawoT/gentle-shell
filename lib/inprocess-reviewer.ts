@@ -251,11 +251,19 @@ export async function runInProcessReviewer(request: InProcessReviewerRequest, de
 	const attributionHeaders = openCodeSessionAttributionHeaders(model, request.sessionId);
 
 	// The caller's own signal (if any) and a floor timeout race together:
-	// whichever fires first aborts the completion. The catch branch below
-	// tells them apart by which underlying signal actually fired, never by
-	// inspecting the thrown error's shape, which providers are free to vary.
-	const timeoutSignal = AbortSignal.timeout(request.timeoutMs);
-	const combinedSignal = request.signal === undefined ? timeoutSignal : AbortSignal.any([request.signal, timeoutSignal]);
+	// whichever fires first aborts the completion. We use a manually-managed
+	// AbortController + setTimeout rather than AbortSignal.timeout() so that
+	// the timer can be cancelled (clearTimeout) once the completion settles —
+	// AbortSignal.timeout() creates a timer handle that is not accessible to
+	// the caller, keeping the event loop alive until it fires even if the
+	// completion finished long before. Under the Node.js built-in test runner
+	// that manifests as "cancelledByParent" failures on subsequent tests.
+	const timeoutController = new AbortController();
+	const timeoutTimer = setTimeout(() => timeoutController.abort(), request.timeoutMs);
+	const timeoutSignal = timeoutController.signal;
+	const combinedSignal = request.signal === undefined
+		? timeoutSignal
+		: AbortSignal.any([request.signal, timeoutSignal]);
 
 	const context: Context = {
 		messages: [
@@ -298,7 +306,10 @@ export async function runInProcessReviewer(request: InProcessReviewerRequest, de
 		assistant = provider === undefined ? await deps.complete(model, context, options) : await provider.streamSimple(model, context, options).result();
 	} catch (error) {
 		return abortRefusal() ?? refuse(INPROCESS_REVIEWER_FAILURE.PROVIDER_FAILED, `Reviewer completion failed for ${request.routingKey}: ${sanitizeErrorExcerpt(error)}`);
+	} finally {
+		clearTimeout(timeoutTimer);
 	}
+
 
 	const resolvedAbort = abortRefusal();
 	if (resolvedAbort !== undefined) return resolvedAbort;

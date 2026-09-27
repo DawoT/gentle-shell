@@ -917,28 +917,38 @@ async function readCurrentTargetIdentityBestEffort(
 	}
 }
 
-function rddAbortRejection(signal: AbortSignal): Promise<never> {
-	return new Promise((_resolve, reject) => {
-		if (signal.aborted) {
-			reject(signal.reason ?? new Error("aborted"));
-			return;
-		}
-		signal.addEventListener("abort", () => reject(signal.reason ?? new Error("aborted")), { once: true });
-	});
-}
-
 async function readRddModeStatusOnce(
 	nativeReviewCli: Pick<NativeReviewCli, "reviewMode"> | null | undefined,
 	cwd: string,
 	signal?: AbortSignal,
 ): Promise<NativeReviewModeStatus | undefined> {
 	if (!nativeReviewCli?.reviewMode) return undefined;
+	if (signal === undefined) {
+		try {
+			const result = await nativeReviewCli.reviewMode({ cwd, operation: NATIVE_REVIEW_MODE_OPERATION.STATUS });
+			return result.status;
+		} catch {
+			return undefined;
+		}
+	}
+	// Race the call against the AbortSignal, cleaning up the abort listener
+	// regardless of which side wins to avoid dangling Promise references that
+	// prevent the Node.js event loop from draining (observable as
+	// "cancelledByParent" in the test runner when a never-settling stub is used).
+	const { promise: abortPromise, reject: abortReject } = Promise.withResolvers<never>();
+	const onAbort = (): void => abortReject(signal.reason ?? new Error("aborted"));
+	if (signal.aborted) {
+		return undefined;
+	}
+	signal.addEventListener("abort", onAbort, { once: true });
 	try {
 		const call = nativeReviewCli.reviewMode({ cwd, operation: NATIVE_REVIEW_MODE_OPERATION.STATUS, signal });
-		const result = signal === undefined ? await call : await Promise.race([call, rddAbortRejection(signal)]);
+		const result = await Promise.race([call, abortPromise]);
 		return result.status;
 	} catch {
 		return undefined;
+	} finally {
+		signal.removeEventListener("abort", onAbort);
 	}
 }
 

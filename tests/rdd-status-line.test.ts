@@ -173,13 +173,27 @@ test("resolveRddModeStatus resolves to undefined within the deadline when review
 	// itself ignores the passed `signal`, as a real hung child process would
 	// eventually be killed and reject via its own signal handling.
 	clearRddStatusMemoForTesting();
-	const neverSettling = fakeReviewMode(() => new Promise<never>(() => {}));
+	let settleHungPromise: () => void = () => {};
+	const neverSettling = {
+		async reviewMode(): Promise<NativeReviewModeResult> {
+			return new Promise<NativeReviewModeResult>((resolve) => {
+				settleHungPromise = () => resolve({} as any);
+			});
+		},
+	};
 	const deadlineMs = 150;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), deadlineMs);
 	const start = Date.now();
-	const status = await resolveRddModeStatus(neverSettling, "/repo-hung", AbortSignal.timeout(deadlineMs));
-	const elapsed = Date.now() - start;
-	assert.equal(status, undefined);
-	assert.ok(elapsed < deadlineMs + 1000, `expected the read to resolve near the ${deadlineMs}ms deadline, took ${elapsed}ms`);
+	try {
+		const status = await resolveRddModeStatus(neverSettling, "/repo-hung", controller.signal);
+		const elapsed = Date.now() - start;
+		assert.equal(status, undefined);
+		assert.ok(elapsed < deadlineMs + 1000, `expected the read to resolve near the ${deadlineMs}ms deadline, took ${elapsed}ms`);
+	} finally {
+		clearTimeout(timer);
+		settleHungPromise();
+	}
 });
 
 test("resolveRddModeStatus memoizes a resolved status per cwd for RDD_STATUS_MEMO_TTL_MS", async () => {
