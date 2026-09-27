@@ -179,3 +179,15 @@ test("both walks report no drift when sources, runtime/*.mjs, requiredPaths, and
 		rmSync(fixtureRoot, { recursive: true, force: true });
 	}
 });
+
+test("generated runtime reconciliation includes nested modules", () => {
+  const root = mkdtempSync(join(tmpdir(), "facts-runtime-nested-"));
+  try {
+    mkdirSync(join(root, "runtime", "facts"), { recursive: true });
+    writeFileSync(join(root, "runtime", "facts", "parser.mjs"), "export {};\n");
+    const result = reconcileGeneratedRuntimeSources(root, ["facts/parser"], ["runtime/facts/parser.mjs"]);
+    assert.deepEqual(result.drifted, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

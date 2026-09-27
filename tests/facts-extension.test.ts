@@ -464,3 +464,76 @@ test("shutdown in another extension instance does not expire this session's curs
     await cleanup();
   }
 });
+
+test("session transcript references restore historical symbols without resync", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const branch: any[] = [];
+    const { pi } = createMockPi();
+    (pi as any).appendEntry = (customType: string, data: unknown) => branch.push({ type: "custom", customType, data });
+    const ctx = {
+      cwd: dir,
+      hasUI: false,
+      sessionManager: { getSessionFile: () => join(dir, "session.jsonl"), getBranch: () => branch },
+    };
+    gentleFacts(pi as any);
+    await pi.emit("session_start", {}, ctx);
+    assert.equal(branch.length, 1);
+    await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(branch.length, 1, "unchanged snapshots must not duplicate transcript entries");
+    await rm(join(dir, ".git"), { recursive: true, force: true });
+    const result = await pi.getTool("facts_history").execute("past", { name: "multiply" }, undefined, undefined, ctx);
+    assert.equal(result.details.status, "historical");
+    assert.match(result.content[0].text, /Historical/);
+    assert.match(result.content[0].text, /multiply/);
+    const empty = await pi.getTool("facts_history").execute("branch", {}, undefined, undefined, {
+      ...ctx, sessionManager: { ...ctx.sessionManager, getBranch: () => [] },
+    });
+    assert.equal(empty.details.status, "unavailable");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("history persistence failures are visible without discarding current facts", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "facts-snapshots"), "not a directory");
+    const { pi } = createMockPi();
+    (pi as any).appendEntry = () => assert.fail("must not append an unavailable snapshot");
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false, sessionManager: { getSessionFile: () => join(dir, "session.jsonl"), getBranch: () => [] } };
+    const result = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(result.details.status, "ready");
+    assert.match(result.content[0].text, /History snapshot unavailable/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("facts_commit labels pinned evidence and leaves current facts and transcript history intact", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    await writeFile(join(dir, "math.ts"), "export function multiply(value: bigint): bigint { return value; }\n");
+    const { pi } = createMockPi();
+    const branch: any[] = [];
+    (pi as any).appendEntry = (customType: string, data: unknown) => branch.push({ type: "custom", customType, data });
+    const ctx = { cwd: dir, hasUI: false, sessionManager: { getSessionFile: () => join(dir, "session.jsonl"), getBranch: () => branch } };
+    gentleFacts(pi as any);
+    await pi.emit("session_start", {}, ctx);
+    const entries = branch.length;
+    const tool = pi.getTool("facts_commit");
+    assert.ok(tool, "commit evidence tool must be registered");
+    const pinned = await tool.execute("commit", { revision: commit, name: "multiply" }, undefined, undefined, ctx);
+    assert.equal(pinned.details.status, "committed");
+    assert.equal(pinned.details.commit, commit);
+    assert.match(pinned.content[0].text, /a: number/);
+    assert.doesNotMatch(pinned.content[0].text, /bigint/);
+    assert.equal(branch.length, entries);
+    const current = await pi.getTool("facts_query").execute("current", { name: "multiply" }, undefined, undefined, ctx);
+    assert.match(current.content[0].text, /bigint/);
+  } finally {
+    await cleanup();
+  }
+});

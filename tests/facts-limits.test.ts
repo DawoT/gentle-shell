@@ -28,3 +28,25 @@ test("bounded reads reject FIFOs instead of waiting indefinitely for source byte
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("bounded reads do not allocate large chunks for tiny regular files", async (t) => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = await mkdtemp(join(tmpdir(), "facts-small-read-"));
+  try {
+    const path = join(directory, "small.json");
+    await writeFile(path, "small");
+    const allocate = Buffer.alloc;
+    let allocated = 0;
+    t.mock.method(Buffer, "alloc", (size: number, ...args: any[]) => {
+      allocated += size;
+      return allocate(size, ...args);
+    });
+    assert.equal((await readFactsFile(path, 64 * 1024 * 1024)).toString(), "small");
+    assert.ok(allocated <= 8192, `tiny artifact allocated ${allocated} bytes in read buffers`);
+  } finally {
+    t.mock.restoreAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

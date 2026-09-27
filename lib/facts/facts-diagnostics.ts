@@ -1,4 +1,4 @@
-export type FactsPhase = "cache_lock" | "git_scan" | "cache_load" | "source_index" | "manifest" | "cache_save";
+export type FactsPhase = "cache_lock" | "git_scan" | "cache_load" | "source_index" | "manifest" | "cache_save" | "module_resolution" | "snapshot_validation";
 
 export interface FactsDiagnostics {
   status: "idle" | "refreshing" | "ready" | "unavailable";
@@ -9,6 +9,8 @@ export interface FactsDiagnostics {
 }
 
 const PHASE_HINTS: Record<FactsPhase, string> = {
+  snapshot_validation: "Workspace changed during analysis or could not be revalidated. Retry when edits settle; the previous cache was preserved.",
+  module_resolution: "Module resolution failed or exceeded its budget. Check project configuration and metadata sizes.",
   cache_lock: "Check access to the .pi directory and whether another Facts writer holds facts.lock.",
   git_scan: "Check Git availability and access to this workspace.",
   cache_load: "Check access to .pi/facts.json.",
@@ -20,6 +22,7 @@ const PHASE_HINTS: Record<FactsPhase, string> = {
 export function describeFactsFailure(error: unknown, phase: FactsPhase): { code: string; message: string } {
   if (error instanceof Error) {
     if (error.name === "AbortError") return { code: "cancelled", message: "Refresh cancelled; retry when needed." };
+    if (error.name === "FactsParserError") return { code: "parser", message: error.message.slice(0, 1500) };
     if (error.name === "FactsLimitError") return { code: "limit", message: error.message };
     if (error.name === "FactsBusyError") return { code: "busy", message: error.message };
     if (error.name === "NotAGitRepositoryError") {

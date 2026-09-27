@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sources = [
+  "facts-parser-worker",
+  "facts/facts-ts-extractor",
+  "facts/facts-module-resolver",
 	"gentle-ai-binary",
 	"review-relay-contract",
 	"review-integration-v2",
@@ -54,6 +57,7 @@ async function main() {
 		const destination = join(runtime, `${name}.mjs`);
 		const expected = await generatedBytes(name);
 		if (mode === "--write") {
+			await mkdir(dirname(destination), { recursive: true });
 			await writeFile(destination, expected, "utf8");
 			continue;
 		}

@@ -1,0 +1,290 @@
+{
+  "generatedAt": "2026-09-27T03:01:34.654Z",
+  "node": "v26.10.0",
+  "platform": "linux",
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+  "sourceSha256": "27c474c92763e4f6f74e14bdfb7d481d1dfc85143f0f5f0136b65a9e499abc65",
+  "samplesPerSize": 3,
+  "note": "Synthetic repositories; timings are observations, not a production SLA. Memory is sampled after each phase; process peak RSS includes previous phases.",
+  "repositories": [
+    {
+      "fileCount": 25,
+      "sourceBytes": 8743,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 274.69,
+            "heapUsedMiB": 10.73,
+            "rssMiB": 160,
+            "processPeakRssMiB": 160,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 53.11,
+            "heapUsedMiB": 10.78,
+            "rssMiB": 160.37,
+            "processPeakRssMiB": 160.37,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 60.8,
+            "heapUsedMiB": 11.89,
+            "rssMiB": 160.87,
+            "processPeakRssMiB": 160.87,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 80.88,
+            "heapUsedMiB": 11.57,
+            "rssMiB": 162.62,
+            "processPeakRssMiB": 162.62,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 49.67,
+            "heapUsedMiB": 10.74,
+            "rssMiB": 162.87,
+            "processPeakRssMiB": 162.87,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 59.62,
+            "heapUsedMiB": 11.91,
+            "rssMiB": 162.87,
+            "processPeakRssMiB": 162.87,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 95.95,
+            "heapUsedMiB": 11.65,
+            "rssMiB": 163,
+            "processPeakRssMiB": 163,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 68.34,
+            "heapUsedMiB": 12.23,
+            "rssMiB": 163.12,
+            "processPeakRssMiB": 163.12,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 94.69,
+            "heapUsedMiB": 14.01,
+            "rssMiB": 164,
+            "processPeakRssMiB": 164,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "fileCount": 250,
+      "sourceBytes": 89291,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 227.18,
+            "heapUsedMiB": 14.85,
+            "rssMiB": 172.5,
+            "processPeakRssMiB": 172.5,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 75.47,
+            "heapUsedMiB": 12.04,
+            "rssMiB": 172.62,
+            "processPeakRssMiB": 172.62,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 85.08,
+            "heapUsedMiB": 16.96,
+            "rssMiB": 181.75,
+            "processPeakRssMiB": 181.75,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 157.86,
+            "heapUsedMiB": 13.2,
+            "rssMiB": 176.36,
+            "processPeakRssMiB": 183,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 67.81,
+            "heapUsedMiB": 14.58,
+            "rssMiB": 177.11,
+            "processPeakRssMiB": 183,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 94.92,
+            "heapUsedMiB": 13.69,
+            "rssMiB": 177.49,
+            "processPeakRssMiB": 183,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 157.06,
+            "heapUsedMiB": 12.69,
+            "rssMiB": 177.61,
+            "processPeakRssMiB": 183,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 76.3,
+            "heapUsedMiB": 20.93,
+            "rssMiB": 179.11,
+            "processPeakRssMiB": 183,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 98.23,
+            "heapUsedMiB": 19.18,
+            "rssMiB": 186.24,
+            "processPeakRssMiB": 186.24,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "fileCount": 2500,
+      "sourceBytes": 908289,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 897.24,
+            "heapUsedMiB": 26.98,
+            "rssMiB": 240.86,
+            "processPeakRssMiB": 240.86,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 212.63,
+            "heapUsedMiB": 33.92,
+            "rssMiB": 250.65,
+            "processPeakRssMiB": 250.65,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 387.31,
+            "heapUsedMiB": 44.8,
+            "rssMiB": 264.21,
+            "processPeakRssMiB": 264.21,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 847.68,
+            "heapUsedMiB": 42.77,
+            "rssMiB": 269.68,
+            "processPeakRssMiB": 270.23,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 231.96,
+            "heapUsedMiB": 25.73,
+            "rssMiB": 274.59,
+            "processPeakRssMiB": 274.59,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 364.4,
+            "heapUsedMiB": 37.04,
+            "rssMiB": 281.45,
+            "processPeakRssMiB": 285.81,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 798.94,
+            "heapUsedMiB": 28.52,
+            "rssMiB": 281.74,
+            "processPeakRssMiB": 285.81,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 228.16,
+            "heapUsedMiB": 22.38,
+            "rssMiB": 281.91,
+            "processPeakRssMiB": 285.81,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 357.72,
+            "heapUsedMiB": 42.76,
+            "rssMiB": 284.18,
+            "processPeakRssMiB": 285.81,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        }
+      ]
+    }
+  ]
+}

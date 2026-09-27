@@ -8,6 +8,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = join(fileURLToPath(new URL("..", import.meta.url)));
 
 const requiredPaths = [
+  "runtime/facts-parser-worker.mjs",
+  "runtime/facts/facts-ts-extractor.mjs",
+  "runtime/facts/facts-module-resolver.mjs",
+  "lib/facts/parsers/python_facts.py",
+  "lib/facts/parsers/go_facts.go",
   "bin/gentle-shell.mjs",
   "assets/orchestrator.md",
   "assets/orchestrator-delegation.md",
@@ -252,7 +257,8 @@ export function extractGeneratedRuntimeSources(packageRoot) {
 export function reconcileGeneratedRuntimeSources(packageRoot, sources, paths) {
   const runtimeRoot = join(packageRoot, "runtime");
   const runtimeBasenames = existsSync(runtimeRoot)
-    ? readdirSync(runtimeRoot)
+    ? listFilesRecursively(runtimeRoot)
+        .map((path) => relative(runtimeRoot, path).split(sep).join("/"))
         .filter((name) => name.endsWith(".mjs"))
         .map((name) => name.slice(0, -".mjs".length))
     : [];

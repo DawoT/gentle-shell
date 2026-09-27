@@ -1,3 +1,5 @@
+import type { FactsModuleEdge } from "./facts-module-resolver.ts";
+
 export const FACTS_DATABASE_VERSION = "1.2.0";
 
 export type FileGitStatus = "tracked" | "modified" | "untracked" | "deleted";
@@ -43,6 +45,7 @@ export interface SymbolFact {
 }
 
 export interface FileFacts {
+  language?: "typescript" | "python" | "go";
   path: string;
   sha: string;
   symbols: SymbolFact[];
@@ -62,6 +65,15 @@ export interface ExecutionReceipts {
 }
 
 export interface FactsDatabase {
+  source?: {
+    kind: "commit";
+    commit: string;
+    scope: string;
+    extractorVersion: string;
+    materialization: "supported-sources-json-metadata-lock-markers";
+    omitted: Array<{ path: string; reason: "symlink" | "submodule" }>;
+  };
+  moduleEdges?: FactsModuleEdge[];
   version: string;
   root: string;
   lastHeadCommit?: string;

@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { recordFactsHistory, registerFactsHistory } from "../lib/facts/facts-history-extension.ts";
+import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
@@ -29,6 +30,9 @@ function showCard(ctx: ExtensionContext, service: FactsService): void {
 }
 
 export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
+  registerFactsHistory(pi);
+  registerFactsCommit(pi);
+  const historyFailures = new Map<string, string>();
   const cursors = new Map<string, FactsCursors>();
 
   function queryCursors(cwd: string): FactsCursors {
@@ -41,7 +45,9 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   }
 
   function generation(service: FactsService): string {
-    return createHash("sha256").update(JSON.stringify([service.getDatabase(), service.getResolutionEdges()])).digest("hex");
+    const id = service.getGeneration();
+    if (!id) throw new Error("Facts has no published generation");
+    return id;
   }
 
   const services = new Map<string, FactsService>();
@@ -61,6 +67,13 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const sync = service.sync(signal);
       showCard(ctx, service);
       await sync;
+      try {
+        await recordFactsHistory(pi, ctx, service, signal);
+        historyFailures.delete(ctx.cwd);
+      } catch (error) {
+        signal?.throwIfAborted();
+        historyFailures.set(ctx.cwd, error instanceof Error ? error.message : "Snapshot persistence failed");
+      }
       showCard(ctx, service);
       return service;
     } catch {
@@ -198,7 +211,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         };
       }
 
-      const page = queryCursors(ctx.cwd).start(key, generation(service), dependents.map((item) => `• ${item.file} [${item.evidence}; depth ${item.depth}; via ${item.via}]`), params);
+      const page = queryCursors(ctx.cwd).start(key, generation(service), dependents.map((item) => `• ${item.file} [${item.evidence}${item.resolutionNote ? ` (${item.resolutionNote})` : ""}; depth ${item.depth}; via ${item.via}]`), params);
       return {
         content: [{
           type: "text",
@@ -223,7 +236,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const service = await refreshService(ctx, signal);
       if (!service) {
         const unavailable = unavailableResult(ctx);
-        return { ...unavailable, details: { ...unavailable.details, resolution: undefined } };
+        return { ...unavailable, details: { ...unavailable.details, resolution: undefined, historyError: historyFailures.get(ctx.cwd) } };
       }
       const block = service.getSummaryPromptBlock();
       const edges = service.getResolutionEdges();
@@ -234,9 +247,9 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{
           type: "text",
-          text: `${block}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)`,
+          text: `${block}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
         }],
-        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution },
+        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, historyError: historyFailures.get(ctx.cwd) },
       };
     },
   });

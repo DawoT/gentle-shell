@@ -545,7 +545,7 @@ test("FactsStore distinguishes missing, incompatible, corrupt and reusable disk 
     const store = new FactsStore(dir);
     await store.load();
     assert.equal(store.getLoadState(), "missing");
-    await mkdir(join(dir, ".pi"));
+    await mkdir(join(dir, ".pi"), { recursive: true });
     const cache = join(dir, ".pi", "facts.json");
     await writeFile(cache, JSON.stringify({ version: "0.0.0" }));
     await store.load();
@@ -612,6 +612,236 @@ test("FactsService resolves configured aliases and explains transitive impact", 
     await service.sync();
     assert.deepEqual(service.queryDependents("src/core.ts"), []);
     assert.ok(service.getResolutionEdges().some((edge) => edge.evidence === "unresolved"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("FactsService indexes Python and Go declarations alongside TypeScript", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "api.py"), "def python_api(value: int) -> int:\n  return value\n");
+    await writeFile(join(dir, "api.go"), "package api\nfunc GoAPI(value int) int { return value }\n");
+    const service = new FactsService(dir);
+    await service.sync();
+    assert.equal(service.querySymbol("python_api").length, 1);
+    assert.equal(service.querySymbol("GoAPI").length, 1);
+    assert.equal(service.getDatabase()?.files["api.py"].language, "python");
+    assert.equal(service.getDatabase()?.files["api.go"].language, "go");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("Facts diagnostics explain native parser failures", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "broken.py"), "def (");
+    const service = new FactsService(dir);
+    await assert.rejects(service.sync());
+    assert.equal(service.getDiagnostics().failure?.code, "parser");
+    assert.match(service.getDiagnostics().failure?.message ?? "", /python|Python/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("module metadata budget failure preserves cache and reports resolution phase", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "import './other';\nexport const value = 1;\n");
+    await writeFile(join(dir, "other.ts"), "export const other = 1;\n");
+    const service = new FactsService(dir);
+    await service.sync();
+    const prior = await readFile(join(dir, ".pi", "facts.json"), "utf8");
+    await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ padding: "x".repeat(1024 * 1024 + 1) }));
+    await assert.rejects(service.sync(), /metadata.*limit/i);
+    assert.equal(service.getDiagnostics().failure?.code, "module_resolution");
+    assert.equal(await readFile(join(dir, ".pi", "facts.json"), "utf8"), prior);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("FactsService retries when a cached source changes after the initial scan", async (t) => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "export const before = 1;\n");
+    const service = new FactsService(dir);
+    await service.sync();
+    const load = FactsStore.prototype.load;
+    let changed = false;
+    t.mock.method(FactsStore.prototype, "load", async function (signal?: AbortSignal) {
+      const database = await load.call(this, signal);
+      if (!changed) {
+        changed = true;
+        await writeFile(join(dir, "source.ts"), "export const after = 2;\n");
+      }
+      return database;
+    });
+    await service.sync();
+    assert.equal(service.querySymbol("before").length, 0);
+    assert.equal(service.querySymbol("after").length, 1);
+    const persisted = await new FactsStore(dir).load();
+    assert.equal(persisted.files["source.ts"].symbols[0].name, "after");
+  } finally {
+    t.mock.restoreAll();
+    await cleanup();
+  }
+});
+
+test("FactsService preserves its published cache when sources never stabilize", async (t) => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "export const stable = 1;\n");
+    const service = new FactsService(dir);
+    await service.sync();
+    const cache = join(dir, ".pi", "facts.json");
+    const original = await readFile(cache, "utf8");
+    const load = FactsStore.prototype.load;
+    let changes = 0;
+    t.mock.method(FactsStore.prototype, "load", async function (signal?: AbortSignal) {
+      const database = await load.call(this, signal);
+      changes++;
+      // Changing an untouched file forces the validation to detect stale reuse.
+      await writeFile(join(dir, `added-${changes}.ts`), `export const added${changes} = 1;\n`);
+      return database;
+    });
+    await assert.rejects(service.sync(), /changed during analysis/);
+    assert.equal(changes, 3);
+    assert.equal(await readFile(cache, "utf8"), original);
+    assert.equal(service.querySymbol("stable").length, 1);
+    assert.equal(service.getDiagnostics().failure?.code, "snapshot_validation");
+  } finally {
+    t.mock.restoreAll();
+    await cleanup();
+  }
+});
+
+test("FactsService validates raw source bytes when Git normalizes line endings", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    execFileSync("git", ["config", "core.autocrlf", "true"], { cwd: dir });
+    await writeFile(join(dir, "source.py"), "def normalized():\r\n  return 1\r\n");
+    execFileSync("git", ["add", "source.py"], { cwd: dir });
+    execFileSync("git", ["commit", "-m", "normalized source"], { cwd: dir });
+    const service = new FactsService(dir);
+    await service.sync();
+    assert.equal(service.querySymbol("normalized").length, 1);
+    await service.sync();
+    assert.equal(service.getDiagnostics().status, "ready");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("Facts persists resolved edges when configuration changes without source edits", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "import { value } from 'alias';\n");
+    await writeFile(join(dir, "one.ts"), "export const value = 1;\n");
+    await writeFile(join(dir, "two.ts"), "export const value = 2;\n");
+    const config = (target: string) => JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { alias: [target] } } });
+    await writeFile(join(dir, "tsconfig.json"), config("./one.ts"));
+    const service = new FactsService(dir);
+    await service.sync();
+    const pointer = JSON.parse(await readFile(join(dir, ".pi", "facts.json"), "utf8"));
+    assert.equal(service.getGeneration(), pointer.generation);
+    assert.equal((await new FactsStore(dir).load())!.moduleEdges?.[0].target, "one.ts");
+    await writeFile(join(dir, "tsconfig.json"), config("./two.ts"));
+    await service.sync();
+    const store = new FactsStore(dir);
+    assert.equal((await store.load())!.moduleEdges?.[0].target, "two.ts");
+    assert.equal((await store.loadGeneration(pointer.generation)).moduleEdges?.[0].target, "one.ts");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("unchanged refresh does not revisit loaded symbol payloads to compare publications", async (t) => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "export const stable = 1;\n");
+    const service = new FactsService(dir);
+    await service.sync();
+    const generation = service.getGeneration();
+    const load = FactsStore.prototype.load;
+    let visits = 0;
+    t.mock.method(FactsStore.prototype, "load", async function (signal?: AbortSignal) {
+      const database: Awaited<ReturnType<typeof load>> = await load.call(this, signal);
+      for (const file of Object.values(database!.files)) {
+        const symbols = file.symbols;
+        Object.defineProperty(file, "symbols", {
+          enumerable: true,
+          get() {
+            visits++;
+            return symbols;
+          },
+        });
+      }
+      return database;
+    });
+    await service.sync();
+    assert.equal(service.getGeneration(), generation);
+    assert.equal(visits, 0, "unchanged file identities should avoid reserializing their symbol payloads");
+  } finally {
+    t.mock.restoreAll();
+    await cleanup();
+  }
+});
+
+test("refresh retries when resolver configuration changes after worker resolution", async (t) => {
+  const { Worker } = await import("node:worker_threads");
+  const { writeFileSync } = await import("node:fs");
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "main.ts"), 'import { value } from "@target";');
+    await writeFile(join(dir, "a.ts"), 'export const value = 1;');
+    await writeFile(join(dir, "b.ts"), 'export const value = 2;');
+    const config = (target: string) => JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@target": [target] } } });
+    await writeFile(join(dir, "tsconfig.json"), config("a.ts"));
+    const emit = Worker.prototype.emit;
+    let edited = false;
+    t.mock.method(Worker.prototype, "emit", function (event: string, ...args: any[]) {
+      if (!edited && event === "message" && args[0]?.facts?.inputs) {
+        edited = true;
+        writeFileSync(join(dir, "tsconfig.json"), config("b.ts"));
+      }
+      return emit.call(this, event, ...args);
+    });
+    const service = new FactsService(dir);
+    await service.sync();
+    assert.equal(edited, true);
+    assert.equal(service.getResolutionEdges().find((edge) => edge.specifier === "@target")?.target, "b.ts");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("continuous resolver metadata drift preserves the last publication", async (t) => {
+  const { Worker } = await import("node:worker_threads");
+  const { writeFileSync } = await import("node:fs");
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "main.ts"), 'export const value = 1;');
+    await writeFile(join(dir, "tsconfig.json"), '{}');
+    const service = new FactsService(dir);
+    await service.sync();
+    const before = await readFile(join(dir, ".pi/facts.json"), "utf8");
+    const generation = service.getGeneration();
+    const emit = Worker.prototype.emit;
+    let attempts = 0;
+    t.mock.method(Worker.prototype, "emit", function (event: string, ...args: any[]) {
+      if (event === "message" && args[0]?.facts?.inputs) {
+        writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: ++attempts % 2 === 0 } }));
+      }
+      return emit.call(this, event, ...args);
+    });
+    await assert.rejects(service.sync(), /changed|snapshot/i);
+    assert.equal(attempts, 3);
+    assert.equal(service.getDiagnostics().failure?.code, "snapshot_validation");
+    assert.equal(service.getGeneration(), generation);
+    assert.equal(await readFile(join(dir, ".pi/facts.json"), "utf8"), before);
   } finally {
     await cleanup();
   }
