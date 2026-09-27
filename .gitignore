@@ -34,3 +34,6 @@ tmp/
 
 # CodeGraph index (recreated by pi on session start)
 .codegraph/
+
+# Machine-specific Codex MCP registration
+.codex/config.toml

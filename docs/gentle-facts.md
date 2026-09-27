@@ -62,6 +62,30 @@ The index does not use an LLM to generate facts. It records syntax found in sour
 
 ## Agent Tools
 
+### Codex MCP registration
+
+Codex can run the standalone Facts server over stdio. In a trusted project's
+local `.codex/config.toml`, use absolute paths for that machine:
+
+```toml
+[mcp_servers.gentle_facts]
+command = "node"
+args = ["--experimental-strip-types", "/absolute/path/to/gentle-shell/bin/gentle-facts-mcp.mjs", "--workspace", "/absolute/path/to/workspace"]
+cwd = "/absolute/path/to/workspace"
+startup_timeout_sec = 15
+tool_timeout_sec = 60
+default_tools_approval_mode = "approve"
+enabled = true
+```
+
+`approve` permits this server's advertised Facts queries without an interactive
+MCP approval. Review the tool catalog before using that policy. The default
+server advertises no session-memory tools; a separate operator-selected Pi
+transcript and leaf binding is required for historical checkpoint access. The
+machine-specific config should remain local. A fresh Codex CLI turn on this
+workstation invoked `gentle_facts.facts_status` and received 6,425 symbols in
+495 files; tool discovery alone had failed the noninteractive approval gate.
+
 The extension exposes six deterministic tools: `facts_query`, `facts_dependents`, `facts_status`, `facts_history`, `facts_commit`, and `facts_impact`.
 
 `facts_query` and `facts_dependents` accept `offset` (default 0) and `limit` (default 10, maximum 50). Results use stable file ordering. The response includes `returned`, `nextOffset`, and `truncated`. A page can contain fewer results than requested to stay within the response budget. Oversized declarations are explicitly truncated; inspect the reported source location for the complete declaration. Use `nextCursor` for continuation over the original immutable result snapshot; expired or evicted cursors fail explicitly. A new offset query refreshes the workspace and can observe changes between calls. Cursor retention is bounded and defaults to five minutes.

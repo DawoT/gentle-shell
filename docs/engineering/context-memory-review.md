@@ -109,11 +109,67 @@ tokenizers. Quality evaluation must demonstrate preservation of objectives,
 constraints, unresolved obligations and source references before enabling
 automatic compaction by default. No token-savings percentage is claimed.
 
-Standalone MCP needs an authorized, dynamic session/branch binding. Project-wide
+Standalone MCP supports an explicit operator-pinned memory snapshot:
+
+```sh
+node bin/gentle-facts-mcp.mjs --workspace /path/to/workspace \
+  --session-file /path/to/pi-session.jsonl --leaf-id ENTRY_ID
+```
+
+Both flags are required. The server checks the transcript's workspace and
+session identity, selected leaf ancestry, duplicate entries and file bounds.
+It checks transcript identity metadata on each memory call and reparses ancestry
+only when the file changes; `ProjectMemory` filters by both session ID and
+branch entry IDs. The model cannot select an arbitrary
+session or leaf through tool parameters. Memory tools appear in the MCP catalog
+only with this binding. Search returns digest-verified references, while read
+returns a bounded historical slice. A real stdio regression checks that a
+sibling-branch checkpoint is unavailable and a removed selected leaf fails
+closed (`/tmp/facts-bound-memory-red.log`,
+`/tmp/facts-bound-memory-green.log`).
+
+This binding pins an exact leaf. Restart the standalone MCP with a new leaf ID
+after Pi navigates or adds checkpoints that should become visible. Pi's native
+memory tools continue to read its current branch dynamically. A later live
+host-to-MCP branch update protocol would remove that restart, but must preserve
+per-session isolation when several Pi processes share a workspace. Project-wide
 memory must publish structured evidence separately from session objectives and
 permissions. Historical Facts receipts still require comparison with current
 workspace evidence before reuse. Search remains a bounded linear scan (16 MiB
 per session); incremental indexing and bounded MCP producer work remain open.
+
+The unbound standalone Facts MCP does not advertise `memory_search` or `memory_read`:
+without a selected session/branch binding each call always returned
+`session_scope_required`, wasting catalog and invocation context. Direct calls
+still fail explicitly, and Pi's session-bound memory tools remain available.
+The stdio regression failed before the catalog correction and passed after it
+(`/tmp/facts-mcp-catalog-red.log` and `/tmp/facts-mcp-catalog-green.log`).
+This removes dead MCP surface from the default transport.
+
+This workstation's ignored `.codex/config.toml` registers this unbound Facts MCP
+only for trusted Codex sessions in this workspace. `codex mcp list` confirms
+`gentle_facts` is enabled. Pi keeps its native Facts and memory tools; a Codex
+session that needs a Pi checkpoint must launch a separate server with the
+operator-selected `--session-file` and `--leaf-id` flags above. The project
+configuration does not grant access to another session's memory.
+
+A fresh `codex exec --ephemeral --sandbox read-only` probe found that MCP
+discovery alone was insufficient: the default noninteractive approval policy
+rejected `facts_status`. The local registration now sets
+`default_tools_approval_mode = "approve"` for this query-only server. A second
+live probe invoked `gentle_facts.facts_status` successfully and reported 6,425
+symbols in 495 files (`/tmp/codex-facts-live-approve.jsonl`). This proves tool
+delivery through a real Codex turn on this machine; it does not measure model
+quality or general token savings. The native Codex client also attempted a
+WebSocket prewarm that the bridge intentionally answered with 426 before its
+working HTTP fallback.
+
+After the bound-MCP change, `npm test` passed 4,157 tests with 41 skips and
+zero failures, including provider contract and runtime harness stages
+(`/tmp/gentle-bound-memory-full.log`). The focused stdio tests, type ratchet,
+runtime module check and package resource check passed. The bridge's composed
+host probe passed twenty scripted model rounds across two Pi sessions
+(`/tmp/bridge-pi-host-current.log`); this does not prove a live browser turn.
 
 Static symlink rejection is not isolation from a hostile process that can rename
 the workspace's directories concurrently. Shared project storage is writable by

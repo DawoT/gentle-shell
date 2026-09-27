@@ -129,8 +129,8 @@ export function authenticate(sessionId: string): UserSession {
       assert.ok(toolNames.includes("facts_dependents"), "must include facts_dependents");
       assert.ok(toolNames.includes("facts_impact"), "must include facts_impact");
       assert.ok(toolNames.includes("facts_status"), "must include facts_status");
-      assert.ok(toolNames.includes("memory_search"), "must include memory_search");
-      assert.ok(toolNames.includes("memory_read"), "must include memory_read");
+      assert.equal(toolNames.includes("memory_search"), false, "unbound memory search must not consume tool catalog context");
+      assert.equal(toolNames.includes("memory_read"), false, "unbound memory read must not consume tool catalog context");
       assert.ok(toolNames.includes("context_status"), "must include context_status");
 
       // 3. tools/call: facts_status
