@@ -67,3 +67,14 @@ test("Facts card displays unavailable state and recovery hint", () => {
   assert.match(lines.join("\n"), /package.json/);
   assert.doesNotMatch(lines.join("\n"), /Automatic sync/);
 });
+
+test("Facts card shows measured use and labels estimates without monetary claims", async () => {
+  const { FactsUsage } = await import("../lib/facts/facts-usage.ts");
+  const usage = new FactsUsage();
+  usage.record({ status: "ready", returned: 1, text: "answer", sources: [{ path: "a", sha: "1", sourceBytes: 1000 }] });
+  const output = renderFactsCard(null, plainTheme, 100, { expanded: true, usage: usage.snapshot() }).join("\n");
+  assert.match(output, /Queries: 1/);
+  assert.match(output, /Est. context reduction/);
+  assert.match(output, /not billed savings/);
+  assert.doesNotMatch(output, /Cache Hits|Tokens Saved|\$/);
+});

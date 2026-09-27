@@ -35,6 +35,7 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
 
   for (const [path, file] of Object.entries(value.files)) {
     if (!isRecord(file) || file.path !== path || typeof file.sha !== "string" ||
+      (file.sourceBytes !== undefined && (!Number.isSafeInteger(file.sourceBytes) || (file.sourceBytes as number) < 0)) ||
       !isStringArray(file.imports) || !isStringArray(file.exports) || !Array.isArray(file.symbols)) {
       return false;
     }

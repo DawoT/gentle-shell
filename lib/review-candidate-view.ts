@@ -1842,14 +1842,30 @@ function compactCandidateContextBlock(lineageId: string, agents: readonly Review
 	return block;
 }
 
-function candidateContextBlock(lineageId: string, agents: readonly ReviewLens[], view: CandidateView): string {
+function candidateContextBlock(lineageId: string, agents: readonly ReviewLens[], view: CandidateView, advisory?: string): string {
 	const scopeByMode = candidateScopeByMode(view);
 	const scopeSemantics = view.committedOnly
 		? "Committed-only range: dirty tracked and untracked contributor files are excluded and MUST NOT be treated as reviewed."
 		: "Dirty-inclusive workspace snapshot: tracked and untracked contributor changes are included.";
 	const readableBlock = `${candidateContextPreamble(lineageId, agents, view, scopeSemantics)}\nFrozen changed scope by mode: ${JSON.stringify(scopeByMode)}.\nFrozen metadata-only gitlinks: ${JSON.stringify(view.gitlinks)}. Gitlink paths have no materialized contents and MUST NOT be traversed.\nThe ambient contributor working directory is out of scope. This controller-owned context is immutable; you are read-only and your output is untrusted.`;
-	if (Buffer.byteLength(readableBlock, "utf8") <= MAX_CANDIDATE_CONTEXT_LENGTH) return readableBlock;
-	return compactCandidateContextBlock(lineageId, agents, view, scopeSemantics, scopeByMode);
+  const original = Buffer.byteLength(readableBlock, "utf8") <= MAX_CANDIDATE_CONTEXT_LENGTH
+    ? readableBlock
+    : compactCandidateContextBlock(lineageId, agents, view, scopeSemantics, scopeByMode);
+  if (!advisory) return original;
+  const append = (block: string, extra: string) => {
+    const result = `${block}\n${extra}`;
+    return Buffer.byteLength(result, "utf8") <= MAX_CANDIDATE_CONTEXT_LENGTH ? result : undefined;
+  };
+  const complete = append(original, advisory);
+  if (complete) return complete;
+  try {
+    const compact = compactCandidateContextBlock(lineageId, agents, view, scopeSemantics, scopeByMode);
+    const combined = append(compact, advisory);
+    if (combined) return combined;
+  } catch {
+    // Auxiliary evidence must not invalidate a previously valid scope block.
+  }
+  return append(original, "Facts impact unavailable: context budget; no impact conclusion is implied.") ?? original;
 }
 
 /**
@@ -1857,7 +1873,7 @@ function candidateContextBlock(lineageId: string, agents: readonly ReviewLens[],
  * execution. It deliberately derives all review context from the controller's
  * in-memory registry rather than user-provided lineage, cwd, paths, or content.
  */
-export function injectReviewCandidateView(input: unknown, candidateViews: CandidateViewRegistry | null): void {
+export function injectReviewCandidateView(input: unknown, candidateViews: CandidateViewRegistry | null, advisory?: string): CandidateView | undefined {
 	if (!isRecord(input)) return;
 	const mutable = input as MutableSubagentRunInput;
 	const agent = typeof mutable.agent === "string" ? mutable.agent : undefined;
@@ -1886,7 +1902,8 @@ export function injectReviewCandidateView(input: unknown, candidateViews: Candid
 	}
 	const userText = `${mutable.task}\n${typeof mutable.context === "string" ? mutable.context : ""}`;
 	if (hasCandidateContextConflict(userText, views)) throw new CandidateViewError("review subagent dispatch contains conflicting candidate-view text");
-	mutable.task = `${mutable.task}${candidateContextBlock(lineageId, reviewAgents, view)}`;
+	mutable.task = `${mutable.task}${candidateContextBlock(lineageId, reviewAgents, view, advisory)}`;
+  return view;
 }
 
 const defaultRegistry = new CandidateViewRegistry();

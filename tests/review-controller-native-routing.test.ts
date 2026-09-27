@@ -2533,6 +2533,8 @@ test("controller-owned dispatch confines single and parallel graph actors to the
 			assert.match(task, /Controller-owned review lineage: `current-4r`/);
 			assert.match(task, new RegExp(`Frozen candidate tree: \`${current.candidateTree}\``));
 			assert.match(task, /ambient contributor working directory is out of scope/);
+      assert.match(task, /Facts impact/);
+      assert.match(task, /does not expand review scope/);
 		}
 		for (const malformed of [
 			{ agent: "review-risk", agents: ["review-risk"], task: "Inspect", mode: "task" },
@@ -2623,4 +2625,33 @@ test("collect-state public STATUS, INSPECT, and START serialize each provider co
 		assert.equal(transition.kind, "collect", `${parameters.operation} keeps the transition kind so the orchestrator still sees the collect state`);
 		assert.ok(serialized.length < 2 * JSON.stringify(bindings).length, `${parameters.operation} answer (${serialized.length} characters) must not double the ${JSON.stringify(bindings).length}-character binding projection`);
 	}
+});
+
+test("review Facts dispatch cannot survive session shutdown when view cleanup fails", async (t) => {
+  const cwd = repository(t);
+  const candidateViews = new CandidateViewRegistry();
+  const runtime = reviewRuntime({
+    targetStatus: async () => startStatus(cwd),
+    start: async () => ({ lineageId: "facts-shutdown", state: "reviewing", riskLevel: "high", selectedLenses: ["review-risk"], changedFiles: 1, changedLines: 1, correctionBudget: 1, action: "created", lensesRequired: true, riskReasons: [] }),
+  } as unknown as NativeReviewCli, candidateViews);
+  await runtime.controller.execute("start", { operation: "start", input: JSON.stringify({ mode: "ordinary" }) }, undefined, undefined, reviewContext(cwd));
+  const view = candidateViews.resolveForLens("facts-shutdown", "review-risk");
+  const resolveViews = candidateViews.resolveCurrentForLenses.bind(candidateViews);
+  let closed = false;
+  t.mock.method(candidateViews, "cleanupAll", () => { throw new Error("cleanup unavailable"); });
+  t.mock.method(candidateViews, "resolveCurrentForLenses", (...args: Parameters<typeof resolveViews>) => {
+    const views = resolveViews(...args);
+    if (!closed) {
+      closed = true;
+      runtime.sessionShutdown({ reason: "reload" }, reviewContext(cwd));
+    }
+    return views;
+  });
+  try {
+    const result = await runtime.toolCall({ toolName: "subagent_run", input: { agent: "review-risk", task: "Inspect", mode: "task" } }, reviewContext(cwd)) as { block?: boolean; reason?: string };
+    assert.equal(result?.block, true);
+    assert.match(result.reason!, /session|cancel/i);
+  } finally {
+    candidateViews.cleanup(view.token);
+  }
 });

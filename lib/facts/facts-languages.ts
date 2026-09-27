@@ -28,7 +28,7 @@ async function extract(path: string, source: string, sha: string, signal?: Abort
   } else {
     throw new Error(`Unsupported Facts source: ${path}`);
   }
-  return { ...facts, language };
+  return { ...facts, language, sourceBytes: Buffer.byteLength(source, "utf8") };
 }
 
 export async function extractSourceFacts(path: string, source: string, sha: string, signal?: AbortSignal): Promise<FileFacts> {

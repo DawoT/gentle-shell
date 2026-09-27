@@ -1,9 +1,10 @@
+import { readVerifiedTreeEntries } from "./facts-git-trees.ts";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { devNull } from "node:os";
 import { FactsLimitError, MAX_INDEX_BYTES, MAX_INDEX_FILES, MAX_SOURCE_BYTES } from "./facts-limits.ts";
 import { factsLanguage } from "./facts-languages.ts";
-import { basename, extname, posix } from "node:path";
+import { basename, delimiter, extname, isAbsolute, posix } from "node:path";
 
 interface CommitFile {
   path: string;
@@ -12,21 +13,38 @@ interface CommitFile {
   marker: boolean;
 }
 
-export interface CommitInput {
+export interface FactsObjectStore {
+  objectDirectory: string;
+  alternateObjectDirectories?: readonly string[];
+}
+
+export interface TreeInput {
   root: string;
-  commit: string;
-  committedAt: number;
+  tree: string;
   files: Map<string, Buffer>;
   omitted: Array<{ path: string; reason: "symlink" | "submodule" }>;
+}
+
+export interface CommitInput extends TreeInput {
+  commit: string;
+  committedAt: number;
 }
 
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const LOCKFILES = new Set(["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "package-lock.json"]);
 
-function gitEnvironment(): NodeJS.ProcessEnv {
+function gitEnvironment(store?: FactsObjectStore): NodeJS.ProcessEnv {
   const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  if (store) {
+    const paths = [store.objectDirectory, ...(store.alternateObjectDirectories ?? [])];
+    if (paths.length > 9 || paths.some((path) => typeof path !== "string" || !isAbsolute(path) || path.length > 4096 || /[\x00-\x1f]/.test(path)) ||
+      store.alternateObjectDirectories?.some((path) => path.includes(delimiter) || path.includes('"'))) {
+      throw new Error("Invalid Facts object directory transport");
+    }
+  }
   return {
     ...environment,
+    ...(store ? { GIT_OBJECT_DIRECTORY: store.objectDirectory, GIT_ALTERNATE_OBJECT_DIRECTORIES: store.alternateObjectDirectories?.join(delimiter) ?? "" } : {}),
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: devNull,
     GIT_NO_REPLACE_OBJECTS: "1",
@@ -36,8 +54,9 @@ function gitEnvironment(): NodeJS.ProcessEnv {
   };
 }
 
-function git(cwd: string, args: string[], maxBuffer: number, signal?: AbortSignal, input?: string): Promise<Buffer> {
+function git(cwd: string, args: string[], maxBuffer: number, signal?: AbortSignal, input?: string, store?: FactsObjectStore): Promise<Buffer> {
   signal?.throwIfAborted();
+  const environment = gitEnvironment(store);
   return new Promise((resolve, reject) => {
     const deadline = new AbortController();
     const active = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
@@ -46,7 +65,7 @@ function git(cwd: string, args: string[], maxBuffer: number, signal?: AbortSigna
     let outcome: { data: Buffer } | { error: unknown };
     const child = execFile("git", ["--no-replace-objects", ...args], {
       cwd,
-      env: gitEnvironment(),
+      env: environment,
       encoding: "buffer",
       maxBuffer,
       signal: active,
@@ -93,36 +112,51 @@ export async function readFactsCommit(cwd: string, revision: string, signal?: Ab
   if (timestamps.length !== 1) throw new Error("Invalid Facts commit timestamp");
   const committedAt = Number(timestamps[0][1]) * 1000;
   if (!Number.isFinite(committedAt) || !Number.isFinite(new Date(committedAt).getTime())) throw new Error("Invalid Facts commit timestamp");
-  const tree = await git(root, ["ls-tree", "-r", "-z", "-l", "--full-tree", commit], 16 * 1024 * 1024, signal);
-  const decoded = new TextDecoder("utf-8", { fatal: true }).decode(tree);
-  const entries = decoded.split("\0").filter(Boolean);
-  if (entries.length > 100_000) throw new FactsLimitError("Facts commit tree entry limit exceeded");
+  const treeHeaders = [...headers.matchAll(/^tree ([a-f0-9]{40}|[a-f0-9]{64})$/gm)];
+  if (treeHeaders.length !== 1) throw new Error("Invalid Facts commit tree");
+  const input = await readFactsTree(root, treeHeaders[0][1], signal);
+  return { ...input, commit, committedAt };
+}
+
+/** Internal transport: the caller supplies controller-validated object directories, never model input. */
+export async function readFactsTree(cwd: string, treeId: string, signal?: AbortSignal, store?: FactsObjectStore): Promise<TreeInput> {
+  signal?.throwIfAborted();
+  if (typeof treeId !== "string" || !OBJECT_ID.test(treeId)) throw new Error("Invalid Facts tree identifier");
+  const root = (await git(cwd, ["rev-parse", "--show-toplevel"], 64 * 1024, signal)).toString("utf8").replace(/\n$/, "");
+  const entries = await readVerifiedTreeEntries(treeId, (ids) => git(root, ["cat-file", "--batch"],
+    16 * 1024 * 1024 + ids.length * 100, signal, ids.join("\n") + "\n", store), signal);
   const selected: CommitFile[] = [];
-  const omitted: CommitInput["omitted"] = [];
-  let bytes = 0;
-  for (const entry of entries) {
-    const tab = entry.indexOf("\t");
-    const header = entry.slice(0, tab).trim().split(/\s+/);
-    const path = entry.slice(tab + 1);
-    if (tab < 0 || header.length !== 4 || !OBJECT_ID.test(header[2])) throw new Error("Invalid Git tree record");
-    const [mode, type, oid, sizeText] = header;
-    if (mode === "120000" || type === "commit") {
+  const omitted: TreeInput["omitted"] = [];
+  for (const { path, mode, oid } of entries) {
+    if (mode === "120000" || mode === "160000") {
       omitted.push({ path, reason: mode === "120000" ? "symlink" : "submodule" });
       continue;
     }
     const marker = LOCKFILES.has(basename(path));
     if (!factsLanguage(path) && ![".json", ".jsonc"].includes(extname(path)) && !marker) continue;
     checkPath(path);
-    const size = Number(sizeText);
-    if (!/^100(?:644|755)$/.test(mode) || type !== "blob" || !Number.isSafeInteger(size) || size < 0) throw new Error("Invalid Git source blob");
-    if (!marker && size > MAX_SOURCE_BYTES) throw new FactsLimitError(`Facts commit source byte limit exceeded: ${path}`);
-    bytes += marker ? 0 : size;
-    if (bytes > MAX_INDEX_BYTES || selected.length >= MAX_INDEX_FILES) throw new FactsLimitError("Facts commit inventory limit exceeded");
-    selected.push({ path, oid, size, marker });
+    if (selected.length >= MAX_INDEX_FILES) throw new FactsLimitError("Facts commit inventory limit exceeded");
+    selected.push({ path, oid, size: 0, marker });
+  }
+  if (selected.length) {
+    const output = await git(root, ["cat-file", "--batch-check"], MAX_INDEX_FILES * 100, signal,
+      selected.map((entry) => entry.oid).join("\n") + "\n", store);
+    const lines = output.toString("ascii").trimEnd().split("\n");
+    if (lines.length !== selected.length) throw new Error("Invalid Git blob inventory");
+    let bytes = 0;
+    for (const [index, entry] of selected.entries()) {
+      const header = lines[index].split(" ");
+      const size = Number(header[2]);
+      if (header.length !== 3 || header[0] !== entry.oid || header[1] !== "blob" || !Number.isSafeInteger(size) || size < 0) throw new Error("Invalid Git source blob");
+      if (!entry.marker && size > MAX_SOURCE_BYTES) throw new FactsLimitError(`Facts commit source byte limit exceeded: ${entry.path}`);
+      bytes += entry.marker ? 0 : size;
+      if (bytes > MAX_INDEX_BYTES) throw new FactsLimitError("Facts commit inventory limit exceeded");
+      entry.size = size;
+    }
   }
   const blobs = selected.filter((entry) => !entry.marker);
   const output = blobs.length ? await git(root, ["cat-file", "--batch"], MAX_INDEX_BYTES + MAX_INDEX_FILES * 100, signal,
-    blobs.map((entry) => entry.oid).join("\n") + "\n") : Buffer.alloc(0);
+    blobs.map((entry) => entry.oid).join("\n") + "\n", store) : Buffer.alloc(0);
   const files = new Map<string, Buffer>();
   let offset = 0;
   for (const entry of blobs) {
@@ -142,5 +176,5 @@ export async function readFactsCommit(cwd: string, revision: string, signal?: Ab
   }
   if (offset !== output.length) throw new Error("Unexpected Git batch output");
   for (const entry of selected) if (entry.marker) files.set(entry.path, Buffer.alloc(0));
-  return { root, commit, committedAt, files, omitted };
+  return { root, tree: treeId, files, omitted };
 }

@@ -45,6 +45,7 @@ export interface SymbolFact {
 }
 
 export interface FileFacts {
+  sourceBytes?: number;
   language?: "typescript" | "python" | "go";
   path: string;
   sha: string;

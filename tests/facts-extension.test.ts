@@ -537,3 +537,164 @@ test("facts_commit labels pinned evidence and leaves current facts and transcrip
     await cleanup();
   }
 });
+
+test("facts_query discovers symbols by repository file and combines name filters", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    const tool = pi.getTool("facts_query");
+    const page = await tool.execute("file", { file: "./math.ts" }, undefined, undefined, ctx);
+    assert.equal(page.details.found, 1);
+    assert.match(page.content[0].text, /multiply/);
+    assert.doesNotMatch(page.content[0].text, /• val /);
+    const selected = await tool.execute("selected", { file: "math.ts", name: "MULTIPLY", kind: "function" }, undefined, undefined, ctx);
+    assert.equal(selected.details.found, 1);
+    const wrongKind = await tool.execute("kind", { file: "math.ts", name: "multiply", kind: "class" }, undefined, undefined, ctx);
+    assert.equal(wrongKind.details.found, 0);
+    const excluded = await tool.execute("filter", { file: "main.ts", name: "multiply" }, undefined, undefined, ctx);
+    assert.equal(excluded.details.found, 0);
+    for (const params of [{}, { file: "../math.ts" }, { file: "/math.ts" }, { name: "" }, { file: "math.ts", name: 3 }]) {
+      await assert.rejects(tool.execute("invalid", params, undefined, undefined, ctx), /query|file|name/i);
+    }
+    const prompt = await pi.emit("before_agent_start", { systemPrompt: "base" }, ctx);
+    assert.match(prompt.systemPrompt, /CONTEXT RULE/);
+    assert.match(prompt.systemPrompt, /facts_dependents/);
+    assert.match(prompt.systemPrompt, /behavior|debug/i);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("file query cursors retain their file scope across edits", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "math.ts"), 'export function first() {}\nexport function second() {}\n');
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    const tool = pi.getTool("facts_query");
+    const first = await tool.execute("first", { file: "./math.ts", limit: 1 }, undefined, undefined, ctx);
+    assert.ok(first.details.nextCursor);
+    await writeFile(join(dir, "math.ts"), 'export const replacement = 1;');
+    const next = await tool.execute("next", { file: "math.ts", cursor: first.details.nextCursor, limit: 1 }, undefined, undefined, ctx);
+    assert.match(next.content[0].text, /second/);
+    assert.doesNotMatch(next.content[0].text, /replacement/);
+    await assert.rejects(tool.execute("wrong", { file: "main.ts", cursor: first.details.nextCursor }, undefined, undefined, ctx), /different query/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("Facts usage reports query outcomes and deduplicates source baselines per session", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    const query = pi.getTool("facts_query");
+    await query.execute("one", { file: "math.ts" }, undefined, undefined, ctx);
+    await query.execute("two", { file: "math.ts" }, undefined, undefined, ctx);
+    await query.execute("empty", { name: "absent" }, undefined, undefined, ctx);
+    const status = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(status.details.usage.queries, 3);
+    assert.equal(status.details.usage.answered, 2);
+    assert.equal(status.details.usage.empty, 1);
+    assert.equal(status.details.usage.baselineFiles, 1);
+    assert.ok(status.details.usage.responseBytes > 0);
+    assert.match(status.content[0].text, /estimated|estimate/i);
+    await pi.emit("session_shutdown", {}, ctx);
+    const reset = await pi.getTool("facts_status").execute("reset", {}, undefined, undefined, ctx);
+    assert.equal(reset.details.usage.queries, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new session resets usage and cursor pages retain original source-size evidence", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "a.ts"), 'export const shared = 1;');
+    await writeFile(join(dir, "b.ts"), 'export const shared = 2;');
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    const tool = pi.getTool("facts_query");
+    const first = await tool.execute("one", { name: "shared", limit: 1 }, undefined, undefined, ctx);
+    await writeFile(join(dir, "b.ts"), 'export const replacement = "changed";');
+    await tool.execute("two", { name: "shared", cursor: first.details.nextCursor }, undefined, undefined, ctx);
+    const status = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(status.details.usage.baselineFiles, 2);
+    assert.equal(status.details.usage.baselineBytes, Buffer.byteLength('export const shared = 1;export const shared = 2;'));
+    await pi.emit("session_start", {}, ctx);
+    const fresh = await pi.getTool("facts_status").execute("fresh", {}, undefined, undefined, ctx);
+    assert.equal(fresh.details.usage.queries, 0);
+    await assert.rejects(tool.execute("old", { name: "shared", cursor: first.details.nextCursor }, undefined, undefined, ctx), /expired|unknown/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a query from a replaced session cannot publish cursors or usage into the new session", async (t) => {
+  const { FactsService } = await import("../lib/facts/facts-service.ts");
+  const { dir, cleanup } = await createFixture();
+  let release!: () => void;
+  try {
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const sync = FactsService.prototype.sync;
+    let first = true;
+    t.mock.method(FactsService.prototype, "sync", async function (signal?: AbortSignal) {
+      if (first) {
+        first = false;
+        entered();
+        await gate;
+      }
+      return sync.call(this, signal);
+    });
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    const pending = pi.getTool("facts_query").execute("old", { file: "math.ts" }, undefined, undefined, ctx);
+    const rejected = assert.rejects(pending, /session|cancel/i);
+    await ready;
+    await pi.emit("session_start", {}, ctx);
+    release();
+    await rejected;
+    const status = await pi.getTool("facts_status").execute("new", {}, undefined, undefined, ctx);
+    assert.equal(status.details.usage.queries, 0);
+  } finally {
+    release?.();
+    await cleanup();
+  }
+});
+
+test("facts_impact compares pinned commits without reading dirty source as candidate evidence", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    await writeFile(join(dir, "math.ts"), 'export function multiply(a: bigint, b: bigint): bigint { return a * b; }');
+    execFileSync("git", ["add", "math.ts"], { cwd: dir });
+    execFileSync("git", ["commit", "-m", "change signature"], { cwd: dir });
+    const candidate = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    await writeFile(join(dir, "main.ts"), 'export const dirty = true;');
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const result = await pi.getTool("facts_impact").execute("impact", { base, candidate }, undefined, undefined, { cwd: dir, hasUI: false });
+    assert.equal(result.details.baseCommit, base);
+    assert.equal(result.details.candidateCommit, candidate);
+    assert.match(result.content[0].text, /main.ts/);
+    assert.match(result.content[0].text, /potential|Potential/);
+    assert.doesNotMatch(result.content[0].text, /dirty/);
+    assert.equal(result.details.changedSourceCount, 1);
+    assert.equal(result.details.consumerCount, 2);
+    const beyond = await pi.getTool("facts_impact").execute("beyond", { base, candidate, offset: 100 }, undefined, undefined, { cwd: dir, hasUI: false });
+    assert.equal(beyond.details.changedSourceCount, 1);
+    assert.doesNotMatch(beyond.content[0].text, /No indexed source or import-resolution changes detected/);
+    assert.match(beyond.content[0].text, /No rows at this offset/);
+  } finally {
+    await cleanup();
+  }
+});

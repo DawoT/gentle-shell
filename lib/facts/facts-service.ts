@@ -223,12 +223,17 @@ export class FactsService {
   }
 
   querySymbol(name: string): SymbolQueryResult[] {
+    return this.querySymbols({ name });
+  }
+
+  querySymbols(query: { name?: string; file?: string }): SymbolQueryResult[] {
     if (!this.db) return [];
     const results: SymbolQueryResult[] = [];
 
     for (const [file, facts] of Object.entries(this.db.files)) {
+      if (query.file !== undefined && file !== query.file) continue;
       for (const symbol of facts.symbols) {
-        if (symbol.name === name || symbol.name.toLowerCase() === name.toLowerCase()) {
+        if (query.name === undefined || symbol.name.toLowerCase() === query.name.toLowerCase()) {
           results.push({ file, symbol });
         }
       }
@@ -327,7 +332,8 @@ export class FactsService {
 
     lines.push(
       `- Indexed Files: ${fileCount} | Total Symbols: ${totalSymbols}`,
-      "- Fact Tools: Use 'facts_query' to inspect signatures and types without opening files.",
+      "- CONTEXT RULE: For signatures, declarations, types and import dependencies, use facts_query or facts_dependents before reading source or searching with grep. Discover symbols with facts_query(file: repository-relative path); narrow by name when known.",
+      "- Inspect relevant source when Facts is unavailable, returns no matches, has unresolved dependencies, or you need implementation behavior for debugging, review or edits. Read the relevant implementation before changing it; Facts does not prove runtime behavior or complete impact.",
     );
 
     return lines.map((line) => {

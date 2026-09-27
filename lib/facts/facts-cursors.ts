@@ -1,3 +1,4 @@
+import type { FileFacts } from "./facts-types.ts";
 import { randomUUID } from "node:crypto";
 import { pageFacts } from "./facts-response.ts";
 
@@ -8,7 +9,10 @@ interface CursorOptions {
   now?: () => number;
 }
 
+type SourceSize = Pick<FileFacts, "path" | "sha" | "sourceBytes">;
+
 interface Snapshot {
+  sources?: SourceSize[];
   query: string;
   generation: string;
   rows: string[];
@@ -47,12 +51,15 @@ export class FactsCursors {
     }
   }
 
-  start(query: string, generation: string, rows: string[], options: PageOptions) {
+  start(query: string, generation: string, rows: string[], options: PageOptions, sources?: readonly SourceSize[]) {
     this.prune();
-    const bytes = rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
+    if (sources && sources.length !== rows.length) throw new FactsCursorError("Cursor source evidence must match rows");
+    const sourceSizes = sources?.map(({ path, sha, sourceBytes }) => ({ path, sha, sourceBytes }));
+    const bytes = rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0) +
+      (sourceSizes ? Buffer.byteLength(JSON.stringify(sourceSizes)) : 0);
     if (bytes > this.maxBytes) throw new FactsCursorError("Query exceeds cursor retention budget; narrow the query");
     const id = randomUUID();
-    const snapshot = { query, generation, rows: [...rows], bytes, expiresAt: this.now() + this.ttlMs };
+    const snapshot = { query, generation, rows: [...rows], sources: sourceSizes, bytes, expiresAt: this.now() + this.ttlMs };
     // Validate pagination before admitting a snapshot to the retention pool.
     const page = this.page(id, snapshot, options);
     while (this.snapshots.size >= this.maxEntries || this.bytes + bytes > this.maxBytes) {
@@ -85,6 +92,7 @@ export class FactsCursors {
     const next = page.details.nextOffset;
     const rows = next === null ? page.text : page.text.replace(/\n\nMore results: repeat with offset=\d+\.$/, "");
     return {
+      sources: snapshot.sources?.slice(options.offset ?? 0, (options.offset ?? 0) + page.details.returned).map((source) => ({ ...source })),
       text: next === null ? rows : `${rows}\n\nSnapshot ${snapshot.generation}. More results: repeat the same query with cursor="${id}:${next}"; omit offset.`,
       details: {
         ...page.details,

@@ -1,3 +1,4 @@
+import { injectReviewFactsImpact } from "../lib/review-facts-impact.ts";
 import { consumeReviewMutation, pendingReviewMutation, recordReviewMutation } from "../lib/review-reminder-receipt.ts";
 import { isOddPhase, oddPhaseRegistry, ODD_PHASES } from "../lib/odd-phase.ts";
 import { resolveSessionWorktree } from "../lib/session-worktree-registry.ts";
@@ -148,7 +149,7 @@ import {
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { renderGentleAiLifecycleCall, renderGentleAiResult, type GentleAiRenderContext } from "../lib/gentle-ai-renderer.ts";
 import { sanitizeTerminalText, stripAnsi } from "../lib/terminal-theme.ts";
-import { BASE_REF_ACCEPTED_FORMS, CandidateViewError, CandidateViewRegistry, injectReviewCandidateView, readCandidateContextManifestPage, resolveCanonicalCandidateBase, type CandidateView } from "../lib/review-candidate-view.ts";
+import { BASE_REF_ACCEPTED_FORMS, CandidateViewError, CandidateViewRegistry, readCandidateContextManifestPage, resolveCanonicalCandidateBase, type CandidateView } from "../lib/review-candidate-view.ts";
 import {
 	GentleAiDevBinaryOverrideError,
 	GENTLE_AI_INSTALL_RECOVERY_COMMAND,
@@ -8775,9 +8776,11 @@ function createGentleAiExtensionForTesting(
 
 	let reminderSessionActive = true;
 	let reminderEpoch = 0;
+  let reviewFactsLifetime = new AbortController();
 	pi.on("session_shutdown", (event, context) => {
 		reminderSessionActive = false;
 		reminderEpoch += 1;
+    reviewFactsLifetime.abort(new Error("Review Facts session closed"));
 		// Pi tears down this registry on reload as well as session replacement/quit.
 		try { candidateViews?.cleanupAll(); } catch { /* Preserve failed owned views for later recovery. */ }
 		const reason = (event as { reason?: unknown }).reason;
@@ -9148,6 +9151,8 @@ function createGentleAiExtensionForTesting(
 		elapsedTiming = new GentleAiElapsedTimingLedger(ctx.sessionManager, pi);
 		reminderSessionActive = true;
 		reminderEpoch += 1;
+    reviewFactsLifetime.abort(new Error("Review Facts session replaced"));
+    reviewFactsLifetime = new AbortController();
 		try { candidateViews?.sweepOrphans(ctx.cwd); } catch { /* Ownership sweeping must not block startup. */ }
 		const reason = (event as { reason?: unknown }).reason;
 		if (reason !== "reload") revokeCurrentReviewSessionPermission(ctx);
@@ -9316,7 +9321,11 @@ function createGentleAiExtensionForTesting(
 			const writerScopeDenied = rejectUnscopedBoundedWriterDispatch(event.input);
 			if (writerScopeDenied) return writerScopeDenied;
 			try {
-				injectReviewCandidateView(event.input, candidateViews);
+				const dispatchEpoch = reminderEpoch;
+        const enriched = await injectReviewFactsImpact(event.input, candidateViews, { signal: reviewFactsLifetime.signal });
+        if (enriched && (!reminderSessionActive || dispatchEpoch !== reminderEpoch)) {
+          throw new CandidateViewError("Review Facts session changed during dispatch");
+        }
 				return undefined;
 			} catch (error) {
 				return {

@@ -1,3 +1,6 @@
+import { registerFactsImpact } from "../lib/facts/facts-impact-extension.ts";
+import { FactsUsage, factsUsageLines } from "../lib/facts/facts-usage.ts";
+import type { FileFacts } from "../lib/facts/facts-types.ts";
 import { recordFactsHistory, registerFactsHistory } from "../lib/facts/facts-history-extension.ts";
 import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
@@ -13,16 +16,16 @@ export const FACTS_TOOL_STATUS = "facts_status";
 
 const FACTS_WIDGET_KEY = "gentle-facts";
 
-function showCard(ctx: ExtensionContext, service: FactsService): void {
+function showCard(ctx: ExtensionContext, service: FactsService, usage?: FactsUsage): void {
   if (!ctx.hasUI) return;
   ctx.ui.setWidget(FACTS_WIDGET_KEY, (tui, theme) => {
     const card = {
       render(width: number) {
-        return renderFactsCard(service.getDatabase(), theme, width, { expanded: true, diagnostics: service.getDiagnostics() });
+        return renderFactsCard(service.getDatabase(), theme, width, { expanded: true, diagnostics: service.getDiagnostics(), usage: usage?.snapshot() });
       },
       invalidate() {},
       digest() {
-        return JSON.stringify(service.getDiagnostics());
+        return JSON.stringify([service.getDiagnostics(), usage?.snapshot()]);
       },
     };
     return sidebarPart(tui, "facts", card);
@@ -32,8 +35,45 @@ function showCard(ctx: ExtensionContext, service: FactsService): void {
 export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
   registerFactsHistory(pi);
   registerFactsCommit(pi);
+  registerFactsImpact(pi);
   const historyFailures = new Map<string, string>();
   const cursors = new Map<string, FactsCursors>();
+  const usages = new Map<string, FactsUsage>();
+  const lifetimes = new Map<string, AbortController>();
+  const baselines = new WeakMap<object, Array<Pick<FileFacts, "path" | "sha" | "sourceBytes">>>();
+
+  function usageFor(cwd: string): FactsUsage {
+    let usage = usages.get(cwd);
+    if (!usage) {
+      usage = new FactsUsage();
+      usages.set(cwd, usage);
+      lifetimes.set(cwd, new AbortController());
+    }
+    return usage;
+  }
+
+  function tracked(execute: (...args: any[]) => Promise<any>) {
+    return async (...args: any[]) => {
+      const ctx = args[4] as ExtensionContext;
+      const usage = usageFor(ctx.cwd);
+      let result: any;
+      try {
+        result = await execute(...args);
+      } catch (error) {
+        usage.record({ status: "error", returned: 0, text: "" });
+        if (usages.get(ctx.cwd) === usage) showCard(ctx, getService(ctx.cwd), usage);
+        throw error;
+      }
+      usage.record({
+        status: result.details?.status ?? "error",
+        returned: result.details?.returned ?? 0,
+        text: result.content.filter((item: any) => item.type === "text").map((item: any) => item.text).join("\n"),
+        sources: baselines.get(result),
+      });
+      if (usages.get(ctx.cwd) === usage) showCard(ctx, getService(ctx.cwd), usage);
+      return result;
+    };
+  }
 
   function queryCursors(cwd: string): FactsCursors {
     let pool = cursors.get(cwd);
@@ -63,22 +103,28 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 
   async function refreshService(ctx: ExtensionContext, signal?: AbortSignal): Promise<FactsService | null> {
     const service = getService(ctx.cwd);
+    const usage = usageFor(ctx.cwd);
+    const lifetime = lifetimes.get(ctx.cwd)!.signal;
+    signal = signal ? AbortSignal.any([signal, lifetime]) : lifetime;
     try {
       const sync = service.sync(signal);
-      showCard(ctx, service);
+      showCard(ctx, service, usage);
       await sync;
+      signal.throwIfAborted();
       try {
         await recordFactsHistory(pi, ctx, service, signal);
+        signal.throwIfAborted();
         historyFailures.delete(ctx.cwd);
       } catch (error) {
         signal?.throwIfAborted();
         historyFailures.set(ctx.cwd, error instanceof Error ? error.message : "Snapshot persistence failed");
       }
-      showCard(ctx, service);
+      signal.throwIfAborted();
+      showCard(ctx, service, usage);
       return service;
     } catch {
-      signal?.throwIfAborted();
-      showCard(ctx, service);
+      signal.throwIfAborted();
+      showCard(ctx, service, usage);
       return null;
     }
   }
@@ -98,15 +144,22 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   pi.registerTool({
     name: FACTS_TOOL_QUERY,
     label: "Facts Query",
-    description: "Deterministic AST query for exact symbols, signatures, interfaces, and docstrings without reading raw source files.",
+    description: "Inspect declarations by exact symbol name or repository-relative file path, optionally combining both. Prefer this for signatures and types before reading source; inspect implementation for behavior and edits.",
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["name"],
+      anyOf: [{ required: ["name"] }, { required: ["file"] }],
       properties: {
         ...paginationProperties,
+        file: {
+          type: "string",
+          minLength: 1,
+          maxLength: 4096,
+          description: "Exact repository-relative source path; lists its declarations without knowing symbol names.",
+        },
         name: {
           type: "string",
+          minLength: 1,
           maxLength: 1024,
           description: "Name of the symbol (function, interface, class, type, or variable) to find.",
         },
@@ -117,20 +170,36 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         },
       },
     },
-    execute: async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
       signal?.throwIfAborted();
-      const key = JSON.stringify(["query", params.name, params.kind ?? "all"]);
+      if (params.name !== undefined && (typeof params.name !== "string" || !params.name.trim() || params.name.length > 1024)) {
+        throw new Error("Invalid Facts query name");
+      }
+      let file: string | undefined;
+      if (params.file !== undefined) {
+        if (typeof params.file !== "string" || !params.file || params.file.length > 4096 ||
+          /[\\\x00-\x1f]/.test(params.file) || params.file.startsWith("/") || /^[a-z]:/i.test(params.file)) {
+          throw new Error("Invalid Facts query file");
+        }
+        file = params.file.replace(/^(?:\.\/)+/, "");
+        if (file.split("/").some((part: string) => !part || part === "." || part === "..")) throw new Error("Invalid Facts query file");
+      }
+      if (params.name === undefined && file === undefined) throw new Error("Facts query requires name or file");
+      const queryLabel = params.name ?? file;
+      const key = JSON.stringify(["query", params.name ?? null, file ?? null, params.kind ?? "all"]);
       if (params.cursor) {
         if (params.offset !== undefined) throw new Error("Use cursor or offset, not both");
         const page = queryCursors(ctx.cwd).resume(params.cursor, key, params);
-        return {
-          content: [{ type: "text", text: page.text }],
-          details: { status: "snapshot", diagnostics: getService(ctx.cwd).getDiagnostics(), found: page.details.total, query: params.name, ...page.details },
+        const result = {
+          content: [{ type: "text" as const, text: page.text }],
+          details: { status: "snapshot", diagnostics: getService(ctx.cwd).getDiagnostics(), found: page.details.total, query: queryLabel, file, ...page.details },
         };
+        if (page.sources) baselines.set(result, page.sources);
+        return result;
       }
       const service = await refreshService(ctx, signal);
       if (!service) return unavailableResult(ctx);
-      const matches = service.querySymbol(params.name);
+      const matches = service.querySymbols({ name: params.name, file });
 
       const filtered = params.kind && params.kind !== "all"
         ? matches.filter((m) => m.symbol.kind === params.kind)
@@ -142,9 +211,9 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         return {
           content: [{
             type: "text",
-            text: `No symbols found matching '${params.name}'. Check the spelling or run 'facts_status' to inspect indexed files.`,
+            text: `No symbols found matching '${queryLabel}'. Check the spelling or run 'facts_status' to inspect indexed files.`,
           }],
-          details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, query: params.name, returned: 0, nextOffset: null },
+          details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, query: queryLabel, file, returned: 0, nextOffset: null },
         };
       }
 
@@ -152,16 +221,19 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         const doc = symbol.docstring ? `\n  Doc: ${symbol.docstring.trim()}` : "";
         return `• ${symbol.name} (${symbol.kind})\n  File: ${file} (lines ${symbol.startLine}-${symbol.endLine})\n  Signature: ${symbol.signature}${doc}`;
       });
-      const page = queryCursors(ctx.cwd).start(key, generation(service), rows, params);
+      const database = service.getDatabase()!;
+      const page = queryCursors(ctx.cwd).start(key, generation(service), rows, params, filtered.map((match) => database.files[match.file]));
 
-      return {
+      const result = {
         content: [{
-          type: "text",
-          text: `Found ${filtered.length} symbol(s) matching '${params.name}':\n\n${page.text}`,
+          type: "text" as const,
+          text: `Found ${filtered.length} symbol(s) matching '${queryLabel}':\n\n${page.text}`,
         }],
-        details: { status: "ready", diagnostics: service.getDiagnostics(), found: filtered.length, query: params.name, ...page.details },
+        details: { status: "ready", diagnostics: service.getDiagnostics(), found: filtered.length, query: queryLabel, file, ...page.details },
       };
-    },
+      if (page.sources) baselines.set(result, page.sources);
+      return result;
+    }),
   });
 
   // 2. Tool: facts_dependents
@@ -186,7 +258,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         },
       },
     },
-    execute: async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
       signal?.throwIfAborted();
       const key = JSON.stringify(["dependents", params.target, params.transitive ?? false]);
       if (params.cursor) {
@@ -219,7 +291,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), dependentsCount: dependents.length, target: params.target, ...page.details },
       };
-    },
+    }),
   });
 
   // 3. Tool: facts_status
@@ -236,7 +308,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const service = await refreshService(ctx, signal);
       if (!service) {
         const unavailable = unavailableResult(ctx);
-        return { ...unavailable, details: { ...unavailable.details, resolution: undefined, historyError: historyFailures.get(ctx.cwd) } };
+        return { ...unavailable, details: { ...unavailable.details, resolution: undefined, usage: usageFor(ctx.cwd).snapshot(), historyError: historyFailures.get(ctx.cwd) } };
       }
       const block = service.getSummaryPromptBlock();
       const edges = service.getResolutionEdges();
@@ -247,15 +319,19 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{
           type: "text",
-          text: `${block}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
+          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
         }],
-        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, historyError: historyFailures.get(ctx.cwd) },
+        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyError: historyFailures.get(ctx.cwd) },
       };
     },
   });
 
   // Lifecycle hooks
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
+    lifetimes.get(ctx.cwd)?.abort(new Error("Facts session replaced or closed"));
+    lifetimes.delete(ctx.cwd);
+    usages.delete(ctx.cwd);
+    cursors.delete(ctx.cwd);
     await refreshService(ctx);
   });
 
@@ -284,5 +360,8 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     if (ctx.hasUI) ctx.ui.setWidget(FACTS_WIDGET_KEY, undefined);
     services.delete(ctx.cwd);
     cursors.delete(ctx.cwd);
+    lifetimes.get(ctx.cwd)?.abort(new Error("Facts session replaced or closed"));
+    lifetimes.delete(ctx.cwd);
+    usages.delete(ctx.cwd);
   });
 }
