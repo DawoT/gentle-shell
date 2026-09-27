@@ -62,11 +62,11 @@ The index does not use an LLM to generate facts. It records syntax found in sour
 
 ## Agent Tools
 
-The extension exposes three deterministic tools to the agent:
+The extension exposes six deterministic tools: `facts_query`, `facts_dependents`, `facts_status`, `facts_history`, `facts_commit`, and `facts_impact`.
 
-`facts_query` and `facts_dependents` accept `offset` (default 0) and `limit` (default 10, maximum 50). Results use stable file ordering. The response includes `returned`, `nextOffset`, and `truncated`; follow `nextOffset` until it is null. A page can contain fewer results than requested to stay within the response budget. Oversized declarations are explicitly truncated; inspect the reported source location for the complete declaration. Pagination refreshes the workspace on each call, so edits between pages can change the result set.
+`facts_query` and `facts_dependents` accept `offset` (default 0) and `limit` (default 10, maximum 50). Results use stable file ordering. The response includes `returned`, `nextOffset`, and `truncated`. A page can contain fewer results than requested to stay within the response budget. Oversized declarations are explicitly truncated; inspect the reported source location for the complete declaration. Use `nextCursor` for continuation over the original immutable result snapshot; expired or evicted cursors fail explicitly. A new offset query refreshes the workspace and can observe changes between calls. Cursor retention is bounded and defaults to five minutes.
 
-Cache reads and publications are limited to 64 MiB. Writes stream file records into a temporary file and publish by rename only after successful completion. Source, manifest, and cache reads require regular files, avoiding waits on named pipes.
+Cache loading has a 64 MiB aggregate read budget. Immutable objects and manifests are published before an atomically replaced active-generation pointer; failed publication preserves the prior generation. This read budget is not a limit on the total retained cache directory size. Source, manifest, and cache reads require regular files, avoiding waits on named pipes.
 
 Source reads are limited to 1 MiB per file, 32 MiB per scan/indexing phase, and 10,000 indexed paths. Unsupported extensions are filtered before content reads. Exceeding a limit makes the refresh unavailable and preserves the last saved cache; tools do not return that old snapshot. Git commands have a 15-second timeout. Tool cancellation propagates to the refresh, Git commands, and source reads. TypeScript/JavaScript AST extraction runs in a reusable worker with a 15-second deadline and a 256 MiB old-generation heap limit. Cancellation terminates the active parser worker; subsequent requests create a new worker. Queued requests can cancel without waiting for the active parse. TypeScript module resolution uses the same worker and cancellation/deadline controls. Metadata reads are capped at 1 MiB per file, 8 MiB total and 100,000 filesystem probes per resolution. Directory discovery does not recursively enumerate source files.
 
@@ -119,7 +119,7 @@ Reports the inventory summary, total indexed files, symbol counts, and declared 
 * **`session_start`**: Awaits an initial sync against the Git workspace before the extension's facts are ready.
 * **`before_agent_start`**: Refreshes the index and injects an inventory and declared package commands into `systemPrompt`.
 * **`tool_execution_end`**: After successful `write`, `edit`, or `apply_diff` tool calls, scans the workspace and re-indexes changed supported files.
-* **Facts tool calls**: The three current-state tools refresh before answering (cursor continuations retain their original snapshot); `facts_history` reads saved evidence without refreshing. Current-state refreshes ensure external edits and changes made through a shell command become visible without restarting the session. A failed refresh, including a changed source file that cannot be read, returns an unavailable result instead of answering from the previous snapshot. The prompt block is omitted while refresh is unavailable; the card shows the failure and a recovery hint. A refresh takes time proportional to the repository scan; there is no fixed latency guarantee.
+* **Facts tool calls**: `facts_query`, `facts_dependents`, and `facts_status` refresh current state before answering; cursor continuations retain their original snapshot. `facts_history` reads saved evidence without refreshing. `facts_commit` and `facts_impact` analyze immutable Git objects without replacing the current index. Current-state refreshes ensure external edits and changes made through a shell command become visible without restarting the session. A failed refresh, including a changed source file that cannot be read, returns an unavailable result instead of answering from the previous snapshot. The prompt block is omitted while refresh is unavailable; the card shows the failure and a recovery hint. A refresh takes time proportional to the repository scan; there is no fixed latency guarantee.
 
 ---
 
@@ -157,7 +157,7 @@ Receipts use the nearest package.json at or above the session working directory,
 - `pnpm run test:facts:packed`: packs the current worktree, installs it with production dependencies in an isolated temporary directory, and loads Facts in a real Pi SDK session. Checks registered tools, dependency queries, external edits and cancellation; no model provider is invoked. Requires npm registry access. Install scripts are disabled, so it does not test the package postinstall installer.
 - `pnpm run benchmark:facts > facts-benchmark.json`: three cold, unchanged and single-file incremental measurements for each of 25, 250 and 2,500 generated TypeScript sources. Asserts the number of reindexed files and records timing, heap, RSS, source hash and host details. Memory samples are taken after phases; process peak RSS includes preceding phases. These synthetic workloads do not establish a production latency guarantee.
 
-Recorded remediation results and limitations: [verification evidence](evidence/gentle-facts-verification.md).
+Recorded remediation results and current contract: [verification evidence](evidence/gentle-facts-verification.md#current-verification-and-contract). The earlier sections of that file describe the initial remediation snapshot.
 
 ## Multi-language extractors and optional TypeScript
 

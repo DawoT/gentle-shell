@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { stripTypeScriptTypes } from "node:module";
 
 const exec = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,6 +58,15 @@ try {
   console.error("facts-packed: loading extension in a real Pi session");
   const result = await exec(process.execPath, ["probe.mjs"], { ...options, cwd: consumer, timeout: 60_000 });
   process.stdout.write(result.stdout);
+  console.error("facts-packed: verifying the packaged bridge in the installed Pi runtime");
+  const bridgeTest = join(consumer, "node_modules", "gentle-pi", "tests", "codex-web-extension-runtime.test.ts");
+  const bridgeProbe = bridgeTest.replace(/\.ts$/, ".mjs");
+  await writeFile(bridgeProbe, stripTypeScriptTypes(await readFile(bridgeTest, "utf8")));
+  const bridge = await exec(process.execPath, [
+    "--test",
+    bridgeProbe,
+  ], { ...options, cwd: consumer, timeout: 60_000 });
+  process.stdout.write(bridge.stdout);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

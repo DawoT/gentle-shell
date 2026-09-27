@@ -1,0 +1,2178 @@
+{
+  "generatedAt": "2026-09-27T14:20:07.561Z",
+  "command": "node --experimental-strip-types scripts/benchmark-facts-workloads.mjs --output docs/evidence/gentle-facts-workloads-benchmark.json",
+  "node": "v26.10.0",
+  "python": "Python 3.14.4",
+  "go": "go version go1.27.1 linux/amd64",
+  "git": "git version 2.53.0",
+  "platform": "linux",
+  "architecture": "x64",
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+  "logicalCpus": 16,
+  "hostDigest": "6b57342e20f4d52a5155e14d9db6e84e8837a1cdfd3096a9e9e6c913c9103f40",
+  "headCommit": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+  "sourceSha256": "c827152aa0cdd4c170de54786e22674a5bdc383a25f054cafaf8ae18f716ab97",
+  "sourcePaths": [
+    "lib/facts/facts-card.ts",
+    "lib/facts/facts-codec.ts",
+    "lib/facts/facts-commit-extension.ts",
+    "lib/facts/facts-commit.ts",
+    "lib/facts/facts-cursors.ts",
+    "lib/facts/facts-diagnostics.ts",
+    "lib/facts/facts-generations.ts",
+    "lib/facts/facts-git-indexer.ts",
+    "lib/facts/facts-git-objects.ts",
+    "lib/facts/facts-git-trees.ts",
+    "lib/facts/facts-go-extractor.ts",
+    "lib/facts/facts-history-extension.ts",
+    "lib/facts/facts-history.ts",
+    "lib/facts/facts-impact-extension.ts",
+    "lib/facts/facts-impact.ts",
+    "lib/facts/facts-io.ts",
+    "lib/facts/facts-languages.ts",
+    "lib/facts/facts-limits.ts",
+    "lib/facts/facts-lock.ts",
+    "lib/facts/facts-module-resolver.ts",
+    "lib/facts/facts-python-extractor.ts",
+    "lib/facts/facts-receipts-extractor.ts",
+    "lib/facts/facts-response.ts",
+    "lib/facts/facts-schema.ts",
+    "lib/facts/facts-service.ts",
+    "lib/facts/facts-store.ts",
+    "lib/facts/facts-tree.ts",
+    "lib/facts/facts-ts-extractor.ts",
+    "lib/facts/facts-types.ts",
+    "lib/facts/facts-usage.ts",
+    "lib/facts/facts-worker.ts",
+    "lib/facts/parsers/go_facts.go",
+    "lib/facts/parsers/python_facts.py",
+    "package.json",
+    "pnpm-lock.yaml",
+    "runtime/facts-parser-worker.mjs",
+    "scripts/benchmark-facts-workloads.mjs"
+  ],
+  "samplesPerWorkload": 3,
+  "methodology": {
+    "fixtures": "Generated owned Git repositories, not observations from customer projects. Each sample uses a fresh child process and temp repository; its real FactsService/parser worker handles all three phases.",
+    "cold": "No disk cache; parser process/worker initialization included. OS filesystem cache is uncontrolled.",
+    "warm": "Same child and service after unchanged sync; no claim of zero I/O.",
+    "changed": "Same child after fixture mutation; source signatures, aliases and receipt freshness asserted where applicable.",
+    "memoryCpu": "Current Node process CPU/RSS observations exclude separate Python, Go and Git subprocess CPU/memory. RSS includes Node worker threads/runtime; heapUsed measures the current isolate. Nothing is attributable solely to Facts. Process peak RSS accumulates across phases within that sample.",
+    "deadlines": "Each sample has a 45-second sync cancellation signal and a 60-second parent watchdog. POSIX watchdog targets the owned process group; Windows watchdog terminates only the direct child. Parent removes its owned temporary repository after child settlement.",
+    "bytes": "sourceBytes and JSON queryResponseBytes are bytes, not billed tokens. No model calls, token savings, cost savings, throughput SLA or production latency claims."
+  },
+  "workloads": [
+    {
+      "name": "large-files",
+      "fixture": {
+        "sourceFileCount": 4,
+        "trackedFixtureFileCount": 5,
+        "expectedSymbolCount": 4,
+        "changedSourceFiles": 1,
+        "sourceBytes": 2444304,
+        "fixtureBytes": 2444304
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 295.114,
+          "medianQueryElapsedMs": 0.076,
+          "medianProcessRssMiB": 172.785,
+          "medianProcessCpuUserMs": 277.482,
+          "medianProcessCpuSystemMs": 58.466
+        },
+        "warm": {
+          "medianElapsedMs": 72.236,
+          "medianQueryElapsedMs": 0.042,
+          "medianProcessRssMiB": 174.035,
+          "medianProcessCpuUserMs": 13.258,
+          "medianProcessCpuSystemMs": 22.345
+        },
+        "changed": {
+          "medianElapsedMs": 85.628,
+          "medianQueryElapsedMs": 0.012,
+          "medianProcessRssMiB": 178.285,
+          "medianProcessCpuUserMs": 32.269,
+          "medianProcessCpuSystemMs": 29.307
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 4,
+            "trackedFixtureFileCount": 5,
+            "expectedSymbolCount": 4,
+            "changedSourceFiles": 1,
+            "sourceBytes": 2444304,
+            "fixtureBytes": 2444304
+          },
+          "cold": {
+            "elapsedMs": 300.531,
+            "queryElapsedMs": 0.106,
+            "processCpuUserMs": 287.322,
+            "processCpuSystemMs": 58.466,
+            "processHeapUsedMiB": 16.931,
+            "processRssMiB": 172.785,
+            "processPeakRssMiB": 172.91,
+            "sync": {
+              "indexedCount": 4,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518807992,
+              "lastDurationMs": 300.446643,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 72.236,
+            "queryElapsedMs": 0.042,
+            "processCpuUserMs": 15.007,
+            "processCpuSystemMs": 24.602,
+            "processHeapUsedMiB": 17.94,
+            "processRssMiB": 174.035,
+            "processPeakRssMiB": 174.035,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 4,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518808064,
+              "lastDurationMs": 72.224695,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 85.787,
+            "queryElapsedMs": 0.012,
+            "processCpuUserMs": 43.573,
+            "processCpuSystemMs": 29.307,
+            "processHeapUsedMiB": 15.434,
+            "processRssMiB": 176.535,
+            "processPeakRssMiB": 176.66,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 3,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518808151,
+              "lastDurationMs": 85.77811100000002,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 4,
+            "trackedFixtureFileCount": 5,
+            "expectedSymbolCount": 4,
+            "changedSourceFiles": 1,
+            "sourceBytes": 2444304,
+            "fixtureBytes": 2444304
+          },
+          "cold": {
+            "elapsedMs": 281.931,
+            "queryElapsedMs": 0.056,
+            "processCpuUserMs": 266.982,
+            "processCpuSystemMs": 56.677,
+            "processHeapUsedMiB": 16.906,
+            "processRssMiB": 172.66,
+            "processPeakRssMiB": 172.66,
+            "sync": {
+              "indexedCount": 4,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518808566,
+              "lastDurationMs": 281.862991,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 73.652,
+            "queryElapsedMs": 0.046,
+            "processCpuUserMs": 13.258,
+            "processCpuSystemMs": 22.345,
+            "processHeapUsedMiB": 17.915,
+            "processRssMiB": 173.535,
+            "processPeakRssMiB": 173.535,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 4,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518808640,
+              "lastDurationMs": 73.64359300000001,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 85.628,
+            "queryElapsedMs": 0.01,
+            "processCpuUserMs": 32.269,
+            "processCpuSystemMs": 36.824,
+            "processHeapUsedMiB": 15.94,
+            "processRssMiB": 178.285,
+            "processPeakRssMiB": 178.285,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 3,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518808727,
+              "lastDurationMs": 85.61420299999997,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 4,
+            "trackedFixtureFileCount": 5,
+            "expectedSymbolCount": 4,
+            "changedSourceFiles": 1,
+            "sourceBytes": 2444304,
+            "fixtureBytes": 2444304
+          },
+          "cold": {
+            "elapsedMs": 295.114,
+            "queryElapsedMs": 0.076,
+            "processCpuUserMs": 277.482,
+            "processCpuSystemMs": 63.605,
+            "processHeapUsedMiB": 16.935,
+            "processRssMiB": 175.953,
+            "processPeakRssMiB": 175.953,
+            "sync": {
+              "indexedCount": 4,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809146,
+              "lastDurationMs": 294.967165,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 57.125,
+            "queryElapsedMs": 0.023,
+            "processCpuUserMs": 12.01,
+            "processCpuSystemMs": 19.007,
+            "processHeapUsedMiB": 17.944,
+            "processRssMiB": 176.953,
+            "processPeakRssMiB": 176.953,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 4,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809204,
+              "lastDurationMs": 57.117682,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 78.46,
+            "queryElapsedMs": 0.014,
+            "processCpuUserMs": 25.862,
+            "processCpuSystemMs": 20.748,
+            "processHeapUsedMiB": 15.407,
+            "processRssMiB": 180.453,
+            "processPeakRssMiB": 180.453,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 3,
+              "deletedCount": 0
+            },
+            "symbolCount": 4,
+            "queryResponseBytes": 185,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809284,
+              "lastDurationMs": 78.449815,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "dense-exports",
+      "fixture": {
+        "sourceFileCount": 12,
+        "trackedFixtureFileCount": 13,
+        "expectedSymbolCount": 960,
+        "changedSourceFiles": 1,
+        "sourceBytes": 69958,
+        "fixtureBytes": 69958
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 272.75,
+          "medianQueryElapsedMs": 0.149,
+          "medianProcessRssMiB": 168.461,
+          "medianProcessCpuUserMs": 281.332,
+          "medianProcessCpuSystemMs": 55.013
+        },
+        "warm": {
+          "medianElapsedMs": 63.83,
+          "medianQueryElapsedMs": 0.082,
+          "medianProcessRssMiB": 168.586,
+          "medianProcessCpuUserMs": 29.141,
+          "medianProcessCpuSystemMs": 21.028
+        },
+        "changed": {
+          "medianElapsedMs": 70.881,
+          "medianQueryElapsedMs": 0.151,
+          "medianProcessRssMiB": 171.711,
+          "medianProcessCpuUserMs": 33.403,
+          "medianProcessCpuSystemMs": 25.651
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 12,
+            "trackedFixtureFileCount": 13,
+            "expectedSymbolCount": 960,
+            "changedSourceFiles": 1,
+            "sourceBytes": 69958,
+            "fixtureBytes": 69958
+          },
+          "cold": {
+            "elapsedMs": 263.175,
+            "queryElapsedMs": 0.33,
+            "processCpuUserMs": 276.449,
+            "processCpuSystemMs": 55.013,
+            "processHeapUsedMiB": 11.814,
+            "processRssMiB": 168.715,
+            "processPeakRssMiB": 168.715,
+            "sync": {
+              "indexedCount": 12,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809656,
+              "lastDurationMs": 263.08542700000004,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 63.83,
+            "queryElapsedMs": 0.078,
+            "processCpuUserMs": 32.425,
+            "processCpuSystemMs": 21.028,
+            "processHeapUsedMiB": 12.102,
+            "processRssMiB": 168.84,
+            "processPeakRssMiB": 168.84,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 12,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809720,
+              "lastDurationMs": 63.81595599999997,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 70.881,
+            "queryElapsedMs": 0.151,
+            "processCpuUserMs": 33.403,
+            "processCpuSystemMs": 25.166,
+            "processHeapUsedMiB": 14.474,
+            "processRssMiB": 172.59,
+            "processPeakRssMiB": 172.84,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 11,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518809792,
+              "lastDurationMs": 70.87361699999997,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 12,
+            "trackedFixtureFileCount": 13,
+            "expectedSymbolCount": 960,
+            "changedSourceFiles": 1,
+            "sourceBytes": 69958,
+            "fixtureBytes": 69958
+          },
+          "cold": {
+            "elapsedMs": 277.989,
+            "queryElapsedMs": 0.148,
+            "processCpuUserMs": 297.562,
+            "processCpuSystemMs": 52.734,
+            "processHeapUsedMiB": 11.802,
+            "processRssMiB": 168.461,
+            "processPeakRssMiB": 168.461,
+            "sync": {
+              "indexedCount": 12,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810176,
+              "lastDurationMs": 277.887224,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 56.369,
+            "queryElapsedMs": 0.082,
+            "processCpuUserMs": 22.63,
+            "processCpuSystemMs": 20.006,
+            "processHeapUsedMiB": 12.102,
+            "processRssMiB": 168.586,
+            "processPeakRssMiB": 168.586,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 12,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810233,
+              "lastDurationMs": 56.363219000000015,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 73.64,
+            "queryElapsedMs": 0.123,
+            "processCpuUserMs": 28.625,
+            "processCpuSystemMs": 33.278,
+            "processHeapUsedMiB": 14.428,
+            "processRssMiB": 171.711,
+            "processPeakRssMiB": 172.086,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 11,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810307,
+              "lastDurationMs": 73.634773,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 12,
+            "trackedFixtureFileCount": 13,
+            "expectedSymbolCount": 960,
+            "changedSourceFiles": 1,
+            "sourceBytes": 69958,
+            "fixtureBytes": 69958
+          },
+          "cold": {
+            "elapsedMs": 272.75,
+            "queryElapsedMs": 0.149,
+            "processCpuUserMs": 281.332,
+            "processCpuSystemMs": 61.96,
+            "processHeapUsedMiB": 11.779,
+            "processRssMiB": 166.063,
+            "processPeakRssMiB": 166.063,
+            "sync": {
+              "indexedCount": 12,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810683,
+              "lastDurationMs": 272.66180799999995,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 65.353,
+            "queryElapsedMs": 0.167,
+            "processCpuUserMs": 29.141,
+            "processCpuSystemMs": 24.203,
+            "processHeapUsedMiB": 12.105,
+            "processRssMiB": 166.188,
+            "processPeakRssMiB": 166.188,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 12,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810748,
+              "lastDurationMs": 65.34393800000004,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 68.995,
+            "queryElapsedMs": 0.208,
+            "processCpuUserMs": 35.369,
+            "processCpuSystemMs": 25.651,
+            "processHeapUsedMiB": 14.474,
+            "processRssMiB": 169.813,
+            "processPeakRssMiB": 170.063,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 11,
+              "deletedCount": 0
+            },
+            "symbolCount": 960,
+            "queryResponseBytes": 176,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518810818,
+              "lastDurationMs": 68.9873,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "monorepo-aliases",
+      "fixture": {
+        "sourceFileCount": 16,
+        "trackedFixtureFileCount": 34,
+        "expectedSymbolCount": 16,
+        "changedSourceFiles": 1,
+        "sourceBytes": 1496,
+        "fixtureBytes": 2131
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 253.481,
+          "medianQueryElapsedMs": 0.076,
+          "medianProcessRssMiB": 156.879,
+          "medianProcessCpuUserMs": 230.644,
+          "medianProcessCpuSystemMs": 43.507
+        },
+        "warm": {
+          "medianElapsedMs": 58.893,
+          "medianQueryElapsedMs": 0.026,
+          "medianProcessRssMiB": 157.754,
+          "medianProcessCpuUserMs": 19.351,
+          "medianProcessCpuSystemMs": 19.615
+        },
+        "changed": {
+          "medianElapsedMs": 61.95,
+          "medianQueryElapsedMs": 0.015,
+          "medianProcessRssMiB": 157.941,
+          "medianProcessCpuUserMs": 24.362,
+          "medianProcessCpuSystemMs": 23.958
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 16,
+            "trackedFixtureFileCount": 34,
+            "expectedSymbolCount": 16,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1496,
+            "fixtureBytes": 2131
+          },
+          "cold": {
+            "elapsedMs": 253.481,
+            "queryElapsedMs": 0.082,
+            "processCpuUserMs": 230.644,
+            "processCpuSystemMs": 39.681,
+            "processHeapUsedMiB": 11.46,
+            "processRssMiB": 156.879,
+            "processPeakRssMiB": 157.004,
+            "sync": {
+              "indexedCount": 16,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811184,
+              "lastDurationMs": 253.39546099999995,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 55.869,
+            "queryElapsedMs": 0.023,
+            "processCpuUserMs": 19.351,
+            "processCpuSystemMs": 15.996,
+            "processHeapUsedMiB": 11.499,
+            "processRssMiB": 157.754,
+            "processPeakRssMiB": 157.754,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 16,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811240,
+              "lastDurationMs": 55.85790199999997,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 61.95,
+            "queryElapsedMs": 0.015,
+            "processCpuUserMs": 23.298,
+            "processCpuSystemMs": 21.077,
+            "processHeapUsedMiB": 12.345,
+            "processRssMiB": 158.379,
+            "processPeakRssMiB": 158.379,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 15,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811302,
+              "lastDurationMs": 61.943471999999986,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 16,
+            "trackedFixtureFileCount": 34,
+            "expectedSymbolCount": 16,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1496,
+            "fixtureBytes": 2131
+          },
+          "cold": {
+            "elapsedMs": 249.203,
+            "queryElapsedMs": 0.069,
+            "processCpuUserMs": 220.261,
+            "processCpuSystemMs": 43.507,
+            "processHeapUsedMiB": 11.452,
+            "processRssMiB": 156.816,
+            "processPeakRssMiB": 156.941,
+            "sync": {
+              "indexedCount": 16,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811662,
+              "lastDurationMs": 249.109651,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 61.96,
+            "queryElapsedMs": 0.026,
+            "processCpuUserMs": 22.273,
+            "processCpuSystemMs": 19.615,
+            "processHeapUsedMiB": 11.506,
+            "processRssMiB": 157.566,
+            "processPeakRssMiB": 157.566,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 16,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811724,
+              "lastDurationMs": 61.949544,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 65.838,
+            "queryElapsedMs": 0.016,
+            "processCpuUserMs": 24.362,
+            "processCpuSystemMs": 23.958,
+            "processHeapUsedMiB": 12.343,
+            "processRssMiB": 157.941,
+            "processPeakRssMiB": 157.941,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 15,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518811791,
+              "lastDurationMs": 65.82975500000003,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 16,
+            "trackedFixtureFileCount": 34,
+            "expectedSymbolCount": 16,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1496,
+            "fixtureBytes": 2131
+          },
+          "cold": {
+            "elapsedMs": 264.298,
+            "queryElapsedMs": 0.076,
+            "processCpuUserMs": 230.725,
+            "processCpuSystemMs": 45.181,
+            "processHeapUsedMiB": 11.438,
+            "processRssMiB": 158.441,
+            "processPeakRssMiB": 158.566,
+            "sync": {
+              "indexedCount": 16,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812170,
+              "lastDurationMs": 264.191897,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 58.893,
+            "queryElapsedMs": 0.046,
+            "processCpuUserMs": 14.539,
+            "processCpuSystemMs": 22.841,
+            "processHeapUsedMiB": 11.514,
+            "processRssMiB": 159.191,
+            "processPeakRssMiB": 159.191,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 16,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812230,
+              "lastDurationMs": 58.88062500000001,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 60.87,
+            "queryElapsedMs": 0.015,
+            "processCpuUserMs": 54.762,
+            "processCpuSystemMs": 26.043,
+            "processHeapUsedMiB": 12.347,
+            "processRssMiB": 151.508,
+            "processPeakRssMiB": 159.941,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 15,
+              "deletedCount": 0
+            },
+            "symbolCount": 16,
+            "queryResponseBytes": 186,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812292,
+              "lastDurationMs": 60.86148000000003,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mass-edits",
+      "fixture": {
+        "sourceFileCount": 96,
+        "trackedFixtureFileCount": 97,
+        "expectedSymbolCount": 96,
+        "changedSourceFiles": 96,
+        "sourceBytes": 6806,
+        "fixtureBytes": 6806
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 298.071,
+          "medianQueryElapsedMs": 0.133,
+          "medianProcessRssMiB": 160.965,
+          "medianProcessCpuUserMs": 299.403,
+          "medianProcessCpuSystemMs": 56.674
+        },
+        "warm": {
+          "medianElapsedMs": 63.819,
+          "medianQueryElapsedMs": 0.05,
+          "medianProcessRssMiB": 161.602,
+          "medianProcessCpuUserMs": 27.933,
+          "medianProcessCpuSystemMs": 18.805
+        },
+        "changed": {
+          "medianElapsedMs": 117.711,
+          "medianQueryElapsedMs": 0.034,
+          "medianProcessRssMiB": 166.477,
+          "medianProcessCpuUserMs": 91.502,
+          "medianProcessCpuSystemMs": 36.477
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 96,
+            "trackedFixtureFileCount": 97,
+            "expectedSymbolCount": 96,
+            "changedSourceFiles": 96,
+            "sourceBytes": 6806,
+            "fixtureBytes": 6806
+          },
+          "cold": {
+            "elapsedMs": 289.098,
+            "queryElapsedMs": 0.219,
+            "processCpuUserMs": 265.301,
+            "processCpuSystemMs": 56.674,
+            "processHeapUsedMiB": 11.373,
+            "processRssMiB": 159.797,
+            "processPeakRssMiB": 159.797,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812699,
+              "lastDurationMs": 289.00939700000004,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 70.196,
+            "queryElapsedMs": 0.05,
+            "processCpuUserMs": 40.864,
+            "processCpuSystemMs": 18.805,
+            "processHeapUsedMiB": 12.251,
+            "processRssMiB": 160.297,
+            "processPeakRssMiB": 160.297,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 96,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812770,
+              "lastDurationMs": 70.18296400000003,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 131.302,
+            "queryElapsedMs": 0.039,
+            "processCpuUserMs": 103.892,
+            "processCpuSystemMs": 38.527,
+            "processHeapUsedMiB": 12.925,
+            "processRssMiB": 165.047,
+            "processPeakRssMiB": 165.922,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518812908,
+              "lastDurationMs": 131.29454100000004,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 96,
+            "trackedFixtureFileCount": 97,
+            "expectedSymbolCount": 96,
+            "changedSourceFiles": 96,
+            "sourceBytes": 6806,
+            "fixtureBytes": 6806
+          },
+          "cold": {
+            "elapsedMs": 298.071,
+            "queryElapsedMs": 0.117,
+            "processCpuUserMs": 299.403,
+            "processCpuSystemMs": 55.599,
+            "processHeapUsedMiB": 12.289,
+            "processRssMiB": 161.227,
+            "processPeakRssMiB": 161.352,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518813320,
+              "lastDurationMs": 297.984344,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 63.819,
+            "queryElapsedMs": 0.061,
+            "processCpuUserMs": 27.933,
+            "processCpuSystemMs": 18.241,
+            "processHeapUsedMiB": 12.848,
+            "processRssMiB": 161.602,
+            "processPeakRssMiB": 161.602,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 96,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518813385,
+              "lastDurationMs": 63.809695999999974,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 117.711,
+            "queryElapsedMs": 0.028,
+            "processCpuUserMs": 91.502,
+            "processCpuSystemMs": 35.717,
+            "processHeapUsedMiB": 13.502,
+            "processRssMiB": 166.477,
+            "processPeakRssMiB": 167.352,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518813509,
+              "lastDurationMs": 117.70206099999996,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 96,
+            "trackedFixtureFileCount": 97,
+            "expectedSymbolCount": 96,
+            "changedSourceFiles": 96,
+            "sourceBytes": 6806,
+            "fixtureBytes": 6806
+          },
+          "cold": {
+            "elapsedMs": 306.979,
+            "queryElapsedMs": 0.133,
+            "processCpuUserMs": 302.128,
+            "processCpuSystemMs": 61.564,
+            "processHeapUsedMiB": 11.211,
+            "processRssMiB": 160.965,
+            "processPeakRssMiB": 161.215,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518813932,
+              "lastDurationMs": 306.90583200000003,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 59.033,
+            "queryElapsedMs": 0.035,
+            "processCpuUserMs": 19.638,
+            "processCpuSystemMs": 25.794,
+            "processHeapUsedMiB": 11.867,
+            "processRssMiB": 163.215,
+            "processPeakRssMiB": 163.215,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 96,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518813991,
+              "lastDurationMs": 59.02535399999999,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 100.616,
+            "queryElapsedMs": 0.034,
+            "processCpuUserMs": 75.499,
+            "processCpuSystemMs": 36.477,
+            "processHeapUsedMiB": 12.148,
+            "processRssMiB": 167.09,
+            "processPeakRssMiB": 167.492,
+            "sync": {
+              "indexedCount": 96,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 96,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518814095,
+              "lastDurationMs": 100.61122699999999,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "python",
+      "fixture": {
+        "sourceFileCount": 24,
+        "trackedFixtureFileCount": 25,
+        "expectedSymbolCount": 24,
+        "changedSourceFiles": 1,
+        "sourceBytes": 1214,
+        "fixtureBytes": 1214
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 629.063,
+          "medianQueryElapsedMs": 0.101,
+          "medianProcessRssMiB": 88.156,
+          "medianProcessCpuUserMs": 63.452,
+          "medianProcessCpuSystemMs": 38.892
+        },
+        "warm": {
+          "medianElapsedMs": 35.902,
+          "medianQueryElapsedMs": 0.016,
+          "medianProcessRssMiB": 88.406,
+          "medianProcessCpuUserMs": 26.379,
+          "medianProcessCpuSystemMs": 13.845
+        },
+        "changed": {
+          "medianElapsedMs": 65.576,
+          "medianQueryElapsedMs": 0.015,
+          "medianProcessRssMiB": 90.531,
+          "medianProcessCpuUserMs": 21.834,
+          "medianProcessCpuSystemMs": 11.226
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 25,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1214,
+            "fixtureBytes": 1214
+          },
+          "cold": {
+            "elapsedMs": 648.385,
+            "queryElapsedMs": 0.171,
+            "processCpuUserMs": 74.945,
+            "processCpuSystemMs": 32.75,
+            "processHeapUsedMiB": 12.142,
+            "processRssMiB": 88.156,
+            "processPeakRssMiB": 88.156,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518814856,
+              "lastDurationMs": 648.29102,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 36.205,
+            "queryElapsedMs": 0.016,
+            "processCpuUserMs": 26.379,
+            "processCpuSystemMs": 11.657,
+            "processHeapUsedMiB": 11.414,
+            "processRssMiB": 88.406,
+            "processPeakRssMiB": 88.406,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518814893,
+              "lastDurationMs": 36.19300099999998,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 65.808,
+            "queryElapsedMs": 0.015,
+            "processCpuUserMs": 23.379,
+            "processCpuSystemMs": 9.15,
+            "processHeapUsedMiB": 11.222,
+            "processRssMiB": 90.531,
+            "processPeakRssMiB": 90.531,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518814959,
+              "lastDurationMs": 65.80147299999999,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 25,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1214,
+            "fixtureBytes": 1214
+          },
+          "cold": {
+            "elapsedMs": 615.977,
+            "queryElapsedMs": 0.087,
+            "processCpuUserMs": 59.322,
+            "processCpuSystemMs": 38.892,
+            "processHeapUsedMiB": 12.128,
+            "processRssMiB": 87.973,
+            "processPeakRssMiB": 87.973,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518815675,
+              "lastDurationMs": 615.9059410000001,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 33.538,
+            "queryElapsedMs": 0.019,
+            "processCpuUserMs": 17.452,
+            "processCpuSystemMs": 13.845,
+            "processHeapUsedMiB": 11.415,
+            "processRssMiB": 88.223,
+            "processPeakRssMiB": 88.223,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518815709,
+              "lastDurationMs": 33.530979,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 65.576,
+            "queryElapsedMs": 0.013,
+            "processCpuUserMs": 21.834,
+            "processCpuSystemMs": 11.226,
+            "processHeapUsedMiB": 11.218,
+            "processRssMiB": 90.406,
+            "processPeakRssMiB": 90.406,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518815775,
+              "lastDurationMs": 65.57153700000003,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 25,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1214,
+            "fixtureBytes": 1214
+          },
+          "cold": {
+            "elapsedMs": 629.063,
+            "queryElapsedMs": 0.101,
+            "processCpuUserMs": 63.452,
+            "processCpuSystemMs": 41.957,
+            "processHeapUsedMiB": 12.112,
+            "processRssMiB": 88.246,
+            "processPeakRssMiB": 88.246,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518816505,
+              "lastDurationMs": 628.992705,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 35.902,
+            "queryElapsedMs": 0.016,
+            "processCpuUserMs": 32.602,
+            "processCpuSystemMs": 14.089,
+            "processHeapUsedMiB": 10.606,
+            "processRssMiB": 88.496,
+            "processPeakRssMiB": 88.496,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518816541,
+              "lastDurationMs": 35.89200100000005,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 61.774,
+            "queryElapsedMs": 0.015,
+            "processCpuUserMs": 19.432,
+            "processCpuSystemMs": 14.068,
+            "processHeapUsedMiB": 11.592,
+            "processRssMiB": 90.746,
+            "processPeakRssMiB": 90.871,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 169,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518816603,
+              "lastDurationMs": 61.76869899999997,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "go",
+      "fixture": {
+        "sourceFileCount": 24,
+        "trackedFixtureFileCount": 26,
+        "expectedSymbolCount": 24,
+        "changedSourceFiles": 1,
+        "sourceBytes": 1622,
+        "fixtureBytes": 1666
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 341.858,
+          "medianQueryElapsedMs": 0.112,
+          "medianProcessRssMiB": 88.473,
+          "medianProcessCpuUserMs": 69.295,
+          "medianProcessCpuSystemMs": 44.324
+        },
+        "warm": {
+          "medianElapsedMs": 38.653,
+          "medianQueryElapsedMs": 0.029,
+          "medianProcessRssMiB": 88.848,
+          "medianProcessCpuUserMs": 28.483,
+          "medianProcessCpuSystemMs": 12.312
+        },
+        "changed": {
+          "medianElapsedMs": 40.256,
+          "medianQueryElapsedMs": 0.012,
+          "medianProcessRssMiB": 90.973,
+          "medianProcessCpuUserMs": 21.975,
+          "medianProcessCpuSystemMs": 11.554
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1622,
+            "fixtureBytes": 1666
+          },
+          "cold": {
+            "elapsedMs": 330.589,
+            "queryElapsedMs": 0.112,
+            "processCpuUserMs": 69.295,
+            "processCpuSystemMs": 39.658,
+            "processHeapUsedMiB": 12.47,
+            "processRssMiB": 88.621,
+            "processPeakRssMiB": 88.621,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817033,
+              "lastDurationMs": 330.518472,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 38.653,
+            "queryElapsedMs": 0.124,
+            "processCpuUserMs": 27.098,
+            "processCpuSystemMs": 16.5,
+            "processHeapUsedMiB": 11.228,
+            "processRssMiB": 89.211,
+            "processPeakRssMiB": 89.246,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817072,
+              "lastDurationMs": 38.63564200000002,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 40.256,
+            "queryElapsedMs": 0.015,
+            "processCpuUserMs": 21.975,
+            "processCpuSystemMs": 9.482,
+            "processHeapUsedMiB": 12.358,
+            "processRssMiB": 91.27,
+            "processPeakRssMiB": 91.27,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 171,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817113,
+              "lastDurationMs": 40.25027,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1622,
+            "fixtureBytes": 1666
+          },
+          "cold": {
+            "elapsedMs": 341.858,
+            "queryElapsedMs": 0.099,
+            "processCpuUserMs": 60.39,
+            "processCpuSystemMs": 48.8,
+            "processHeapUsedMiB": 12.458,
+            "processRssMiB": 87.953,
+            "processPeakRssMiB": 88.078,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817556,
+              "lastDurationMs": 341.729829,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 38.842,
+            "queryElapsedMs": 0.027,
+            "processCpuUserMs": 28.483,
+            "processCpuSystemMs": 10.878,
+            "processHeapUsedMiB": 10.864,
+            "processRssMiB": 88.203,
+            "processPeakRssMiB": 88.203,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817595,
+              "lastDurationMs": 38.83335599999998,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 38.664,
+            "queryElapsedMs": 0.009,
+            "processCpuUserMs": 16.095,
+            "processCpuSystemMs": 11.554,
+            "processHeapUsedMiB": 11.984,
+            "processRssMiB": 90.453,
+            "processPeakRssMiB": 90.453,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 171,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518817634,
+              "lastDurationMs": 38.65770799999996,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 1,
+            "sourceBytes": 1622,
+            "fixtureBytes": 1666
+          },
+          "cold": {
+            "elapsedMs": 356.172,
+            "queryElapsedMs": 0.153,
+            "processCpuUserMs": 72.775,
+            "processCpuSystemMs": 44.324,
+            "processHeapUsedMiB": 12.463,
+            "processRssMiB": 88.473,
+            "processPeakRssMiB": 88.473,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818094,
+              "lastDurationMs": 356.087438,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 36.434,
+            "queryElapsedMs": 0.029,
+            "processCpuUserMs": 35.872,
+            "processCpuSystemMs": 12.312,
+            "processHeapUsedMiB": 11.518,
+            "processRssMiB": 88.848,
+            "processPeakRssMiB": 88.848,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 165,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818131,
+              "lastDurationMs": 36.42278399999998,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 45.405,
+            "queryElapsedMs": 0.012,
+            "processCpuUserMs": 22.975,
+            "processCpuSystemMs": 12.277,
+            "processHeapUsedMiB": 11.348,
+            "processRssMiB": 90.973,
+            "processPeakRssMiB": 91.098,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 23,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 171,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818177,
+              "lastDurationMs": 45.39786099999998,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "receipt-heavy",
+      "fixture": {
+        "sourceFileCount": 24,
+        "trackedFixtureFileCount": 26,
+        "expectedSymbolCount": 24,
+        "changedSourceFiles": 0,
+        "sourceBytes": 1694,
+        "fixtureBytes": 185787
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 287.718,
+          "medianQueryElapsedMs": 0.084,
+          "medianProcessRssMiB": 165.996,
+          "medianProcessCpuUserMs": 269.726,
+          "medianProcessCpuSystemMs": 51.661
+        },
+        "warm": {
+          "medianElapsedMs": 85.543,
+          "medianQueryElapsedMs": 0.017,
+          "medianProcessRssMiB": 175.621,
+          "medianProcessCpuUserMs": 40.979,
+          "medianProcessCpuSystemMs": 26.743
+        },
+        "changed": {
+          "medianElapsedMs": 97.953,
+          "medianQueryElapsedMs": 0.014,
+          "medianProcessRssMiB": 177.773,
+          "medianProcessCpuUserMs": 59.642,
+          "medianProcessCpuSystemMs": 26.584
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 0,
+            "sourceBytes": 1694,
+            "fixtureBytes": 185787
+          },
+          "cold": {
+            "elapsedMs": 287.718,
+            "queryElapsedMs": 0.081,
+            "processCpuUserMs": 269.726,
+            "processCpuSystemMs": 51.661,
+            "processHeapUsedMiB": 14.472,
+            "processRssMiB": 166.656,
+            "processPeakRssMiB": 166.656,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818579,
+              "lastDurationMs": 287.599605,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 88.107,
+            "queryElapsedMs": 0.017,
+            "processCpuUserMs": 36.881,
+            "processCpuSystemMs": 32.047,
+            "processHeapUsedMiB": 15.438,
+            "processRssMiB": 176.531,
+            "processPeakRssMiB": 176.531,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818667,
+              "lastDurationMs": 88.10012799999998,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 97.953,
+            "queryElapsedMs": 0.014,
+            "processCpuUserMs": 57.253,
+            "processCpuSystemMs": 26.584,
+            "processHeapUsedMiB": 17.034,
+            "processRssMiB": 178.031,
+            "processPeakRssMiB": 178.031,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518818766,
+              "lastDurationMs": 97.94830899999994,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 0,
+            "sourceBytes": 1694,
+            "fixtureBytes": 185787
+          },
+          "cold": {
+            "elapsedMs": 269.711,
+            "queryElapsedMs": 0.084,
+            "processCpuUserMs": 254.579,
+            "processCpuSystemMs": 45.781,
+            "processHeapUsedMiB": 14.482,
+            "processRssMiB": 164.34,
+            "processPeakRssMiB": 164.34,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819160,
+              "lastDurationMs": 269.639562,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 80.845,
+            "queryElapsedMs": 0.017,
+            "processCpuUserMs": 40.979,
+            "processCpuSystemMs": 22.517,
+            "processHeapUsedMiB": 15.448,
+            "processRssMiB": 174.84,
+            "processPeakRssMiB": 174.84,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819241,
+              "lastDurationMs": 80.83864499999999,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 107.846,
+            "queryElapsedMs": 0.014,
+            "processCpuUserMs": 70.775,
+            "processCpuSystemMs": 27.014,
+            "processHeapUsedMiB": 17.003,
+            "processRssMiB": 176.09,
+            "processPeakRssMiB": 176.09,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819350,
+              "lastDurationMs": 107.84064000000006,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 24,
+            "trackedFixtureFileCount": 26,
+            "expectedSymbolCount": 24,
+            "changedSourceFiles": 0,
+            "sourceBytes": 1694,
+            "fixtureBytes": 185787
+          },
+          "cold": {
+            "elapsedMs": 307.213,
+            "queryElapsedMs": 0.088,
+            "processCpuUserMs": 276.316,
+            "processCpuSystemMs": 58.811,
+            "processHeapUsedMiB": 15.758,
+            "processRssMiB": 165.996,
+            "processPeakRssMiB": 165.996,
+            "sync": {
+              "indexedCount": 24,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819775,
+              "lastDurationMs": 307.137904,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 85.543,
+            "queryElapsedMs": 0.023,
+            "processCpuUserMs": 41.088,
+            "processCpuSystemMs": 26.743,
+            "processHeapUsedMiB": 13.607,
+            "processRssMiB": 175.621,
+            "processPeakRssMiB": 175.621,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819861,
+              "lastDurationMs": 85.53586999999999,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 95.203,
+            "queryElapsedMs": 0.012,
+            "processCpuUserMs": 59.642,
+            "processCpuSystemMs": 22.963,
+            "processHeapUsedMiB": 14.907,
+            "processRssMiB": 177.773,
+            "processPeakRssMiB": 177.773,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 24,
+              "deletedCount": 0
+            },
+            "symbolCount": 24,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518819958,
+              "lastDurationMs": 95.19404999999995,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "sparse-many-files",
+      "fixture": {
+        "sourceFileCount": 512,
+        "trackedFixtureFileCount": 513,
+        "expectedSymbolCount": 8,
+        "changedSourceFiles": 1,
+        "sourceBytes": 27776,
+        "fixtureBytes": 27776
+      },
+      "phases": {
+        "cold": {
+          "medianElapsedMs": 376.351,
+          "medianQueryElapsedMs": 0.285,
+          "medianProcessRssMiB": 168.727,
+          "medianProcessCpuUserMs": 397.104,
+          "medianProcessCpuSystemMs": 85.071
+        },
+        "warm": {
+          "medianElapsedMs": 80.713,
+          "medianQueryElapsedMs": 0.104,
+          "medianProcessRssMiB": 170.102,
+          "medianProcessCpuUserMs": 41.15,
+          "medianProcessCpuSystemMs": 29.947
+        },
+        "changed": {
+          "medianElapsedMs": 112.332,
+          "medianQueryElapsedMs": 0.131,
+          "medianProcessRssMiB": 174.363,
+          "medianProcessCpuUserMs": 91.917,
+          "medianProcessCpuSystemMs": 42.812
+        }
+      },
+      "samples": [
+        {
+          "fixture": {
+            "sourceFileCount": 512,
+            "trackedFixtureFileCount": 513,
+            "expectedSymbolCount": 8,
+            "changedSourceFiles": 1,
+            "sourceBytes": 27776,
+            "fixtureBytes": 27776
+          },
+          "cold": {
+            "elapsedMs": 400.01,
+            "queryElapsedMs": 0.291,
+            "processCpuUserMs": 425.857,
+            "processCpuSystemMs": 89.706,
+            "processHeapUsedMiB": 14.497,
+            "processRssMiB": 167.488,
+            "processPeakRssMiB": 167.613,
+            "sync": {
+              "indexedCount": 512,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518820490,
+              "lastDurationMs": 399.930648,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 84.587,
+            "queryElapsedMs": 0.125,
+            "processCpuUserMs": 45.333,
+            "processCpuSystemMs": 29.83,
+            "processHeapUsedMiB": 15.734,
+            "processRssMiB": 168.238,
+            "processPeakRssMiB": 168.363,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 512,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518820575,
+              "lastDurationMs": 84.57885199999998,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 112.332,
+            "queryElapsedMs": 0.131,
+            "processCpuUserMs": 86.858,
+            "processCpuSystemMs": 39.896,
+            "processHeapUsedMiB": 18.091,
+            "processRssMiB": 174.363,
+            "processPeakRssMiB": 174.613,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 511,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518820688,
+              "lastDurationMs": 112.32496200000003,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 512,
+            "trackedFixtureFileCount": 513,
+            "expectedSymbolCount": 8,
+            "changedSourceFiles": 1,
+            "sourceBytes": 27776,
+            "fixtureBytes": 27776
+          },
+          "cold": {
+            "elapsedMs": 376.351,
+            "queryElapsedMs": 0.273,
+            "processCpuUserMs": 396.25,
+            "processCpuSystemMs": 81.902,
+            "processHeapUsedMiB": 14.737,
+            "processRssMiB": 168.727,
+            "processPeakRssMiB": 168.727,
+            "sync": {
+              "indexedCount": 512,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518821209,
+              "lastDurationMs": 376.275966,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 80.713,
+            "queryElapsedMs": 0.092,
+            "processCpuUserMs": 37.548,
+            "processCpuSystemMs": 39.271,
+            "processHeapUsedMiB": 14.838,
+            "processRssMiB": 170.102,
+            "processPeakRssMiB": 170.102,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 512,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518821290,
+              "lastDurationMs": 80.70075299999996,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 113.249,
+            "queryElapsedMs": 0.146,
+            "processCpuUserMs": 107.407,
+            "processCpuSystemMs": 55.85,
+            "processHeapUsedMiB": 16.904,
+            "processRssMiB": 174.352,
+            "processPeakRssMiB": 174.852,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 511,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518821404,
+              "lastDurationMs": 113.24322299999994,
+              "diskCacheLoad": "hit"
+            }
+          }
+        },
+        {
+          "fixture": {
+            "sourceFileCount": 512,
+            "trackedFixtureFileCount": 513,
+            "expectedSymbolCount": 8,
+            "changedSourceFiles": 1,
+            "sourceBytes": 27776,
+            "fixtureBytes": 27776
+          },
+          "cold": {
+            "elapsedMs": 368.02,
+            "queryElapsedMs": 0.285,
+            "processCpuUserMs": 397.104,
+            "processCpuSystemMs": 85.071,
+            "processHeapUsedMiB": 12.935,
+            "processRssMiB": 169.426,
+            "processPeakRssMiB": 169.426,
+            "sync": {
+              "indexedCount": 512,
+              "cachedCount": 0,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518821910,
+              "lastDurationMs": 367.94374500000004,
+              "diskCacheLoad": "missing"
+            }
+          },
+          "warm": {
+            "elapsedMs": 73.444,
+            "queryElapsedMs": 0.104,
+            "processCpuUserMs": 41.15,
+            "processCpuSystemMs": 29.947,
+            "processHeapUsedMiB": 15.948,
+            "processRssMiB": 170.301,
+            "processPeakRssMiB": 170.426,
+            "sync": {
+              "indexedCount": 0,
+              "cachedCount": 512,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518821984,
+              "lastDurationMs": 73.43694200000004,
+              "diskCacheLoad": "hit"
+            }
+          },
+          "changed": {
+            "elapsedMs": 106.613,
+            "queryElapsedMs": 0.109,
+            "processCpuUserMs": 91.917,
+            "processCpuSystemMs": 42.812,
+            "processHeapUsedMiB": 18.072,
+            "processRssMiB": 176.051,
+            "processPeakRssMiB": 176.426,
+            "sync": {
+              "indexedCount": 1,
+              "cachedCount": 511,
+              "deletedCount": 0
+            },
+            "symbolCount": 8,
+            "queryResponseBytes": 177,
+            "diagnostics": {
+              "status": "ready",
+              "lastSuccessfulSyncAt": 1790518822091,
+              "lastDurationMs": 106.60821700000008,
+              "diskCacheLoad": "hit"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

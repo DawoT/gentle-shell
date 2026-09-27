@@ -2,6 +2,7 @@ import { registerFactsImpact } from "../lib/facts/facts-impact-extension.ts";
 import { FactsUsage, factsUsageLines } from "../lib/facts/facts-usage.ts";
 import type { FileFacts } from "../lib/facts/facts-types.ts";
 import { recordFactsHistory, registerFactsHistory } from "../lib/facts/facts-history-extension.ts";
+import type { FactsHistoryReceipt } from "../lib/facts/facts-history.ts";
 import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -37,6 +38,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   registerFactsCommit(pi);
   registerFactsImpact(pi);
   const historyFailures = new Map<string, string>();
+  const historyReceipts = new Map<string, FactsHistoryReceipt>();
   const cursors = new Map<string, FactsCursors>();
   const usages = new Map<string, FactsUsage>();
   const lifetimes = new Map<string, AbortController>();
@@ -112,8 +114,10 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       await sync;
       signal.throwIfAborted();
       try {
-        await recordFactsHistory(pi, ctx, service, signal);
+        const receipt = await recordFactsHistory(pi, ctx, service, signal);
         signal.throwIfAborted();
+        if (receipt) historyReceipts.set(ctx.cwd, receipt);
+        else historyReceipts.delete(ctx.cwd);
         historyFailures.delete(ctx.cwd);
       } catch (error) {
         signal?.throwIfAborted();
@@ -304,7 +308,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       additionalProperties: false,
       properties: {},
     },
-    execute: async (_toolCallId: string, _params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: async (_toolCallId: string, _params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext): Promise<any> => {
       const service = await refreshService(ctx, signal);
       if (!service) {
         const unavailable = unavailableResult(ctx);
@@ -316,12 +320,13 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         resolved: edges.filter((edge) => edge.evidence === "typescript").length,
         unresolved: edges.filter((edge) => edge.evidence === "unresolved").length,
       };
+      const historyReceipt = historyReceipts.get(ctx.cwd);
       return {
         content: [{
           type: "text",
-          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
+          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyReceipt ? `\n- Snapshot digest: ${historyReceipt.digest}` : ""}${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
         }],
-        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyError: historyFailures.get(ctx.cwd) },
+        details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyReceipt, historyError: historyFailures.get(ctx.cwd) },
       };
     },
   });
@@ -331,6 +336,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     lifetimes.get(ctx.cwd)?.abort(new Error("Facts session replaced or closed"));
     lifetimes.delete(ctx.cwd);
     usages.delete(ctx.cwd);
+    historyReceipts.delete(ctx.cwd);
     cursors.delete(ctx.cwd);
     await refreshService(ctx);
   });

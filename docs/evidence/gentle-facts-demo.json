@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-09-27T14:16:59.535Z",
+  "node": "v26.10.0",
+  "platform": "linux",
+  "tool": "facts_query extension handler (local harness, no model)",
+  "fixture": "owned synthetic settlement module; 48 country/risk profiles",
+  "sourceSha256": "55cff78a5442280b0b5841587aac1ccff105b0add1e036772f3c439f8227ca08",
+  "implementationSha256": "67987b83b5f58924aa2ec3294424c57a2bd9fecb5e4c41e2409d8d4cd44a011c",
+  "implementationFiles": [
+    "extensions/gentle-facts.ts",
+    "lib/facts/facts-service.ts",
+    "lib/facts/facts-ts-extractor.ts",
+    "scripts/demo-facts.mjs"
+  ],
+  "sourceBytes": 4960,
+  "responseBytes": 304,
+  "coldIndexMs": 249.42,
+  "fullFileReadMs": 0.11,
+  "queryWithRefreshMs": 60.29,
+  "estimatedContextReductionTokens": 1164,
+  "correctness": {
+    "expectedSignature": "function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number",
+    "baselineSignature": "function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number",
+    "factsSignature": "function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number",
+    "declarationLine": 298
+  },
+  "output": "Found 1 symbol(s) matching 'settlementTotal':\n\n• settlementTotal (function)\n  File: settlement.ts (lines 298-303)\n  Signature: function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number\n  Doc: /** Return settlement cents after refunds and the supplied processing fee. */",
+  "baselineExcerpt": "export interface SettlementItem {\n  grossCents: number;\n  refundedCents: number;\n}\n\nexport const settlementProfiles = [\n  {\n    country: \"PE\",\n    riskBand: 1,\n    feeBasisPoints: 125,\n    settlementDays: 2,\n  },",
+  "limitations": [
+    "Single synthetic fixture/sample; no production latency or adoption guarantee.",
+    "Full-file baseline is an actual read, not an observed agent strategy; range reads may use fewer bytes.",
+    "Cold indexing is measured separately. Warm facts_query time includes its actual refresh; file read is filesystem-warm.",
+    "Bytes/4 is a heuristic, not a tokenizer, billed savings, model timing or monetary ROI.",
+    "Cast timestamps are presentation timing, not measured task latency. No model/provider/SDK session is invoked."
+  ]
+}

@@ -14,12 +14,13 @@ function latestReceipt(ctx: ExtensionContext): FactsHistoryReceipt | undefined {
   return undefined;
 }
 
-export async function recordFactsHistory(pi: ExtensionAPI, ctx: ExtensionContext, service: FactsService, signal?: AbortSignal): Promise<void> {
+export async function recordFactsHistory(pi: ExtensionAPI, ctx: ExtensionContext, service: FactsService, signal?: AbortSignal): Promise<FactsHistoryReceipt | undefined> {
   const sessionFile = ctx.sessionManager?.getSessionFile();
   const database = service.getDatabase();
-  if (!sessionFile || !database) return;
+  if (!sessionFile || !database) return undefined;
   const receipt = await new FactsHistory(sessionFile).save(database, service.getResolutionEdges(), signal);
   if (latestReceipt(ctx)?.digest !== receipt.digest) pi.appendEntry(ENTRY_TYPE, receipt);
+  return receipt;
 }
 
 export function registerFactsHistory(pi: ExtensionAPI): void {

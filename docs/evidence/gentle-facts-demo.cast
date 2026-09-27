@@ -1,0 +1,10 @@
+{"version":2,"width":112,"height":28,"timestamp":1790518619,"title":"gentle-facts: verified context comparison","env":{"TERM":"xterm-256color"}}
+[0,"o","\u001b[2J\u001b[Hgentle-facts | verified declaration discovery\r\nSynthetic fixture, real extension handler, no model calls.\r\n30-second presentation timing; measured durations appear separately.\r\n"]
+[3,"o","$ read full settlement.ts\r\n"]
+[5,"o","export interface SettlementItem {\r\n  grossCents: number;\r\n  refundedCents: number;\r\n}\r\n\r\nexport const settlementProfiles = [\r\n  {\r\n    country: \"PE\",\r\n    riskBand: 1,\r\n    feeBasisPoints: 125,\r\n    settlementDays: 2,\r\n  },\r\n[Display excerpt; actual full-file read measured 4960 UTF-8 bytes.]\r\n"]
+[9,"o","Independent declaration check: function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number\r\nActual full-file read: 0.11 ms (filesystem-warm).\r\n"]
+[13,"o","$ facts_query { file: \"settlement.ts\", name: \"settlementTotal\" }\r\n"]
+[16,"o","Found 1 symbol(s) matching 'settlementTotal':\r\n\r\n• settlementTotal (function)\r\n  File: settlement.ts (lines 298-303)\r\n  Signature: function settlementTotal(items: readonly SettlementItem[], feeBasisPoints: number): number\r\n  Doc: /** Return settlement cents after refunds and the supplied processing fee. */\r\n"]
+[21,"o","Verified: same authored signature and declaration line 298.\r\nActual cold index: 249.42 ms. Warm query + refresh: 60.29 ms.\r\nContext: full file 4960 bytes; Facts response 304 bytes.\r\n"]
+[25,"o","Heuristic context reduction: ~1164 tokens (bytes/4); not billed savings.\r\nFull-file baseline is a comparison assumption, not observed agent behavior.\r\n"]
+[29,"o","No model latency, dollar ROI or merge outcome claims.\r\nReproduce: node --experimental-strip-types scripts/demo-facts.mjs\r\n"]

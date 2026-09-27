@@ -1,6 +1,7 @@
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	createBashTool,
+	createBashToolDefinition,
 	createEditTool,
 	createFindTool,
 	createGrepTool,
@@ -15,6 +16,7 @@ import { isAbsolute } from "node:path";
 import { resolveGentleAiDevBinaryOverride, type GentleAiDevBinaryOverride } from "../lib/gentle-ai-binary.ts";
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { quietToolsEnabled } from "../lib/quiet-tools-config.ts";
+import { createContainedBashOperations } from "../lib/codex-web/pi-bash-containment.ts";
 import { getGentleAiRenderState, renderGentleAiLifecycleCall, renderGentleAiResult, type GentleAiRenderContext } from "../lib/gentle-ai-renderer.ts";
 import { sanitizeTerminalText } from "../lib/terminal-theme.ts";
 
@@ -617,6 +619,10 @@ function registerQuietTool(pi: ExtensionAPI, toolName: QuietToolName, commandArg
 		...registrationTool,
 		renderShell: "self",
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			if (toolName === "bash" && ctx.model?.provider === "gentle-codex-web") {
+				const contained = createBashToolDefinition(ctx.cwd, { operations: createContainedBashOperations() });
+				return contained.execute(toolCallId, params as { command: string; timeout?: number }, signal, onUpdate, ctx);
+			}
 			const runtimeTool = getBuiltInTools(ctx.cwd)[toolName];
 			return runtimeTool.execute(toolCallId, params, signal, onUpdate, ctx);
 		},

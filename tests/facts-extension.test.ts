@@ -95,6 +95,7 @@ function createMockPi() {
   const handlers = new Map<string, Function[]>();
 
   const pi = {
+    appendEntry() {},
     registerTool(tool: any) {
       tools.set(tool.name, tool);
     },
@@ -118,6 +119,29 @@ function createMockPi() {
 
   return { pi, tools, handlers };
 }
+
+test("facts_status exposes the current snapshot digest for project-memory validation", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = {
+      cwd: dir,
+      hasUI: false,
+      sessionManager: {
+        getSessionId: () => "facts-digest",
+        getSessionFile: () => join(dir, "session.jsonl"),
+        getBranch: () => [],
+      },
+    };
+    await pi.emit("session_start", {}, ctx);
+    const result = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.match(result.details.historyReceipt.digest, /^[a-f0-9]{64}$/);
+    assert.match(result.content[0].text, /Snapshot digest: [a-f0-9]{64}/);
+  } finally {
+    await cleanup();
+  }
+});
 
 test("gentleFacts extension registers facts_query, facts_dependents, and facts_status tools", () => {
   const { pi, tools } = createMockPi();
