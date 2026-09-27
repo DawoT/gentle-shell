@@ -1,0 +1,23 @@
+{
+  "id": "ada7-INC-0001",
+  "timestamp_utc": "2026-09-27T15:20:41.144427+00:00",
+  "session_id": "ada79c5b-0c51-42f0-b5c6-589cfea524ea",
+  "agente_responsable": "root",
+  "tipo": "Incidente",
+  "referencias_entradas": [
+    "ada7-FEAT-0002"
+  ],
+  "prev_id": "ada7-FEAT-0001",
+  "prev_hash": "4846de194ac3a612df2fdbb3174976b6f77c73219ce90225a4c705f62d52f5ac",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-scope-active-tool-results-by-pi-session--2026-09-27",
+  "evidencia": {
+    "invalid_file": "docs/evidence/codex-web-model-turn-ledger.json",
+    "declared_hash": "e7f6720bae457541d19d90dd46c878bdc3b78fd387e60a07a72711368c7a8ed7",
+    "canonical_hash": "051e281f818aa7280dc217b35ebf7c12e1b6ef2a5752f5b1024a279507ee55ee",
+    "cause": "Whole-entry compact JSON hashing differs from SHS ordered-field canonical hashing.",
+    "remediation": "Historical file unchanged; this entry records the invalid evidence. No cryptographic certification."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "500ef716a6539ce45b2217435b28cb07a4fa2c92fcda65fb2f52206c0a620d10"
+}

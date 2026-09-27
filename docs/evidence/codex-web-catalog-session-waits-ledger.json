@@ -1,0 +1,60 @@
+{
+  "id": "catalog-session-waits-20260927",
+  "timestamp_utc": "2026-09-27T17:24:52.645108+00:00",
+  "prev_id": "126d-CORR-0001",
+  "prev_hash": "826150d6a7c02e0b48b2d72bdad3e1bb2f84b71f229c79a1c81754dcd5f4720b",
+  "classification": "R2/M: native tool boundary and transport lifecycle",
+  "observations": {
+    "observed_at": "2026-09-27T17:24:28.502650+00:00",
+    "last_recorded_catalog_401": "2026-09-27T17:06:17.029Z",
+    "health": {
+      "status": "ok",
+      "pid": 740772,
+      "uptime": 169.404,
+      "last_model_catalog_result": {
+        "request": 1,
+        "at": "2026-09-27T17:21:40.076Z",
+        "status": 200,
+        "caller": {
+          "client": "codex",
+          "version": "0.157.1",
+          "bearerPresent": true
+        }
+      },
+      "active_http_turns": 0,
+      "active_browser_turns": 0
+    },
+    "limits": "Health and launcher observation; no fresh browser model turn in this increment."
+  },
+  "verification": {
+    "tests_passed": 134,
+    "tests_failed": 0,
+    "assertions": 992,
+    "typecheck": "passed",
+    "bundles": "passed",
+    "compiled_gateway_execution": "passed",
+    "review": "Consultative shared-worktree review; namespace collision corrected and covered"
+  },
+  "files": {
+    "/tmp/session-yield-verified.log": "5e8679b3eb6dfdf0840c5a1ec89f8acd9e3803cae4cfd71de938d3c46aa8cee7",
+    "/tmp/session-yield-types-final.log": "e576e4d30f5392d9dec436980fdafe8b9b900832b6fe6adc3043841047674093",
+    "/tmp/session-yield-bundles-final.log": "89ae46eb54316f8c77d2512e79886ecb4d308cfde965f8c934e6a26a30371c39",
+    "/tmp/session-yield-bundle-probe.log": "bf2426377b8a23d431318d13a7f5cdc428979ccee005dea42d1e03e999a31ed3",
+    "/tmp/session-yield-red.log": "fb867a0f0775272b3d860a802ca8cf5c5dccbe9160e01cab69bbbf35c2a12559",
+    "/tmp/raw-session-yield-red.log": "382949319c35b25bc3dfa09fcac5796fc184d8c820f3c85044747e4a37b47190",
+    "/tmp/session-namespace-red2.log": "867cd7cd28b18198ec2f002a43a7c5eaec4268f57b1fe05a7bacd1a03e765fed",
+    "/tmp/catalog-401-resolution.json": "bde80caa349fd424f12640df1e081aefa2d4435d3e3f996ed5420469b662518a",
+    "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/mcp/session-yield.ts": "788234938f46a0d0a130850f12ad605c2624e63d43487e033c76fd267eb55eb5",
+    "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/mcp/turn-coordinator.ts": "1dadb0178fe8880498aafa499ef8bc4e5cccd8a35c70b9a148bc923ee87e27da",
+    "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/mcp/gateway-programs.ts": "b7d1d6250237bedddfbb00fc063efbc207d4e6b6eec269a5928c63a47ee102fd",
+    "/home/deuz/projects/codex-chatgpt-web/src/server/models-route.ts": "a161343f094f7bd85491cb4f8fe7c6280829d91168ef49c0c3908f6d5c414dea",
+    "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "a95c2f84ac1775299f39dad1502b1ce3e001f5f770608a16a24d1ce858b32caf"
+  },
+  "limits": [
+    "Unsigned worktree observations; no isolated approval, commit or merge certification",
+    "No fresh browser end-to-end model run in this increment",
+    "Running MCP processes require reload for final source edits",
+    "Context checkpoint integration, producer budgets and unified trace sink remain open"
+  ],
+  "entry_hash": "4221db937a11a843cde8c1bb644be433fe5c876bc264720e09e71da0e76b668a"
+}

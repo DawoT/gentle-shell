@@ -1,0 +1,48 @@
+{
+  "id": "79eb-FIX-0001",
+  "timestamp_utc": "2026-09-27T16:52:43.946776+00:00",
+  "session_id": "79ebf5ee-4044-4089-a07d-0d650b907900",
+  "agente_responsable": "root",
+  "tipo": "Bugfix",
+  "referencias_entradas": [
+    "dce8-FIX-0001"
+  ],
+  "prev_id": "dce8-FIX-0001",
+  "prev_hash": "11329fde62e38cc3489f3fc1f9333e5608e23734fdee95cb8bb8b3f8eff81772",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-cross-process-chat-first-admission--2026-09-27",
+  "evidencia": {
+    "head_commit_bridge": "46f225286103674836c6fb67d6edc750696e87ac",
+    "head_commit_gentle": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/shared-command-admission.ts": "a2d9b768f52156f835101d2e3064d17121663af2f90a8afee18b542a7babd7bc",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/mcp/chat-first-task-tools.ts": "a7b16f5bb8c83f389e41c9d8f249899ac6d497b59b8264af40d1fbff89a7ceb2",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/mcp-server.ts": "1801b29ba5d4695c690d500ba1a06013e7106ee18f59f4f37e63cadb2ea56d8b",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/background-task-manager.ts": "6e14317d5e6fd1e2da97448cfbc591bc825720fdb6d30c924721ed6d8ca8504f",
+      "/home/deuz/projects/codex-chatgpt-web/src/cli.ts": "2b2d651cb3c100c86cfa244dcb1cf02a1ca4bb6334b500ded72a4846c67565d3",
+      "/home/deuz/projects/codex-chatgpt-web/src/config.ts": "7fddb8d1348740899b7ea83f37f4b3e2c06372ae3bbfae0dd9f4c029ba6cd8f9",
+      "/home/deuz/projects/codex-chatgpt-web/tests/shared-command-admission.test.ts": "a6bbbb6c2c0a19282789748c0ba9b5c9205e88c3983b49d5a487d99a47d44fc9",
+      "/home/deuz/projects/codex-chatgpt-web/tests/chat-first-mcp-lifecycle.test.ts": "56d7ce3611c50ef7b361ace2868ddfec1fd360b3f48a4efeec826f1e299b0f2d",
+      "/home/deuz/projects/codex-chatgpt-web/docs/security-model.md": "7604f0d2ec23620971f183c13732454065763993f3e5e8bd163659268cbd41fd",
+      "/home/deuz/projects/codex-chatgpt-web/docs/host-integration.md": "14d89e51d1b6629308e7f93f160310345fd3efcf2a4a507d3496e5f7f7a373b1",
+      "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "903a545a8d16b469bff59e08699f1b7985087b77f8d08ec3b06921301842534b"
+    },
+    "runs": {
+      "/tmp/global-admission-red.log": "2f3832823fe2e25b1f2d7d8d56b387294b1b245cab590aebd4cab9c147d0a364",
+      "/tmp/global-admission-recovery-red.log": "c7065d777916fa1694f612d71c1f8d815d945f7cc489f130d8dba8cd292d8911",
+      "/tmp/global-admission-focused9.log": "95ba70deb7bf95b8b884987b186a6e428b8e329177dfbc00f225573a890ec24c",
+      "/tmp/global-admission-full-stable.log": "8cc7dafc1cb5d3008f5ce990018cac05bce13f1e1b3def77d4c0f3cc7f8c243e",
+      "/tmp/global-admission-types-final.log": "e576e4d30f5392d9dec436980fdafe8b9b900832b6fe6adc3043841047674093",
+      "/tmp/global-admission-bundles-final.log": "115a3076d908a5c709c0dc4370059540db83ff53a804185a6b434852f90e9a4b"
+    },
+    "bridge_full": {
+      "passed": 1459,
+      "skipped": 12,
+      "failed": 0
+    },
+    "review": "Independent read-only review found crash recovery, PID reuse and reboot/legacy gaps; corrected; final pass found no concrete R2 blocker. Shared writable worktree.",
+    "limits": "Operator-attested stale lease recovery, Linux start/boot/namespace identity, no automatic crash release; unsigned with no A/V merge certification"
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "ae5555666245d03397c752da7dd9c41000577b6d1c1fcd1f04c0a9ae9aefb88f"
+}

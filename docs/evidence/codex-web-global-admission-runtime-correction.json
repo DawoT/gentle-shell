@@ -1,0 +1,32 @@
+{
+  "id": "126d-CORR-0001",
+  "timestamp_utc": "2026-09-27T16:55:45.685683+00:00",
+  "session_id": "126da57c-8f2a-4b39-85c3-2b631ba6516e",
+  "agente_responsable": "root",
+  "tipo": "Correcci\u00f3n",
+  "referencias_entradas": [
+    "79eb-FIX-0001"
+  ],
+  "prev_id": "79eb-FIX-0001",
+  "prev_hash": "ae5555666245d03397c752da7dd9c41000577b6d1c1fcd1f04c0a9ae9aefb88f",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#runtime-follow-up-after-admission-gates",
+  "evidencia": {
+    "correction": "Original Pi PID disappeared after ledger creation; a new visible Pi was launched. Fresh isolated live Pi probe passed. Native catalog upstream 401 not repaired.",
+    "files": {
+      "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "b2559c4968f82525585e8652d0073d0b9dede618a462dd603dd60e5b30671d54",
+      "/home/deuz/projects/codex-chatgpt-web/docs/host-integration.md": "a78df3a08ca8e5e4c9debe2f557f93501443a520e586e135466bd59ea91c2e6d",
+      "/tmp/global-admission-live-current.log": "74e7cf7f10d3c6c84315a7b6b53c92988a94021b3875c80a2a806439c8bd4209"
+    },
+    "observed_pids": {
+      "launcher": 21767,
+      "native_tunnel": 22091,
+      "daemon": 522496,
+      "terminal": 723262,
+      "pi": 723264
+    },
+    "limits": "Unsigned worktree observations, no mechanical approval or merge certification"
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "826150d6a7c02e0b48b2d72bdad3e1bb2f84b71f229c79a1c81754dcd5f4720b"
+}

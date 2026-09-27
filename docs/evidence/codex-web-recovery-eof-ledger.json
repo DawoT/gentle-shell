@@ -1,0 +1,41 @@
+{
+  "id": "f4ce-FIX-0001",
+  "timestamp_utc": "2026-09-27T14:33:45.275435+00:00",
+  "session_id": "f4ce24dc-42e7-46b5-a2af-a882421fd6b8",
+  "agente_responsable": "root",
+  "tipo": "Bugfix",
+  "referencias_entradas": [],
+  "prev_id": null,
+  "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-clean-eof-delivery-protection--2026-09-27",
+  "evidencia": {
+    "head_commit": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "lib/codex-web/client.ts": "60d81bb621cecb09128d83df41c78a2a286fafb2bc69ffc4bb36f6af9b0c7112",
+      "lib/codex-web/sse-delivery.ts": "3d09b6e18faa0deda4a5662f864c5d4a0dfb59763c7d2bb155222567524857c0",
+      "tests/codex-web-stream-recovery.test.ts": "9bc89daf0e3896a9690890a40b3091b410f11eb2aeaae9757d85909ff6e769e8",
+      "docs/engineering/codex-web-sprints.md": "449142caab7fbed468d6afd2212db2f52e80a6e4c4b4c6577f07900c781b7b26"
+    },
+    "runs": {
+      "/tmp/recovery-eof-corrected-red.log": "7c290f78cfe4bdfdbc7e60ec97c7fa277beb5fe772f9ace028af909246e8c8e7",
+      "/tmp/recovery-bodyless-red.log": "35ea9d4059781f9a6eab9d01406a1b2f24f1009b9d62866e1bc5fc1f780b2f41",
+      "/tmp/recovery-final-focused.log": "78c94cddfb1548e5c3ebf60fa9b9fb1c4ce77706c022f9c129609969a727a990",
+      "/tmp/recovery-full-gentle.log": "c85ec718b32ff6555d82783de089e19ca10bb4cfc7d3a598234af9e9a355b996",
+      "/tmp/recovery-composed.log": "f72957a3c76c6d0b77e2185672902d8d6ecfb5f4326e4e5f4ef16f928515384e",
+      "/tmp/recovery-packed.log": "14a45c7c0875dc101df7b10fc018dc941089ccc06842095ddf5c481bf2ee48ca",
+      "/tmp/recovery-live.log": "74e7cf7f10d3c6c84315a7b6b53c92988a94021b3875c80a2a806439c8bd4209",
+      "/tmp/recovery-types.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7"
+    },
+    "full_suite": {
+      "passed": 4106,
+      "skipped": 41,
+      "failed": 0
+    },
+    "scope": "In-memory SSE delivery recovery only; persistent recovery roadmap remains active.",
+    "reviewer": "recovery_review: independent 15 tests and semantic review; shared writable filesystem",
+    "merge_gate": "Not certified: no mechanical isolation, human merge review or cryptographic A/V signatures."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "0ac57a7b3226fac6a642576828901b68ed71d5b28a4db22393e77db2bf171058"
+}

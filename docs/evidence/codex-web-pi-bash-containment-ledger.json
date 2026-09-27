@@ -1,0 +1,51 @@
+{
+  "id": "dce8-FIX-0001",
+  "timestamp_utc": "2026-09-27T16:26:08.643825+00:00",
+  "session_id": "dce852fa-44d9-4f7a-9e7c-019b610d33a2",
+  "agente_responsable": "root",
+  "tipo": "Bugfix",
+  "referencias_entradas": [
+    "c7b3-FIX-0001"
+  ],
+  "prev_id": "c7b3-FIX-0001",
+  "prev_hash": "d24610e5b1ce720801fa93beb241496a509844ec9ed6ee8639fc6f7bc82cb83b",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-pi-owned-bash-descendant-cleanup-for-the-web-provider--2026-09-27",
+  "evidencia": {
+    "head_commit_bridge": "46f225286103674836c6fb67d6edc750696e87ac",
+    "head_commit_gentle": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "/home/deuz/projects/gentle-shell/lib/codex-web/pi-bash-containment.ts": "3ad7c142d5884e3af5ee13abbcaef33448ace88e20c928d49a9910d4cfe45fde",
+      "/home/deuz/projects/gentle-shell/extensions/gentle-codex-web.ts": "d76f2a6cfe42808d99eeb40bc35e93e30ee04798b14ba4c794ffcba595c4878f",
+      "/home/deuz/projects/gentle-shell/extensions/quiet-tools.ts": "a99589136d6a27556f6d5e805009da60284a1427caead8767f2b16fe3e1c7f1e",
+      "/home/deuz/projects/gentle-shell/tests/codex-web-bash-containment.test.ts": "14860ed9fa777b62e1fa957d32a5b9cee306700fe29a31d7b59bf34613fd096e",
+      "/home/deuz/projects/gentle-shell/tests/support/codex-web-host-probe.mjs": "709ebf21237393fd846e242e0982d63a2e5bfdf40d92d945f364c82a3105acc9",
+      "/home/deuz/projects/gentle-shell/tests/support/codex-web-live-probe.mjs": "daf4c7ac36f38f71b59416ec253d2157db512564441e8f32c8302389b0addb2e",
+      "/home/deuz/projects/gentle-shell/scripts/verify-package-files.mjs": "f8daf987a78218edbeaa98476d5275caac0783eba2f3cf95d84a55ed75434613",
+      "/home/deuz/projects/gentle-shell/docs/codex-web-bridge.md": "f642506b3c9710dedd10b840da529a337f148a99696411654156f032f98466f3",
+      "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "c87775fa3febc06098ac9da54bc4ef69f10799662db631251b2c52f5f6da0793",
+      "/home/deuz/projects/codex-chatgpt-web/scripts/smoke-pi-host.ts": "54b28a56607d97a5761e9a304954ff394b6a9dd6d0c9cf623128086dccfa19b1"
+    },
+    "runs": {
+      "/tmp/pi-bash-containment-red.log": "3943aad0bc905ba5d233bc6b6e43bd11b9b87c667417da4dc3b307670a21cd9c",
+      "/tmp/pi-bash-registration-red.log": "375d5773e6849c90176a63d6c85467b57afa9ce8e815c9b8aa91717bd53f44db",
+      "/tmp/pi-bash-focused-final.log": "f992b3544f134346cad7fd00196ebb5e08d26ce9fbd7b47ad47ee2306008fc2a",
+      "/tmp/pi-bash-composed3.log": "f72957a3c76c6d0b77e2185672902d8d6ecfb5f4326e4e5f4ef16f928515384e",
+      "/tmp/pi-bash-full-gentle.log": "91db124234d50a82101747f81b7e25c97e35a85ad22808e0d1c66c0e372864eb",
+      "/tmp/pi-bash-types-final.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7",
+      "/tmp/pi-bash-generated.log": "929f6bbbf67f72b38675b616918884757e3e2c8f4d6f9423668dd0e5d09243c4",
+      "/tmp/pi-bash-package-final.log": "a3b7e3d8bbaa16b76affed2a444bfc1c9a6a88729e459538cbaccd02542fa5c2",
+      "/tmp/pi-bash-bridge-types.log": "e576e4d30f5392d9dec436980fdafe8b9b900832b6fe6adc3043841047674093",
+      "/tmp/pi-bash-live-final.log": "43389c3c6c035a95659803fb6361ac9b5755e39573fe08339fcf35e42f20ee1d"
+    },
+    "gentle_full": {
+      "passed": 4133,
+      "skipped": 41,
+      "failed": 0
+    },
+    "review": "Independent read-only review found timeout classification and quiet-tools registration defects; both corrected; no further concrete blocker in final pass. Shared writable worktree.",
+    "limits": "Delegated Linux cgroup v2 operational cleanup; Windows Pi native taskkill, same-UID migration not covered; unsigned with no A/V merge certification"
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "11329fde62e38cc3489f3fc1f9333e5608e23734fdee95cb8bb8b3f8eff81772"
+}

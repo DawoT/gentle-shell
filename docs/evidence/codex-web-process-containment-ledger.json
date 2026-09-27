@@ -1,0 +1,46 @@
+{
+  "id": "c7b3-FIX-0001",
+  "timestamp_utc": "2026-09-27T16:12:25.062322+00:00",
+  "session_id": "c7b3eaeb-1190-47b2-8eca-15308b33e350",
+  "agente_responsable": "root",
+  "tipo": "Bugfix",
+  "referencias_entradas": [
+    "e12e-FEAT-0001"
+  ],
+  "prev_id": "e12e-FEAT-0001",
+  "prev_hash": "80cc1dddada472894709979efc7afc5eb515940a2d32035ed9f2576ab34eb94a",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-contain-local-shell-descendants-on-delegated-linux--2026-09-27",
+  "evidencia": {
+    "head_commit_bridge": "46f225286103674836c6fb67d6edc750696e87ac",
+    "head_commit_gentle": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/command-cgroup.ts": "4a1cd63ad5a4c9295ed24548a2d6e8c6880a927e5f79522787f2d09e38c9701c",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/fast-path/exec.ts": "172b8ad76a811256be54669a30bdadfe03a927bcb5d68b4d3c13de9e72bdc8a4",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/background-task-manager.ts": "1f8f2b32d3d14d76420687061decd8c9cec4354f19eb1882a223923691efd5ec",
+      "/home/deuz/projects/codex-chatgpt-web/src/adapters/chatgpt-web/background-task-types.ts": "908fa453c61a19a85f5854cab9f444cd22ab075dab6f8641acc5510182ac42f0",
+      "/home/deuz/projects/codex-chatgpt-web/tests/foreground-exec-cancellation.test.ts": "50696e7169bdbf4a101d4ee7e9b53554f6199ae3697b8b7f695c0e4ae9e6b5db",
+      "/home/deuz/projects/codex-chatgpt-web/tests/background-task-lifecycle.test.ts": "e05e909ef4b341d93a7832a7a1e3fb72ff90e24e35d3e9ae013ca6f862fec19c",
+      "/home/deuz/projects/codex-chatgpt-web/docs/security-model.md": "1be62432e2372756fcd441ba43a80fda0d3d418fa7b56d7150cbed2a9eeec5f9",
+      "/home/deuz/projects/codex-chatgpt-web/docs/host-integration.md": "fda94c4c06d1959336eee7a5a382a1c8f7e185975626987b1ad614ba90e4a936",
+      "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "4a78c6d067b433e480388bee0cf0c4d46519a3877870252c059463840c0475f2"
+    },
+    "runs": {
+      "/tmp/process-containment-red.log": "175b75c6ccfd7b8db20ea68b12283e0c3e9dfcfe3263dfebf0a83433788e51e3",
+      "/tmp/process-containment-background-red.log": "9489675f7d096e8963293ed427c47debb334792016a1708946062f16792b3caf",
+      "/tmp/process-containment-focused.log": "2d6199656c18cb4d725765da0bf59f52c0e35b82bd82d5755ac6fbacb75aab84",
+      "/tmp/process-containment-full.log": "c1127a4f6a1a3e5ad701186092c00a02d1dc5cb6fca1ed2e748aa8de55347b7c",
+      "/tmp/process-containment-types-final.log": "e576e4d30f5392d9dec436980fdafe8b9b900832b6fe6adc3043841047674093",
+      "/tmp/process-containment-build.log": "371102d5938b84d9b9a8d8b68fcaebe2887fdd78506bca20e3571408ad003605"
+    },
+    "bridge_full": {
+      "passed": 1452,
+      "skipped": 12,
+      "failed": 0
+    },
+    "review": "Independent read-only review found and verified pre-join race correction; shared writable worktree",
+    "limits": "Linux delegated cgroup v2 covers ordinary setsid descendants; Windows and adversarial migration remain open; unsigned, no A/V signatures or merge certification"
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "d24610e5b1ce720801fa93beb241496a509844ec9ed6ee8639fc6f7bc82cb83b"
+}

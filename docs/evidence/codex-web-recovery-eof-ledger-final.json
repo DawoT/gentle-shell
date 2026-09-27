@@ -1,0 +1,33 @@
+{
+  "id": "f4ce-CORR-0002",
+  "timestamp_utc": "2026-09-27T14:35:51.206223+00:00",
+  "session_id": "f4ce24dc-42e7-46b5-a2af-a882421fd6b8",
+  "agente_responsable": "root",
+  "tipo": "Corrección",
+  "referencias_entradas": [
+    "f4ce-FIX-0001"
+  ],
+  "prev_id": "f4ce-FIX-0001",
+  "prev_hash": "0ac57a7b3226fac6a642576828901b68ed71d5b28a4db22393e77db2bf171058",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-clean-eof-delivery-protection--2026-09-27",
+  "evidencia": {
+    "clarification": "Previous full-suite run predates final SDK test expansion. This entry records the final suite and append-only ADR addition. No production runtime edits occurred after the focused review.",
+    "runs": {
+      "/tmp/recovery-full-final.log": "a5275637fbf1b8e0124b87c8ba4fc8f03e48a3a284edb881482bdcacbf2932c8",
+      "/tmp/recovery-final-bridge-focused.log": "c3f18b1d764ec482db6d168f35ff224d451313248361096bdea874e4ad653406"
+    },
+    "full_suite": {
+      "passed": 4107,
+      "skipped": 41,
+      "failed": 0,
+      "total": 4148
+    },
+    "focused_bridge_tests": 39,
+    "independent_recovery_tests": 15,
+    "adr_sha256": "454110899caf2f778eec6603a930deab11cff2cfc35638a7fbf140e47e1d0013",
+    "merge_gate": "Unsigned; no mechanically isolated certification or A/V cryptographic approval."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "72208bcd60e68092060155f7415e77868ebbb10e69cf229725a1e67ed623c1af"
+}

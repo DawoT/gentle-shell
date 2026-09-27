@@ -1,0 +1,51 @@
+{
+  "id": "ada7-FEAT-0002",
+  "timestamp_utc": "2026-09-27T15:15:15.685249+00:00",
+  "session_id": "ada79c5b-0c51-42f0-b5c6-589cfea524ea",
+  "agente_responsable": "root",
+  "tipo": "Entregable nuevo",
+  "referencias_entradas": [
+    "ada7-FEAT-0001"
+  ],
+  "prev_id": "ada7-FEAT-0001",
+  "prev_hash": "4846de194ac3a612df2fdbb3174976b6f77c73219ce90225a4c705f62d52f5ac",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-persistent-model-turn-identity--2026-09-27",
+  "evidencia": {
+    "head_commit": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "lib/codex-web/provider.ts": "8dd85f82c59131a1c50b642304759b5042d8710c205d90da42b28cd4ad6eff7b",
+      "tests/codex-web-turn-recovery.test.ts": "2a664656ee8faa3389fa0cfcd0f4109452fb8bd700e0f9d9e9313d496712a88f",
+      "tests/support/codex-web-model-child.mjs": "f7a9d5ef1a7adbd19fa1ce069fc2948928645dd2732b204f39460cd341c99537",
+      "tests/codex-web-extension-runtime.test.ts": "722fb86592ae4cc39d01b16dde309f8ec092c14117640c7f1686dacf48f918c2",
+      "docs/codex-web-bridge.md": "6d0c6bbac5fe2aa78def083df4b6dbebd69f5c5196258e9a1bbbd8acf04b6262",
+      "docs/engineering/codex-web-sprints.md": "0162818abd677ec8ed147aa529b48372ad8ad238d8c2a7bfb953fe5305b30d83"
+    },
+    "runs": {
+      "/tmp/turn-recovery-red.log": "78196539c71b6daf3d29639e78d443e6d9e32d3638a227feadc652d1408ff3b5",
+      "/tmp/turn-recovery-concurrent-red.log": "100d95e7253b443e4a6d583d2c425197a07349b1bda810afde08d3abec2f1237",
+      "/tmp/turn-recovery-serial-red.log": "daa64281f0ea0f3cb043a0b1f60e3fe676d3e3210344debab7619cb8ab56d0bd",
+      "/tmp/turn-recovery-context-red.log": "cf5f36bdd87beaf9a89b522dc735039f4b0672b05e3bf20c24313e0e220b3869",
+      "/tmp/turn-recovery-dual-index-green.log": "fc9b8bb3ab4a6d5838bc88f707a76c026bd8d04799a8fa3bae6d3b586fffd869",
+      "/tmp/turn-dual-final-focused.log": "92f18ced52ca7e27bc4fecf87913ec41516a1c74fc16626c4a48f2e7a4c44729",
+      "/tmp/turn-dual-final-packed.log": "9ce721e42e7e48ef328a6e91b16ef8dccb4914bb0c2076dd800eddf4955438ca",
+      "/tmp/turn-dual-final-types.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7",
+      "/tmp/turn-dual-final-full.log": "e351ad8cf77b691b83e573b4f6ce1546e179571eb04180ddd2b1d5591409c688",
+      "/tmp/turn-dual-final-composed.log": "f72957a3c76c6d0b77e2185672902d8d6ecfb5f4326e4e5f4ef16f928515384e",
+      "/tmp/turn-dual-final-generated.log": "81ae107d52f745035bbd9c6eb4aa3ee8d37cb551d65c69c5727ee206b6ae74c1",
+      "/tmp/turn-dual-final-package.log": "565b80a1bc3eb00e4204bfb2cfa40f3f7985af0d17cdfa9612ae293340629d94",
+      "/tmp/turn-dual-final-diff.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "full_suite": {
+      "passed": 4125,
+      "skipped": 41,
+      "failed": 0,
+      "total": 4166
+    },
+    "scope": "Durable same-session model turn and exact context/payload admission; not semantic exactly-once or resumable reconciliation.",
+    "review": "Independent read-only review passed 22 focused cases; shared writable worktree.",
+    "merge_gate": "Unsigned, not mechanically isolated or cryptographically approved for merge."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "e7f6720bae457541d19d90dd46c878bdc3b78fd387e60a07a72711368c7a8ed7"
+}

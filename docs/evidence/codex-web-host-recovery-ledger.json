@@ -1,0 +1,58 @@
+{
+  "id": "e12e-FEAT-0001",
+  "timestamp_utc": "2026-09-27T16:00:46.256947+00:00",
+  "session_id": "e12ede8f-9826-4376-8a47-73855aab604f",
+  "agente_responsable": "root",
+  "tipo": "Entregable nuevo",
+  "referencias_entradas": [
+    "ada7-CORR-0003"
+  ],
+  "prev_id": "ada7-CORR-0003",
+  "prev_hash": "59bdd473ad054605a9be27e60632ef9bcd3defee19dfa425c76fd509b3b2d6ae",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-host-model-metadata-across-daemon-restarts--2026-09-27",
+  "evidencia": {
+    "head_commit_gentle": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "/home/deuz/projects/codex-chatgpt-web/src/server/host-recovery.ts": "af4893cc71f6a8b8542b45618aa05977766609fb5e746399f71b773e854d54e3",
+      "/home/deuz/projects/codex-chatgpt-web/src/server/host-routes.ts": "8fdf872fd07ecdd1b566fb605e7c45080ecb3e992b19ba6109ac593ceb6428c8",
+      "/home/deuz/projects/codex-chatgpt-web/src/server/host-state.ts": "381d9bf307c80cd67853e3ebaf56b6ccddefb9de88736ec72c3de7731118c6ad",
+      "/home/deuz/projects/codex-chatgpt-web/tests/host-recovery.test.ts": "f8ecd3127f131a226378252fab95b9f416232c4f3ba03fa10fa0d6be5f77f79a",
+      "/home/deuz/projects/codex-chatgpt-web/tests/support/host-recovery-child.ts": "6539f35f91a7c585a9114c77756847955eccbc89fd22b9bc34e8efa8c0e60499",
+      "/home/deuz/projects/codex-chatgpt-web/docs/host-integration.md": "56dd0bc29f7bd0d900794e01e6c0c3626aa3c45c380b3ce6fd6d488dbaea971a",
+      "/home/deuz/projects/gentle-shell/lib/codex-web/client.ts": "c23d5ba96e73e02b74d1cabaed86c3636f94d9d9094051cd6625b2b85570b407",
+      "/home/deuz/projects/gentle-shell/lib/codex-web/provider.ts": "c6da32e03aa6e9a3af93ff3d80ee61467b75b9e1a00d7da23d4aca20d4d7681f",
+      "/home/deuz/projects/gentle-shell/extensions/gentle-codex-web.ts": "6a04fa4f9a421cf8992b844ba8f80b72951aa74db1d94ea9e751f8bc7dd1cab2",
+      "/home/deuz/projects/gentle-shell/tests/support/codex-web-live-probe.mjs": "00e4da1a0cbab55b46331e4fc1f573132945fbd377d4530807e0ad3031f6a0ac",
+      "/home/deuz/projects/gentle-shell/docs/engineering/codex-web-sprints.md": "982f8d530d05d140780bf30bfae7aa86746c9ca425f2065e45a9dcf26b305868"
+    },
+    "runs": {
+      "/tmp/host-recovery-review-red.log": "4593f5b8be35b6bfb116c225dd18ff89af3d98ccc5ea19434b4162d202082284",
+      "/tmp/host-recovery-bridge-final.log": "4249799d148bf65f16fb79570be623061f84e93d41f265bb8b681899822b21dd",
+      "/tmp/host-recovery-gentle-full.log": "6339ede1112c2649f2cfe3c7e1510607121c46db8fd8cf86cc223fc14fe2794b",
+      "/tmp/host-recovery-gentle-focused.log": "be4049812fed034b737d3350babe1705d737a0219dfe4b6d6a7f1409591d65f1",
+      "/tmp/host-recovery-gentle-types.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7",
+      "/tmp/host-recovery-bundles-final.log": "4e2e2971db31f0584db6f2e004fbb9c3695767359b3735cb44dd0459be9d83d6",
+      "/tmp/host-recovery-composed-final2.log": "f72957a3c76c6d0b77e2185672902d8d6ecfb5f4326e4e5f4ef16f928515384e",
+      "/tmp/host-recovery-live-final.log": "ec60c5f948718c83f5501d7f73d91e8356af1fd2eb74aaf1554d7c67ae81f9aa",
+      "/tmp/host-recovery-packed.log": "85707a17afc279f429a222794ee63a347e7cb3d9a9bd148c3fc25e6c81380036",
+      "/tmp/host-recovery-modules.log": "c8c06b8e22e899eda69941045c996e6e6d1a64dbb28dbea6312294649954b9d1",
+      "/tmp/host-recovery-package.log": "565b80a1bc3eb00e4204bfb2cfa40f3f7985af0d17cdfa9612ae293340629d94"
+    },
+    "bridge_full": {
+      "passed": 1447,
+      "skipped": 12,
+      "failed": 0
+    },
+    "gentle_full": {
+      "passed": 4128,
+      "skipped": 41,
+      "failed": 0
+    },
+    "live": "persistent Pi SDK produced PI_WEB_OK after source daemon restart; no tool calls",
+    "review": "Independent read-only review found no remaining P1 blocker after atomic claim publication; shared writable worktree",
+    "limits": "Unsigned worktree observation; no A/V signatures, mechanical isolation, commit or merge certification"
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "80cc1dddada472894709979efc7afc5eb515940a2d32035ed9f2576ab34eb94a"
+}

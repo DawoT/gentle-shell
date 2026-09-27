@@ -1,0 +1,47 @@
+{
+  "id": "ada7-FEAT-0001",
+  "timestamp_utc": "2026-09-27T15:00:55.795708+00:00",
+  "session_id": "ada79c5b-0c51-42f0-b5c6-589cfea524ea",
+  "agente_responsable": "root",
+  "tipo": "Entregable nuevo",
+  "referencias_entradas": [
+    "f4ce-CORR-0002"
+  ],
+  "prev_id": "f4ce-CORR-0002",
+  "prev_hash": "72208bcd60e68092060155f7415e77868ebbb10e69cf229725a1e67ed623c1af",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-durable-pi-tool-admission--2026-09-27",
+  "evidencia": {
+    "head_commit": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "lib/codex-web/tool-receipts.ts": "ba6007107e1c7d01f0c4554f94f2e4652b31f2735fd10a050997095fcea81bf8",
+      "lib/codex-web/tool-recovery.ts": "77b572e5fbddb10075a5f7a8d89fd765c95b65e03dc44d43386af264d61ffb36",
+      "extensions/gentle-codex-web.ts": "7b15918b6b93889cc0f98a9b88f01e903aad4ab0bc4bfe6a980cba03e1997122",
+      "tests/codex-web-tool-recovery.test.ts": "131e36f594f785cf8efb0ca14bc17b23024cf4e55780ec5b7c06a0fea86e48e1",
+      "tests/support/codex-web-claim-child.mjs": "66b280b8fd623b02eb5c437c229bf5cf4ea12ae18a0f5403bb241ffa36d747ad",
+      "tests/codex-web-extension-runtime.test.ts": "8de26ad53306dc09160675ce959473a32c2b09d3ebc63e980e49845c762f83de"
+    },
+    "runs": {
+      "/tmp/tool-recovery-red.log": "17cf64af721ed66e072aa3838366c790f8c29cb38cae5988684ed8dfc72ea8c6",
+      "/tmp/tool-recovery-memory-red.log": "f74ba0206208ef749dc62eae5f19930533acc9a29c9f3b9e2760af0e764a6166",
+      "/tmp/tool-recovery-display-red.log": "0c210dc7b3687c278e057118b6202ed97ba2824305a4cfc0190cb676e8f22d74",
+      "/tmp/tool-recovery-parent-red.log": "26924bf3c34dc7b514412f732e29973c65401ab1a50290509ca66b60acb4eecd",
+      "/tmp/tool-recovery-final2-focused.log": "e96bb3a962473b1ca117b6102040040411fbb1f5842ac74ac198edd3d0b801b8",
+      "/tmp/tool-recovery-final2-full.log": "259582b7d53a275f7efbeb733ddd3c5e2b1a374f6202f8b10ec7b194e4530154",
+      "/tmp/tool-recovery-final2-packed.log": "5cd5b3931272bd7dad79767bcc0ce2cd91278f4e55faee5412c40b87c0ab79be",
+      "/tmp/tool-recovery-final2-types.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7",
+      "/tmp/tool-recovery-process-stable.log": "a9f89b6abd23b18f2eddecdd61cc3bedad1737291048e3ed98988b8ab2970ba2"
+    },
+    "full_suite": {
+      "passed": 4121,
+      "skipped": 41,
+      "failed": 0,
+      "total": 4162
+    },
+    "scope": "Same-session toolCallId admission guard, not persistent model turn recovery or semantic exactly-once.",
+    "review": "Read-only architecture review supplied issues; final approval unavailable after reviewer usage limit. Shared writable worktree.",
+    "merge_gate": "Unsigned, not mechanically isolated or cryptographically approved for merge."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "4846de194ac3a612df2fdbb3174976b6f77c73219ce90225a4c705f62d52f5ac"
+}

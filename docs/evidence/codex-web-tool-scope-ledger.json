@@ -1,0 +1,46 @@
+{
+  "id": "ada7-FIX-0001",
+  "timestamp_utc": "2026-09-27T15:20:41.145228+00:00",
+  "session_id": "ada79c5b-0c51-42f0-b5c6-589cfea524ea",
+  "agente_responsable": "root",
+  "tipo": "Bugfix",
+  "referencias_entradas": [
+    "ada7-FEAT-0001",
+    "ada7-INC-0001"
+  ],
+  "prev_id": "ada7-INC-0001",
+  "prev_hash": "500ef716a6539ce45b2217435b28cb07a4fa2c92fcda65fb2f52206c0a620d10",
+  "ticket_or_adr": "docs/engineering/codex-web-sprints.md#adr-scope-active-tool-results-by-pi-session--2026-09-27",
+  "evidencia": {
+    "head_commit": "1dfa5ad8352b61ad4373834a724ed1f64c740d57",
+    "worktree_files": {
+      "lib/codex-web/tool-recovery.ts": "19c4ddbbe1c4fbdefdd1a06625413c3e953b369524b5c017913c22bbfaadbca0",
+      "tests/codex-web-tool-recovery.test.ts": "8deaf289ef68946f0a77f58886afc42b75878fd19edef2caa2b3ce1cd30ddf54",
+      "docs/engineering/codex-web-sprints.md": "81d0a05b9993cddbeef0d251624641e03523157941664483c3205784c15e4077"
+    },
+    "runs": {
+      "/tmp/tool-scope-red.log": "5165db5b00c999877620845646eb88e8febbb83f69450550e0ca32983eafb30a",
+      "/tmp/tool-scope-green.log": "ce637d42f7f122daacbbbcc97e1d34eed5dc84485d305dc3e26a9ec5817e75b1",
+      "/tmp/tool-scope-final-focused.log": "1f3f8623da222cc232de2fefc212e69199e09e11add76c7b8e4e1b2437f2e392",
+      "/tmp/tool-scope-final-packed.log": "ad404bb1a08857ca772a85620f104f2f67e50246102cc52f2009b42424c982bf",
+      "/tmp/tool-scope-final-types.log": "c10946283b67fa60e1770b5dfc9b9be078f3b8d0ba34dd6d060643cb1db0efb7",
+      "/tmp/tool-scope-final-full.log": "2b2b6036f072477e592a149719059323c54669b4335449409b46fa8e6043b368",
+      "/tmp/tool-scope-final-composed.log": "f72957a3c76c6d0b77e2185672902d8d6ecfb5f4326e4e5f4ef16f928515384e",
+      "/tmp/tool-scope-final-generated.log": "1da92fc1fb47f97942cffaeadf303e70c7201a004419fce9e8774346b2710003",
+      "/tmp/tool-scope-final-package.log": "565b80a1bc3eb00e4204bfb2cfa40f3f7985af0d17cdfa9612ae293340629d94",
+      "/tmp/tool-scope-final-diff.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "full_suite": {
+      "passed": 4126,
+      "skipped": 41,
+      "failed": 0,
+      "total": 4167
+    },
+    "scope": "Same-ID concurrent Pi tool calls and results remain isolated by recovery scope.",
+    "review": "Independent read-only review passed 15 tool-recovery cases; shared writable worktree.",
+    "merge_gate": "Unsigned; no mechanical R/A/V isolation or merge certification."
+  },
+  "aprobaciones": [],
+  "estado": "Vigente",
+  "entry_hash": "955e8be5c52cd9aa96c8b6620d042e5e225cfa6ed353fe2c8773081b72fd217c"
+}
