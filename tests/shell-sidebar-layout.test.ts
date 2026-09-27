@@ -294,6 +294,18 @@ test("rail orders unified Status, agents, TODO without standalone changes", (t) 
 	assert.deepEqual(rail(f).render(50).map((line) => line.trim()), ["✿ Gentle Shell ✿", "", "Status", "", "agents", "", "todo"]);
 });
 
+test("fullscreen rail renders the Facts card that it suppresses below the editor", (t) => {
+  const f = fixture();
+  const facts = sidebarPart(f.tui, "facts", {
+    render: (_width: number) => ["Facts card"],
+    invalidate() {},
+  });
+  t.after(installSidebar(f.tui, theme));
+
+  assert.match(rail(f).render(50).join("\n"), /Facts card/);
+  assert.deepEqual(facts.render(50), []);
+});
+
 test("branding belongs to scroll content before Status, never transcript or narrow bottom", (t) => {
 	const f = fixture();
 	t.after(installSidebar(f.tui, theme));
