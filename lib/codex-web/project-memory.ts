@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, open, readFile, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { withFactsWriterLock } from "../facts/facts-lock.ts";
 import { join } from "node:path";
 
 const MAX_SUMMARY_BYTES = 1024 * 1024;
-const MAX_PROJECT_SCAN_BYTES = 64 * 1024 * 1024;
 const MAX_SESSION_MEMORY_BYTES = 16 * 1024 * 1024;
-const MAX_MEMORY_FILES = 256;
-const MAX_MEMORY_RECORDS = 4096;
 
 interface ProjectMemoryRecord {
   version: 1;
@@ -135,20 +134,12 @@ export class ProjectMemory {
     return new ProjectMemory(canonicalWorkspace, directory, file, projectId, sessionId);
   }
 
-  private async assertContainedPath(targetPath: string): Promise<void> {
-    const canonicalTarget = await realpath(targetPath).catch(() => targetPath);
-    const prefix = this.workspaceRoot.endsWith("/") ? this.workspaceRoot : this.workspaceRoot + "/";
-    if (canonicalTarget !== this.workspaceRoot && !canonicalTarget.startsWith(prefix)) {
-      throw new Error(`Project memory path escapes authorized workspace root via symlink: ${targetPath}`);
-    }
-  }
-
   private async ensureContainedDirectory(): Promise<void> {
     const agentsDir = join(this.workspaceRoot, ".agents");
     try {
       const agentsLstat = await lstat(agentsDir);
       if (agentsLstat.isSymbolicLink()) {
-        await this.assertContainedPath(agentsDir);
+        throw new Error("Project memory refuses symlink directories that could escape its workspace");
       }
     } catch (error: any) {
       if (error?.code !== "ENOENT") throw error;
@@ -157,7 +148,7 @@ export class ProjectMemory {
     try {
       const memLstat = await lstat(this.directory);
       if (memLstat.isSymbolicLink()) {
-        await this.assertContainedPath(this.directory);
+        throw new Error("Project memory refuses symlink directories that could escape its workspace");
       }
     } catch (error: any) {
       if (error?.code !== "ENOENT") throw error;
@@ -219,21 +210,31 @@ export class ProjectMemory {
     const record: ProjectMemoryRecord = { id: digest(payload), ...payload };
     const line = `${JSON.stringify(record)}\n`;
     await this.ensureContainedDirectory();
-    const handle = await open(this.file, "a", 0o600).catch(async error => {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      await mkdir(this.directory, { recursive: true, mode: 0o700 });
-      await this.ensureContainedDirectory();
-      return open(this.file, "a", 0o600);
-    });
-    try {
-      const size = (await handle.stat()).size;
-      if (size + Buffer.byteLength(line, "utf8") > MAX_SESSION_MEMORY_BYTES) {
-        throw new Error("Project memory session retention budget exceeded");
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await this.ensureContainedDirectory();
+    await withFactsWriterLock(this.directory, async () => {
+      const handle = await open(
+        this.file,
+        constants.O_RDWR | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        0o600,
+      );
+      try {
+        const info = await handle.stat();
+        if (!info.isFile()) throw new Error("Project memory requires a regular session file");
+        if (info.size + Buffer.byteLength(line, "utf8") > MAX_SESSION_MEMORY_BYTES) {
+          throw new Error("Project memory session retention budget exceeded");
+        }
+        if (info.size > 0) {
+          const tail = Buffer.alloc(1);
+          await handle.read(tail, 0, 1, info.size - 1);
+          if (tail[0] !== 10) throw new Error("Project memory has an incomplete tail; restore it from the session transcript");
+        }
+        await handle.writeFile(line, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
       }
-      await handle.writeFile(line, "utf8");
-    } finally {
-      await handle.close();
-    }
+    });
     return {
       id: record.id,
       kind: record.kind,
@@ -243,33 +244,42 @@ export class ProjectMemory {
     };
   }
 
-  private async records(): Promise<ProjectMemoryRecord[]> {
-    const names = (await readdir(this.directory).catch(() => []))
-      .filter(name => /^[a-f0-9]{64}\.jsonl$/.test(name))
-      .sort()
-      .slice(0, MAX_MEMORY_FILES);
-    const records = new Map<string, ProjectMemoryRecord>();
-    let scannedBytes = 0;
-    for (const name of names) {
-      const path = join(this.directory, name);
-      const size = (await stat(path).catch(() => undefined))?.size;
-      if (size === undefined || size > MAX_PROJECT_SCAN_BYTES || scannedBytes + size > MAX_PROJECT_SCAN_BYTES) continue;
-      scannedBytes += size;
-      const text = await readFile(path, "utf8").catch(() => "");
+  private async records(branchEntryIds?: ReadonlySet<string>, signal?: AbortSignal): Promise<ProjectMemoryRecord[]> {
+    signal?.throwIfAborted();
+    await this.ensureContainedDirectory();
+    const handle = await open(this.file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (!handle) return [];
+    try {
+      const info = await handle.stat();
+      if (!info.isFile() || info.size > MAX_SESSION_MEMORY_BYTES) {
+        throw new Error("Project memory session file is invalid or exceeds its retention budget");
+      }
+      const text = await handle.readFile({ encoding: "utf8", signal });
+      const records = new Map<string, ProjectMemoryRecord>();
       for (const line of text.split("\n")) {
-        if (!line || records.size >= MAX_MEMORY_RECORDS) break;
+        signal?.throwIfAborted();
+        if (!line) continue;
+        let parsed: unknown;
         try {
-          const parsed: unknown = JSON.parse(line);
-          if (validRecord(parsed, this.projectId)) records.set(parsed.id, parsed);
+          parsed = JSON.parse(line);
         } catch {
-          // A torn or corrupt line is unavailable evidence, never partial truth.
+          continue;
+        }
+        if (validRecord(parsed, this.projectId) && parsed.session_id === this.sessionId
+          && (!branchEntryIds || branchEntryIds.has(parsed.source_entry_id))) {
+          records.set(parsed.id, parsed);
         }
       }
+      return [...records.values()].sort((a, b) => b.observed_at - a.observed_at || a.id.localeCompare(b.id));
+    } finally {
+      await handle.close();
     }
-    return [...records.values()].sort((a, b) => b.observed_at - a.observed_at || a.id.localeCompare(b.id));
   }
 
-  async search(query: string, offset: number, limit: number): Promise<{
+  async search(query: string, offset: number, limit: number, branchEntryIds?: ReadonlySet<string>, signal?: AbortSignal): Promise<{
     results: ProjectMemoryReference[];
     total: number;
     next_offset: number | null;
@@ -277,7 +287,7 @@ export class ProjectMemory {
     if (!Number.isSafeInteger(offset) || offset < 0) throw new RangeError("Memory offset must be a nonnegative integer");
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new RangeError("Memory limit must be between 1 and 20");
     const needle = query.trim().toLocaleLowerCase("en");
-    const matches = (await this.records()).filter(record => !needle || record.summary.toLocaleLowerCase("en").includes(needle));
+    const matches = (await this.records(branchEntryIds, signal)).filter(record => !needle || record.summary.toLocaleLowerCase("en").includes(needle));
     const results = matches.slice(offset, offset + limit).map(record => ({
       id: record.id,
       kind: record.kind,
@@ -289,7 +299,7 @@ export class ProjectMemory {
     return { results, total: matches.length, next_offset: nextOffset < matches.length ? nextOffset : null };
   }
 
-  async read(id: string, offsetChars: number, limitChars: number): Promise<{
+  async read(id: string, offsetChars: number, limitChars: number, branchEntryIds?: ReadonlySet<string>, signal?: AbortSignal): Promise<{
     reference: ProjectMemoryReference;
     text: string;
     offset_chars: number;
@@ -300,9 +310,10 @@ export class ProjectMemory {
     if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("Invalid project memory ID");
     if (!Number.isSafeInteger(offsetChars) || offsetChars < 0) throw new RangeError("Memory character offset must be nonnegative");
     if (!Number.isSafeInteger(limitChars) || limitChars < 1 || limitChars > 12_000) throw new RangeError("Memory character limit must be between 1 and 12000");
-    const record = (await this.records()).find(candidate => candidate.id === id);
+    const record = (await this.records(branchEntryIds, signal)).find(candidate => candidate.id === id);
     if (!record) return undefined;
-    const end = Math.min(record.summary.length, offsetChars + limitChars);
+    const characters = Array.from(record.summary);
+    const end = Math.min(characters.length, offsetChars + limitChars);
     return {
       reference: {
         id: record.id,
@@ -311,9 +322,9 @@ export class ProjectMemory {
         source_entry_id: record.source_entry_id,
         ...(record.facts_receipt ? { facts_digest: record.facts_receipt.digest } : {}),
       },
-      text: record.summary.slice(offsetChars, end),
+      text: characters.slice(offsetChars, end).join(""),
       offset_chars: offsetChars,
-      next_offset_chars: end < record.summary.length ? end : null,
+      next_offset_chars: end < characters.length ? end : null,
       digest_verified: true,
       ...(record.facts_receipt ? { facts_receipt: record.facts_receipt } : {}),
     };

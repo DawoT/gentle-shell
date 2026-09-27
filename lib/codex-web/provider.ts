@@ -4,7 +4,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { ProviderConfig } from "@earendil-works/pi-coding-agent";
 import { CodexWebClient } from "./client.ts";
 import { ToolReceipts } from "./tool-receipts.ts";
-import { inspectContextBudget, type ContextBudgetSnapshot } from "./context-budget.ts";
+import { inspectContextBudget, validateContextLimits, type ContextBudgetSnapshot } from "./context-budget.ts";
 
 export interface CodexWebProviderOptions {
   origin: string;
@@ -75,12 +75,6 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
     })),
     streamSimple(model, context, options = {}) {
       const sessionId = options.sessionId ?? settings.sessionId;
-      contexts.set(sessionId, inspectContextBudget({
-        context,
-        contextWindow: model.contextWindow,
-        maxOutputTokens: model.maxTokens,
-        targetInputTokens: settings.contextTargetTokens,
-      }));
       const latestUser = context.messages.findLast(message => message.role === "user");
       const fingerprint = createHash("sha256").update(JSON.stringify(latestUser ?? null)).digest("hex");
       const contextDigest = createHash("sha256").update(JSON.stringify({ model: model.id, context })).digest("hex");
@@ -105,6 +99,11 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
           const row = root.models.find(candidate => candidate.id === model.id);
           if (!row) throw new Error("Model is not advertised by the bridge host");
           const body = selected as Record<string, any>;
+          validateContextLimits({
+            contextWindow: model.contextWindow,
+            maxOutputTokens: body.max_output_tokens ?? model.maxTokens,
+            targetInputTokens: settings.contextTargetTokens,
+          });
           if (row.reasoningEffort) {
             const desired = body.reasoning?.effort;
             const effort = row.supportedReasoningEfforts?.includes(desired) ? desired : row.reasoningEffort;
@@ -124,6 +123,15 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
           delete payload.prompt_cache_key;
           delete payload.previous_response_id;
           payload.store = false;
+          // Validate before immutable recovery admission. A local rejection
+          // must not look like an ambiguously delivered model invocation.
+          const budget = inspectContextBudget({
+            context,
+            responsesPayload: payload,
+            contextWindow: model.contextWindow,
+            maxOutputTokens: payload.max_output_tokens ?? model.maxTokens,
+            targetInputTokens: settings.contextTargetTokens,
+          });
           if (currentTurn.cancelled) throw new Error("Host turn was cancelled; start a new user turn");
           if (currentTurn.inFlight) throw new Error("This host turn already has an active model request");
           currentTurn.inFlight = true;
@@ -147,6 +155,7 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
               currentTurn.subscriptions.set(agentSignal, cancel);
               agentSignal.addEventListener("abort", cancel, { once: true });
             }
+            contexts.set(sessionId, budget);
             return await client.request(turnId, payload, { signal: request.signal, headers: request.headers });
           } catch (error) {
             currentTurn.inFlight = false;

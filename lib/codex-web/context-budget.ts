@@ -22,6 +22,8 @@ export interface ContextBudgetSnapshot {
   target_excess_tokens: number;
   status: ContextBudgetStatus;
   estimator: "serialized_utf8_bytes_div_4";
+  measurement_scope: "normalized_transcript" | "sanitized_responses_payload";
+  component_scope: "normalized_transcript";
   components: {
     system: ContextComponent;
     user: ContextComponent;
@@ -36,19 +38,34 @@ function serializedBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
-/** Content-free request sizing. This is an estimate, never provider usage or billing data. */
-export function inspectContextBudget(options: {
-  context: TranscriptContext;
+interface ContextLimits {
   contextWindow: number;
   maxOutputTokens: number;
   targetInputTokens?: number;
-  now?: () => number;
-}): ContextBudgetSnapshot {
-  const inputCapacity = Math.max(1, options.contextWindow - options.maxOutputTokens);
+}
+
+/** Validate configuration before recovery admission or HTTP transport begins. */
+export function validateContextLimits(options: ContextLimits): void {
+  if (!Number.isSafeInteger(options.contextWindow) || options.contextWindow < 1
+    || !Number.isSafeInteger(options.maxOutputTokens) || options.maxOutputTokens < 0
+    || options.maxOutputTokens >= options.contextWindow) {
+    throw new RangeError("Model window must be positive and output reserve must be nonnegative and below the window");
+  }
   const configuredTarget = options.targetInputTokens ?? DEFAULT_TARGET_INPUT_TOKENS;
   if (!Number.isSafeInteger(configuredTarget) || configuredTarget < 1) {
     throw new RangeError("Context target must be a positive safe integer");
   }
+}
+
+/** Content-free request sizing. This is an estimate, never provider usage or billing data. */
+export function inspectContextBudget(options: ContextLimits & {
+  context: TranscriptContext;
+  responsesPayload?: Record<string, unknown>;
+  now?: () => number;
+}): ContextBudgetSnapshot {
+  validateContextLimits(options);
+  const inputCapacity = options.contextWindow - options.maxOutputTokens;
+  const configuredTarget = options.targetInputTokens ?? DEFAULT_TARGET_INPUT_TOKENS;
   const target = Math.min(configuredTarget, inputCapacity);
   const components: ContextBudgetSnapshot["components"] = {
     system: { messages: 0, bytes: 0 },
@@ -87,7 +104,7 @@ export function inspectContextBudget(options: {
     }
   }
 
-  const totalBytes = serializedBytes(options.context);
+  const totalBytes = serializedBytes(options.responsesPayload ?? options.context);
   const estimatedInputTokens = Math.ceil(totalBytes / 4);
   return {
     observed_at: options.now?.() ?? Date.now(),
@@ -103,6 +120,8 @@ export function inspectContextBudget(options: {
       ? "within_target"
       : estimatedInputTokens <= inputCapacity ? "above_target" : "overflow",
     estimator: "serialized_utf8_bytes_div_4",
+    measurement_scope: options.responsesPayload ? "sanitized_responses_payload" : "normalized_transcript",
+    component_scope: "normalized_transcript",
     components,
   };
 }

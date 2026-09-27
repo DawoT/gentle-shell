@@ -3,6 +3,16 @@ import test from "node:test";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { inspectContextBudget } from "../lib/codex-web/context-budget.ts";
 
+test("context budget rejects invalid model limits", () => {
+  for (const [contextWindow, maxOutputTokens] of [[NaN, 100], [0, 0], [1000, -1], [1000, 1000], [1000, Infinity]]) {
+    assert.throws(() => inspectContextBudget({
+      context: normalizeContext({ messages: [] }),
+      contextWindow,
+      maxOutputTokens,
+    }), RangeError);
+  }
+});
+
 test("context budget distinguishes the quality target from the hard model capacity", () => {
   const context = normalizeContext({
     messages: [{ role: "user", content: "x".repeat(800), timestamp: 1 }],

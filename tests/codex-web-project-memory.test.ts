@@ -83,10 +83,11 @@ test("ProjectMemory isolates concurrent sessions within the same project workspa
     ]);
 
     const results = await sessionA.search("", 0, 10);
-    assert.equal(results.total, 2);
-    // Ordered by observed_at descending
-    assert.equal(results.results[0].source_entry_id, "entry-b");
-    assert.equal(results.results[1].source_entry_id, "entry-a");
+    assert.equal(results.total, 1);
+    assert.equal(results.results[0].source_entry_id, "entry-a");
+    const other = await sessionB.search("", 0, 10);
+    assert.equal(other.total, 1);
+    assert.equal(other.results[0].source_entry_id, "entry-b");
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

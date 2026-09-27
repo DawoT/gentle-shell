@@ -1,10 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ToolReceipts } from "../lib/codex-web/tool-receipts.ts";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { createCodexWebProvider } from "../lib/codex-web/provider.ts";
 
 const modelRow = { id: "chatgpt-web/test", name: "Test", reasoning: true, contextWindow: 10000, maxTokens: 1000 };
+
+test("invalid output budget creates no recovery admission or model request", async () => {
+  const root = await mkdtemp(join(tmpdir(), "budget-admission-"));
+  const sessionFile = join(root, "session.jsonl");
+  let requests = 0;
+  const server = createServer(async (req, res) => {
+    for await (const _chunk of req) {
+      // Drain protocol input.
+    }
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/host/v1/sessions") {
+      res.end(JSON.stringify({ protocol: 1, session_id: "budget", token: "cap", models: [modelRow] }));
+    } else {
+      if (req.url === "/host/v1/responses") requests += 1;
+      res.end("{}");
+    }
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const provider = await createCodexWebProvider({ origin, pairingToken: "secret", cwd: root, sessionId: "primary", sessionFile });
+  try {
+    const config = provider.config;
+    const model = { ...config.models![0], provider: "gentle-codex-web", api: "openai-responses", baseUrl: config.baseUrl } as any;
+    const result = await config.streamSimple!(model, normalizeContext({
+      messages: [{ role: "user", content: "Preserve this request", timestamp: 1 }],
+    }), {
+      onPayload: (payload: any) => ({ ...payload, max_output_tokens: 10000 }),
+    }).result();
+    assert.equal(result.stopReason, "error");
+    assert.equal(requests, 0);
+    const journal = new ToolReceipts("primary", root, sessionFile);
+    assert.deepEqual((await journal.list()).receipts, [], "rejected input must not acquire immutable recovery claims");
+    assert.equal(provider.inspectContext(), undefined, "no attempted-delivery snapshot for a rejected payload");
+    assert.match(result.errorMessage ?? "", /output reserve/i, "local validation must not be reported as a transport failure");
+  } finally {
+    await provider.close();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("Pi Responses translation preserves facts tool IDs through the host continuation", async () => {
   const requests: Array<{ body: any; headers: any }> = [];
@@ -57,7 +101,10 @@ test("Pi Responses translation preserves facts tool IDs through the host continu
     let callbacks = 0;
     const controller = new AbortController();
     const first = await config.streamSimple!(model, normalizeContext({ messages: [user], tools: [tool] as any }), {
-      sessionId: "primary", signal: controller.signal, onPayload: () => { callbacks += 1; },
+      sessionId: "primary", signal: controller.signal, onPayload: (payload: any) => {
+        callbacks += 1;
+        return { ...payload, instructions: "Transport instructions " + "x".repeat(500) };
+      },
     }).result();
     const firstContext = (provider as any).inspectContext("primary");
     assert.equal(firstContext.model_context_window, 10000);
@@ -68,6 +115,8 @@ test("Pi Responses translation preserves facts tool IDs through the host continu
     assert.equal(firstContext.components.user.messages, 1);
     assert.equal(firstContext.components.tool_declarations.items, 1);
     assert.ok(firstContext.total_bytes > 0);
+    assert.equal(firstContext.total_bytes, Buffer.byteLength(JSON.stringify(requests[0].body), "utf8"));
+    assert.equal(firstContext.measurement_scope, "sanitized_responses_payload");
     assert.ok(firstContext.estimated_input_tokens > 0);
     assert.equal(JSON.stringify(firstContext).includes("Inspect login"), false);
     assert.equal(JSON.stringify(firstContext).includes("Query symbols"), false);

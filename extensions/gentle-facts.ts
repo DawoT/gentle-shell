@@ -120,6 +120,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         else historyReceipts.delete(ctx.cwd);
         historyFailures.delete(ctx.cwd);
       } catch (error) {
+        historyReceipts.delete(ctx.cwd);
         signal?.throwIfAborted();
         historyFailures.set(ctx.cwd, error instanceof Error ? error.message : "Snapshot persistence failed");
       }

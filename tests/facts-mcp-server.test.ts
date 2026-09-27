@@ -147,8 +147,9 @@ export function authenticate(sessionId: string): UserSession {
         arguments: { query: "migration" },
       });
       assert.ok(Array.isArray(memorySearchCall.content));
-      assert.match(memorySearchCall.content[0].text, /migration/);
-      assert.match(memorySearchCall.content[0].text, new RegExp(ref.id));
+      assert.equal(memorySearchCall.isError, true);
+      assert.match(memorySearchCall.content[0].text, /session_scope_required/);
+      assert.doesNotMatch(memorySearchCall.content[0].text, new RegExp(ref.id));
 
       // 5. tools/call: memory_read
       const memoryReadCall = await client.request("tools/call", {
@@ -156,7 +157,8 @@ export function authenticate(sessionId: string): UserSession {
         arguments: { id: ref.id, offset_chars: 0, limit_chars: 100 },
       });
       assert.ok(Array.isArray(memoryReadCall.content));
-      assert.match(memoryReadCall.content[0].text, /Completed migration of memory storage/);
+      assert.equal(memoryReadCall.isError, true);
+      assert.doesNotMatch(memoryReadCall.content[0].text, /Completed migration of memory storage/);
 
       // 6. tools/call: facts_query
       const queryCall = await client.request("tools/call", {
@@ -174,7 +176,7 @@ export function authenticate(sessionId: string): UserSession {
       });
       assert.ok(Array.isArray(contextStatusCall.content));
       assert.match(contextStatusCall.content[0].text, /CONTEXT & MEMORY STATUS/);
-      assert.match(contextStatusCall.content[0].text, /Verified Compaction Checkpoints: 1/);
+      assert.match(contextStatusCall.content[0].text, /session_scope_required/);
 
       // 8. Unknown method returns -32601
       await assert.rejects(
@@ -237,4 +239,3 @@ test("Facts MCP Server returns standard JSON-RPC 2.0 errors on malformed message
     await rm(workspace, { recursive: true, force: true });
   }
 });
-

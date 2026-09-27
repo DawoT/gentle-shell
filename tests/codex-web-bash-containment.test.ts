@@ -52,7 +52,7 @@ test("compaction checkpoints become digest-verified project memory", async () =>
       sessionManager: {
         getSessionId: () => "session-one",
         getSessionFile: () => join(configHome, "session-one.jsonl"),
-        getBranch: () => [{
+        getBranch: () => [{ id: "compact-one", type: "compaction" }, {
           type: "custom",
           customType: "gentle-facts-snapshot-v1",
           data: {
@@ -136,13 +136,13 @@ test("project memory isolates workspaces and tolerates concurrent session writer
       ...input("invalid-facts", "2026-09-27T17:03:00.000Z", "unreadable facts evidence"),
       factsReceipt: { digest: "invalid", root: firstProject, observedAt: 1 },
     }), /Facts receipt/);
-    assert.equal((await first.search("scheduler", 0, 20)).total, 2);
+    assert.equal((await first.search("scheduler", 0, 20)).total, 1);
     assert.equal((await isolated.search("scheduler", 0, 20)).total, 0);
 
     const [memoryFile] = readdirSync(join(firstProject, ".agents", "memory"));
     const memoryPath = join(firstProject, ".agents", "memory", memoryFile);
     appendFileSync(memoryPath, '{"id":"tampered"}\n{"torn":', "utf8");
-    assert.equal((await first.search("scheduler", 0, 20)).total, 2);
+    assert.equal((await first.search("scheduler", 0, 20)).total, 1);
     for (const file of readdirSync(join(firstProject, ".agents", "memory"))) {
       truncateSync(join(firstProject, ".agents", "memory", file), 16 * 1024 * 1024);
     }

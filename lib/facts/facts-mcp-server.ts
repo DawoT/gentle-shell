@@ -1,7 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { FactsService } from "./facts-service.ts";
-import { ProjectMemory } from "../codex-web/project-memory.ts";
 import { indexFactsCommit } from "./facts-commit.ts";
 import { analyzeFactsImpact } from "./facts-impact.ts";
 
@@ -72,7 +71,7 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: "memory_search",
-    description: "Search digest-verified project compaction checkpoints stored in .agents/memory/.",
+    description: "Session memory search requires an authorized session/branch binding; unavailable in this standalone transport.",
     inputSchema: {
       type: "object",
       properties: {
@@ -85,7 +84,7 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: "memory_read",
-    description: "Retrieve a digest-verified project memory record by SHA-256 ID.",
+    description: "Session memory read requires an authorized session/branch binding; unavailable in this standalone transport.",
     inputSchema: {
       type: "object",
       required: ["id"],
@@ -99,7 +98,7 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: "context_status",
-    description: "Report ground truth on workspace memory records and Facts indexing state.",
+    description: "Report Facts index availability and explicit limits of session memory and context telemetry in this transport.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -301,49 +300,23 @@ export class FactsMcpServer {
           return { content: [{ type: "text", text: rows.join("\n") }] };
         }
 
-        case "memory_search": {
-          const memory = await ProjectMemory.open(this.workspaceRoot, "mcp-agent");
-          const query = args.query ?? "";
-          const offset = args.offset ?? 0;
-          const limit = args.limit ?? 10;
-          const results = await memory.search(query, offset, limit);
-          if (results.results.length === 0) {
-            return { content: [{ type: "text", text: `No memory checkpoints found (total: 0).` }] };
-          }
-          const text = [
-            `Project Memory: ${results.results.length} of ${results.total} checkpoints (query: "${query}")`,
-            ...results.results.map(
-              (r) => `• [${new Date(r.observed_at).toISOString()}] ID: ${r.id}\n  Source: ${r.source_entry_id}${r.facts_digest ? ` (facts: ${r.facts_digest.slice(0, 12)})` : ""}`
-            ),
-          ].join("\n");
-          return { content: [{ type: "text", text }] };
-        }
-
-        case "memory_read": {
-          if (!args.id) throw new Error("Missing required argument: id");
-          const memory = await ProjectMemory.open(this.workspaceRoot, "mcp-agent");
-          const record = await memory.read(args.id, args.offset_chars ?? 0, args.limit_chars ?? 2000);
-          if (!record) {
-            return { isError: true, content: [{ type: "text", text: `Memory checkpoint ${args.id} not found.` }] };
-          }
-          const text = [
-            `Checkpoint: ${record.reference.id} (SHA-256 verified)`,
-            `Observed: ${new Date(record.reference.observed_at).toISOString()}`,
-            `Chars: ${record.offset_chars} to ${record.offset_chars + record.text.length} (next: ${record.next_offset_chars ?? "end"})`,
-            "---",
-            record.text,
-          ].join("\n");
-          return { content: [{ type: "text", text }] };
-        }
+        case "memory_search":
+        case "memory_read":
+          return {
+            isError: true,
+            content: [{
+              type: "text",
+              text: "session_scope_required: this standalone MCP transport has no authorized session/branch binding. Use the session-bound Pi memory tools.",
+            }],
+          };
 
         case "context_status": {
-          const memory = await ProjectMemory.open(this.workspaceRoot, "mcp-agent");
-          const mem = await memory.search("", 0, 1);
           const block = this.factsService.getSummaryPromptBlock();
           const text = [
             `[CONTEXT & MEMORY STATUS]`,
             `- Workspace: ${this.workspaceRoot}`,
-            `- Verified Compaction Checkpoints: ${mem.total}`,
+            "- Memory: unavailable (session_scope_required)",
+            "- Request token usage: unavailable in this standalone Facts transport",
             `- Facts Index: ${block ? "available" : "idle"}`,
           ].join("\n");
           return { content: [{ type: "text", text }] };

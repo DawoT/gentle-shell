@@ -138,6 +138,14 @@ test("facts_status exposes the current snapshot digest for project-memory valida
     const result = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
     assert.match(result.details.historyReceipt.digest, /^[a-f0-9]{64}$/);
     assert.match(result.content[0].text, /Snapshot digest: [a-f0-9]{64}/);
+    (pi as any).appendEntry = () => {
+      throw new Error("Transcript storage unavailable");
+    };
+    await writeFile(join(dir, "math.ts"), "export function changed(): string { return 'new'; }\n");
+    const failed = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(failed.details.historyReceipt, undefined);
+    assert.match(failed.details.historyError, /Transcript storage unavailable/);
+    assert.doesNotMatch(failed.content[0].text, /Snapshot digest:/);
   } finally {
     await cleanup();
   }

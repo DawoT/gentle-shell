@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ProjectMemory } from "../lib/codex-web/project-memory.ts";
 import {
   createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
   ModelRuntime, SessionManager, SettingsManager,
@@ -45,7 +46,7 @@ test("installed Pi loads the bridge extension, registers its model and revokes i
       emit({ type: "response.created", response: { id: `resp_${round}` } });
       emit({ type: "response.output_item.added", output_index: 0, item });
       emit({ type: "response.output_item.done", output_index: 0, item });
-      emit({ type: "response.completed", response: { id: `resp_${round}`, status: "completed", output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } });
+      emit({ type: "response.completed", response: { id: `resp_${round}`, status: "completed", output: [item], usage: { input_tokens: round === 5 ? 9500 : 1, output_tokens: 1, total_tokens: round === 5 ? 9501 : 2 } } });
       res.end();
     } else if (req.url === "/host/v1/sessions/runtime/recovery") {
       assert.equal(req.headers.authorization, "Bearer runtime-cap");
@@ -64,13 +65,14 @@ test("installed Pi loads the bridge extension, registers its model and revokes i
     } else res.end("{}");
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  const names = ["GENTLE_CODEX_WEB_URL", "GENTLE_CODEX_WEB_TOKEN", "GENTLE_CODEX_WEB_CONTEXT_TARGET_TOKENS", "CODEX_CHATGPT_WEB_HOME", "GENTLE_CODEX_WEB"];
+  const names = ["GENTLE_CODEX_WEB_AUTO_COMPACT", "GENTLE_CODEX_WEB_URL", "GENTLE_CODEX_WEB_TOKEN", "GENTLE_CODEX_WEB_CONTEXT_TARGET_TOKENS", "CODEX_CHATGPT_WEB_HOME", "GENTLE_CODEX_WEB"];
   const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
   process.env.GENTLE_CODEX_WEB_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   process.env.GENTLE_CODEX_WEB_TOKEN = "runtime-pairing";
   process.env.CODEX_CHATGPT_WEB_HOME = join(root, "empty-home");
   delete process.env.GENTLE_CODEX_WEB;
   delete process.env.GENTLE_CODEX_WEB_CONTEXT_TARGET_TOKENS;
+  delete process.env.GENTLE_CODEX_WEB_AUTO_COMPACT;
   t.after(() => {
     for (const name of names) {
       if (previous[name] === undefined) delete process.env[name];
@@ -98,7 +100,7 @@ export default function (pi) {
     runtime = await createAgentSessionRuntime(async ({ cwd, sessionManager, sessionStartEvent }) => {
       const services = await createAgentSessionServices({
         cwd, agentDir: root, modelRuntime,
-        settingsManager: SettingsManager.inMemory({ retry: { enabled: false }, compaction: { enabled: false } }),
+        settingsManager: SettingsManager.inMemory({ retry: { enabled: false }, compaction: { enabled: false, keepRecentTokens: 1, reserveTokens: 1000 } }),
         resourceLoaderOptions: {
           noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
           additionalExtensionPaths: [extensionPath],
@@ -141,6 +143,28 @@ export default function (pi) {
     await runtime.session.prompt("/web-bridge recovery");
     assert.equal(methods.filter(method => method === "GET /host/v1/sessions/runtime/recovery").length, 1);
     assert.equal(requests.length, 4, "explicit status command must not submit another model round");
+    process.env.GENTLE_CODEX_WEB_AUTO_COMPACT = "1";
+    await runtime.session.prompt("Preserve the permission boundary and continue.");
+    const deadline = Date.now() + 10000;
+    while (!runtime.session.sessionManager.getEntries().some(entry => entry.type === "compaction") && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const checkpoint = runtime.session.sessionManager.getEntries().find(entry => entry.type === "compaction");
+    assert.ok(checkpoint, "native Pi compaction must persist a transcript entry");
+    assert.ok(requests.length > 5, "native compaction must call the configured provider");
+    assert.match(JSON.stringify(requests[5]), /unresolved obligations/);
+    assert.ok(runtime.session.sessionManager.getEntries().some(entry => entry.type === "message" && JSON.stringify(entry).includes("Inspect double")), "original transcript remains available");
+    const memory = await ProjectMemory.open(root, runtime.session.sessionManager.getSessionId());
+    const branch = new Set(runtime.session.sessionManager.getBranch().map(entry => entry.id));
+    let references = await memory.search("", 0, 10, branch);
+    while (references.total === 0 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      references = await memory.search("", 0, 10, branch);
+    }
+    assert.equal(references.total, 1, "native checkpoint is retrievable on its current branch");
+    await runtime.session.prompt("Use the saved summary to continue.");
+    assert.doesNotMatch(JSON.stringify(requests.at(-1)), /Inspect double and verify the permission boundary/);
+    assert.match(JSON.stringify(requests.at(-1)), /Verified symbols and respected denial/);
     await runtime.dispose();
     runtime = undefined;
     assert.ok(methods.includes("DELETE /host/v1/sessions/runtime"));
