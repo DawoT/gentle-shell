@@ -1,64 +1,92 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFactsFile } from "./facts-limits.ts";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExecutionReceipts } from "./facts-types.ts";
 
-export async function extractExecutionReceipts(workspaceRoot: string): Promise<ExecutionReceipts> {
-	const receipts: ExecutionReceipts = {
-		dependencies: {},
-		devDependencies: {},
-	};
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 
-	const pkgPath = join(workspaceRoot, "package.json");
-	if (!existsSync(pkgPath)) {
-		return receipts;
-	}
+type Manifest = Record<string, unknown>;
 
-	try {
-		const raw = await readFile(pkgPath, "utf8");
-		const pkg = JSON.parse(raw);
+function record(value: unknown): value is Manifest {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
-		// 1. Detect package manager
-		let pm = "npm";
-		if (typeof pkg.packageManager === "string") {
-			receipts.packageManager = pkg.packageManager;
-			pm = pkg.packageManager.split("@")[0] || "npm";
-		} else if (existsSync(join(workspaceRoot, "pnpm-lock.yaml"))) {
-			receipts.packageManager = "pnpm";
-			pm = "pnpm";
-		} else if (existsSync(join(workspaceRoot, "yarn.lock"))) {
-			receipts.packageManager = "yarn";
-			pm = "yarn";
-		} else if (existsSync(join(workspaceRoot, "bun.lockb")) || existsSync(join(workspaceRoot, "bun.lock"))) {
-			receipts.packageManager = "bun";
-			pm = "bun";
-		} else if (existsSync(join(workspaceRoot, "package-lock.json"))) {
-			receipts.packageManager = "npm";
-			pm = "npm";
-		}
+function strings(value: unknown, field: string): Record<string, string> {
+  if (value === undefined) return {};
+  if (!record(value) || Object.values(value).some((entry) => typeof entry !== "string")) {
+    throw new Error(`Invalid ${field}`);
+  }
+  return value as Record<string, string>;
+}
 
-		// 2. Resolve verified commands
-		const scripts = pkg.scripts || {};
-		if (scripts.test) {
-			receipts.testCommand = pm === "npm" ? "npm test" : `${pm} test`;
-		}
-		if (scripts.build) {
-			receipts.buildCommand = `${pm} run build`;
-		}
-		if (scripts.lint) {
-			receipts.lintCommand = `${pm} run lint`;
-		}
+async function readManifest(path: string, signal?: AbortSignal): Promise<Manifest | undefined> {
+  signal?.throwIfAborted();
+  try {
+    const content = await readFactsFile(path, MAX_MANIFEST_BYTES, signal);
+    const parsed: unknown = JSON.parse(content.toString("utf8"));
+    if (!record(parsed)) throw new Error("Manifest must be an object");
+    strings(parsed.scripts, "scripts");
+    strings(parsed.dependencies, "dependencies");
+    strings(parsed.devDependencies, "devDependencies");
+    if (parsed.packageManager !== undefined &&
+      (typeof parsed.packageManager !== "string" || !/^(npm|pnpm|yarn|bun)(@[^\s]+)?$/.test(parsed.packageManager))) {
+      throw new Error("Unsupported packageManager");
+    }
+    return parsed;
+  } catch (error) {
+    signal?.throwIfAborted();
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new Error(`Invalid ${path}`, { cause: error });
+  }
+}
 
-		// 3. Collect dependencies
-		if (pkg.dependencies && typeof pkg.dependencies === "object") {
-			receipts.dependencies = { ...pkg.dependencies };
-		}
-		if (pkg.devDependencies && typeof pkg.devDependencies === "object") {
-			receipts.devDependencies = { ...pkg.devDependencies };
-		}
-	} catch {
-		// Return empty receipts on JSON error
-	}
-
-	return receipts;
+export async function extractExecutionReceipts(
+  workspaceRoot: string,
+  cwd: string = workspaceRoot,
+  options: { signal?: AbortSignal } = {},
+): Promise<ExecutionReceipts> {
+  const { signal } = options;
+  signal?.throwIfAborted();
+  const root = resolve(workspaceRoot);
+  let directory = resolve(cwd);
+  const displacement = relative(root, directory);
+  if (isAbsolute(displacement) || displacement === ".." || displacement.startsWith(`..${sep}`)) {
+    throw new Error("Command directory is outside repository root");
+  }
+  let selected: { directory: string; manifest: Manifest } | undefined;
+  let manager: string | undefined;
+  while (true) {
+    const manifest = await readManifest(join(directory, "package.json"), signal);
+    if (manifest && !selected) selected = { directory, manifest };
+    if (!manager && typeof manifest?.packageManager === "string") manager = manifest.packageManager;
+    if (!manager) {
+      for (const [lockfile, candidate] of [
+        ["pnpm-lock.yaml", "pnpm"],
+        ["yarn.lock", "yarn"],
+        ["bun.lock", "bun"],
+        ["bun.lockb", "bun"],
+        ["package-lock.json", "npm"],
+      ]) {
+        if (existsSync(join(directory, lockfile))) {
+          manager = candidate;
+          break;
+        }
+      }
+    }
+    if (directory === root) break;
+    directory = dirname(directory);
+  }
+  if (!selected) return { dependencies: {}, devDependencies: {} };
+  const scripts = strings(selected.manifest.scripts, "scripts");
+  const pm = (manager ?? "npm").split("@")[0];
+  return {
+    commandCwd: relative(root, selected.directory).split(sep).join("/") || ".",
+    packagePath: relative(root, join(selected.directory, "package.json")).split(sep).join("/"),
+    packageManager: manager ?? "npm",
+    testCommand: scripts.test?.trim() ? `${pm} test` : undefined,
+    buildCommand: scripts.build?.trim() ? `${pm} run build` : undefined,
+    lintCommand: scripts.lint?.trim() ? `${pm} run lint` : undefined,
+    dependencies: strings(selected.manifest.dependencies, "dependencies"),
+    devDependencies: strings(selected.manifest.devDependencies, "devDependencies"),
+  };
 }

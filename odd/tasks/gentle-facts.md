@@ -13,7 +13,7 @@ Coding agents currently spend 30,000–80,000 tokens and 1–3 minutes per sessi
 
 ## Why
 
-Compilers, AST parsers, and Git are 100% deterministic and cost 0 LLM tokens. By maintaining an in-memory and disk-persisted fact cache addressed by Git object hashes (`git ls-files -s`), the harness can answer symbol, contract, and test runner queries in < 20 ms with zero hallucination.
+AST parsers and Git can build a source index without LLM generation. The implementation refreshes Git state before answering tools, so total latency includes repository scanning and depends on repository size. Cached facts avoid repeated source parsing; they do not guarantee semantic correctness or a fixed response time.
 
 ## Scope
 
@@ -85,3 +85,16 @@ Compilers, AST parsers, and Git are 100% deterministic and cost 0 LLM tokens. By
   - [x] Verify full facts test suite passes (`node --experimental-strip-types --test tests/facts-*.test.ts`: 26/26 tests pass).
   - [x] Verify typecheck clean (`node scripts/check-types.mjs`: 0 regressions).
   - [x] Verify runtime modules check (`node scripts/build-runtime-modules.mjs --check`: 0 regressions).
+
+## Staff remediation — 2026-09-27
+
+The earlier phase counts above are historical implementation checks. Current verification commands are documented in `docs/gentle-facts.md`.
+
+- [x] Parse and hash the same bytes; serialize publication across service instances and Node processes; reload disk state under the writer lock.
+- [x] Preserve generic/async arrow signatures and resolve local export aliases without inventing external declarations.
+- [x] Bound source reads, file counts, cache reads/writes and tool responses; propagate cancellation and expose pagination.
+- [x] Resolve the nearest monorepo package and report the command working directory.
+- [x] Expose refresh state, last successful refresh, failure hints and cache load outcomes in tools and the Facts card.
+- [x] Exercise the production-installed package in a real Pi SDK session without a provider call; supply reproducible performance measurements.
+
+Evidence: `tests/facts-*.test.ts`, `tests/support/facts-packed-session.mjs`, `scripts/test-facts-packed.mjs`, and `docs/evidence/gentle-facts-benchmark.json`.

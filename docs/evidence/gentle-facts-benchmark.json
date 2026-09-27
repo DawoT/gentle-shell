@@ -1,0 +1,290 @@
+{
+  "generatedAt": "2026-09-27T01:28:40.157Z",
+  "node": "v26.10.0",
+  "platform": "linux",
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+  "sourceSha256": "43ce8a78a4049550ebe9e343c846af7c66f567f91961f13d09958e9d37b6fa25",
+  "samplesPerSize": 3,
+  "note": "Synthetic repositories; timings are observations, not a production SLA. Memory is sampled after each phase; process peak RSS includes previous phases.",
+  "repositories": [
+    {
+      "fileCount": 25,
+      "sourceBytes": 8743,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 83.66,
+            "heapUsedMiB": 20.43,
+            "rssMiB": 135.43,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 45.03,
+            "heapUsedMiB": 18.69,
+            "rssMiB": 135.68,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 35.95,
+            "heapUsedMiB": 18.99,
+            "rssMiB": 135.68,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 41.83,
+            "heapUsedMiB": 20.6,
+            "rssMiB": 136.31,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 22.03,
+            "heapUsedMiB": 18.85,
+            "rssMiB": 136.43,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 20.32,
+            "heapUsedMiB": 19.14,
+            "rssMiB": 136.56,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 49.15,
+            "heapUsedMiB": 21.1,
+            "rssMiB": 136.68,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 25,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 21.66,
+            "heapUsedMiB": 18.96,
+            "rssMiB": 136.68,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 0,
+            "cachedCount": 25,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 23.91,
+            "heapUsedMiB": 19.23,
+            "rssMiB": 136.68,
+            "processPeakRssMiB": 141.76,
+            "indexedCount": 1,
+            "cachedCount": 24,
+            "deletedCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "fileCount": 250,
+      "sourceBytes": 89291,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 116.05,
+            "heapUsedMiB": 21.22,
+            "rssMiB": 141.81,
+            "processPeakRssMiB": 141.81,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 22.6,
+            "heapUsedMiB": 21.54,
+            "rssMiB": 142.81,
+            "processPeakRssMiB": 142.81,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 31.32,
+            "heapUsedMiB": 23.12,
+            "rssMiB": 142.81,
+            "processPeakRssMiB": 142.81,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 126.82,
+            "heapUsedMiB": 23.82,
+            "rssMiB": 147.68,
+            "processPeakRssMiB": 147.68,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 21.77,
+            "heapUsedMiB": 21.64,
+            "rssMiB": 147.68,
+            "processPeakRssMiB": 147.68,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 32.16,
+            "heapUsedMiB": 23.28,
+            "rssMiB": 147.68,
+            "processPeakRssMiB": 147.68,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 110.82,
+            "heapUsedMiB": 18.85,
+            "rssMiB": 143.85,
+            "processPeakRssMiB": 148.06,
+            "indexedCount": 250,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 24.68,
+            "heapUsedMiB": 15.86,
+            "rssMiB": 143.85,
+            "processPeakRssMiB": 148.06,
+            "indexedCount": 0,
+            "cachedCount": 250,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 42.18,
+            "heapUsedMiB": 17.54,
+            "rssMiB": 143.85,
+            "processPeakRssMiB": 148.06,
+            "indexedCount": 1,
+            "cachedCount": 249,
+            "deletedCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "fileCount": 2500,
+      "sourceBytes": 908289,
+      "samples": [
+        {
+          "cold": {
+            "elapsedMs": 1320.72,
+            "heapUsedMiB": 26.58,
+            "rssMiB": 167.46,
+            "processPeakRssMiB": 167.46,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 119.9,
+            "heapUsedMiB": 33.53,
+            "rssMiB": 175.34,
+            "processPeakRssMiB": 175.34,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 159.35,
+            "heapUsedMiB": 20.04,
+            "rssMiB": 190.46,
+            "processPeakRssMiB": 190.46,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 1389.7,
+            "heapUsedMiB": 37.2,
+            "rssMiB": 190.14,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 108.71,
+            "heapUsedMiB": 33.43,
+            "rssMiB": 194.36,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 150.8,
+            "heapUsedMiB": 27.16,
+            "rssMiB": 191.07,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        },
+        {
+          "cold": {
+            "elapsedMs": 1255.37,
+            "heapUsedMiB": 40.81,
+            "rssMiB": 191.43,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 2500,
+            "cachedCount": 0,
+            "deletedCount": 0
+          },
+          "warm": {
+            "elapsedMs": 65.26,
+            "heapUsedMiB": 33.16,
+            "rssMiB": 198.3,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 0,
+            "cachedCount": 2500,
+            "deletedCount": 0
+          },
+          "incremental": {
+            "elapsedMs": 100.45,
+            "heapUsedMiB": 48.73,
+            "rssMiB": 199.93,
+            "processPeakRssMiB": 200.59,
+            "indexedCount": 1,
+            "cachedCount": 2499,
+            "deletedCount": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -52,8 +52,11 @@
 		"build:runtime-modules": "node scripts/build-runtime-modules.mjs --write",
 		"check:runtime-modules": "node scripts/build-runtime-modules.mjs --check",
 		"test:packed-package": "node scripts/test-packed-runner.mjs",
+		"test:facts": "node --experimental-strip-types --test tests/facts-*.test.ts",
+		"test:facts:packed": "node scripts/test-facts-packed.mjs",
+		"benchmark:facts": "node --expose-gc --experimental-strip-types scripts/benchmark-facts.mjs",
 		"prepack": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs",
-		"prepublishOnly": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs && pnpm run test:packed-package",
+		"prepublishOnly": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs && pnpm run test:packed-package && pnpm run test:facts:packed",
 		"typecheck": "node scripts/check-types.mjs"
 	},
 	"pi": {
@@ -74,7 +77,8 @@
 	"dependencies": {
 		"@earendil-works/pi-ai": "0.87.1",
 		"@earendil-works/pi-tui": "0.87.1",
-		"@heyhuynhgiabuu/pi-pretty": "0.6.27"
+		"@heyhuynhgiabuu/pi-pretty": "0.6.27",
+		"typescript": "^5.9.3"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": ">=0.85.1",
@@ -87,8 +91,7 @@
 	},
 	"devDependencies": {
 		"@earendil-works/pi-coding-agent": "0.87.1",
-		"@types/node": "^24.13.3",
-		"typescript": "^5.9.3"
+		"@types/node": "^24.13.3"
 	},
 	"packageManager": "pnpm@11.1.1"
 }
