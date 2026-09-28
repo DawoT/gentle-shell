@@ -143,3 +143,81 @@ test("separate extension loaders share only the active session's ODD phase and r
 		editor?.dispose();
 	}
 });
+
+// The label follows the primary session's own tool activity without any
+// gentle_odd_phase call; an explicit report still refines it.
+test("tool activity in the primary session drives the working label across extension loaders", async () => {
+	const aiLoader = createJiti(import.meta.url, { moduleCache: false });
+	const shellLoader = createJiti(import.meta.url, { moduleCache: false });
+	const { createGentleAiExtension } = await aiLoader.import<typeof import("../extensions/gentle-ai.ts")>("../extensions/gentle-ai.ts");
+	const { default: shell } = await shellLoader.import<typeof import("../extensions/gentle-shell.ts")>("../extensions/gentle-shell.ts");
+	const registry = (await aiLoader.import<typeof import("../lib/odd-phase.ts")>("../lib/odd-phase.ts")).oddPhaseRegistry;
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
+	const pi = {
+		on(name: string, fn: (event: unknown, ctx: unknown) => unknown) { handlers.set(name, [...(handlers.get(name) ?? []), fn]); },
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {}, appendEntry() {},
+		events: { on: () => () => {}, emit() {} },
+		exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false }),
+	};
+	createGentleAiExtension({ nativeReviewCli: null } as never)(pi as never);
+	shell(pi as never, {}, { resolveWorktree: (path: string) => ({ root: path, commonDir: path }), gitRunner: () => async () => ({ stdout: "", stderr: "", code: 0, killed: false }), devBinary: () => undefined } as never);
+	const sessionId = "tool-activity-loader-test";
+	let editorFactory: ((tui: unknown, theme: unknown, bindings: unknown) => { render(width: number): string[]; setAnimationPolicy(policy: string): void; dispose(): void }) | undefined;
+	const ui = {
+		theme: { fg: (_color: string, text: string) => text, bold: (text: string) => text },
+		setFooter() {}, setWidget() {}, setWorkingVisible() {}, notify() {},
+		getEditorComponent: () => editorFactory,
+		setEditorComponent(factory: typeof editorFactory) { editorFactory = factory; },
+	};
+	const ctx = {
+		hasUI: true, mode: "tui", cwd: "/repo", ui,
+		sessionManager: { getSessionId: () => sessionId, getEntries: () => [], getCwd: () => "/repo" },
+		hasPendingMessages: () => false, isIdle: () => true,
+		modelRegistry: { isUsingOAuth: () => false },
+	};
+	const fire = async (name: string, event: unknown = {}, context: unknown = ctx) => { for (const fn of handlers.get(name) ?? []) await fn(event, context); };
+	const tool = (toolName: string, args: unknown = {}) => fire("tool_execution_start", { type: "tool_execution_start", toolCallId: `call-${toolName}`, toolName, args });
+	let editor: ReturnType<NonNullable<typeof editorFactory>> | undefined;
+	try {
+		await fire("session_start");
+		assert.ok(editorFactory, "Gentle Shell should install its prompt");
+		editor = editorFactory({ terminal: { rows: 40, columns: 120 }, requestRender() {} }, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+		editor.setAnimationPolicy("potato");
+		await fire("agent_start");
+		const render = () => stripAnsi(editor!.render(60)[0]!);
+		assert.match(render(), /working…/);
+
+		await tool("read", { path: "lib/odd-phase.ts" });
+		assert.match(render(), /exploring…/, "reading a file shows exploring");
+		await tool("edit", { path: "lib/odd-phase.ts" });
+		assert.match(render(), /implementing…/, "editing shows implementing");
+		await tool("bash", { command: "pnpm test" });
+		assert.match(render(), /checking…/, "running tests shows checking");
+		await tool("ask_user_question", {});
+		assert.match(render(), /deciding…/, "asking the user shows deciding");
+		await tool("mcp__custom-tools__write", { path: "odd/tasks/feature.md" });
+		assert.match(render(), /planning…/, "MCP-prefixed names are normalized");
+		await tool("subagent_start", {});
+		await tool("bash", { command: "git push" });
+		await tool("unknown_tool", {});
+		assert.match(render(), /planning…/, "unknown tools and ambiguous commands leave the label unchanged");
+
+		await tools.get("gentle_odd_phase")!.execute("call", { phase: "researching" }, undefined, undefined, ctx);
+		await tool("gentle_odd_phase", { phase: "researching" });
+		await tool("grep", { pattern: "x" });
+		assert.match(render(), /researching…/, "an explicit phase survives a following grep");
+		await tool("edit", { path: "lib/odd-phase.ts" });
+		assert.match(render(), /implementing…/, "a stronger inferred phase overrides an explicit one");
+
+		await fire("agent_start");
+		assert.match(render(), /working…/, "a new turn starts unlabeled");
+		const childCtx = { ...ctx, mode: "rpc" };
+		await fire("tool_execution_start", { type: "tool_execution_start", toolCallId: "child", toolName: "read", args: {} }, childCtx);
+		assert.equal(registry.get(sessionId), undefined, "a headless RPC (subagent) process never infers a phase");
+	} finally {
+		registry.clear(sessionId);
+		editor?.dispose();
+	}
+});
