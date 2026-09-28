@@ -10,6 +10,63 @@ import { createCodexWebProvider } from "../lib/codex-web/provider.ts";
 
 const modelRow = { id: "chatgpt-web/test", name: "Test", reasoning: true, contextWindow: 10000, maxTokens: 1000 };
 
+test("provider renews only a 401 proven to precede host admission", async () => {
+  for (const preAdmission of [false, true]) {
+    let pairs = 0;
+    let requests = 0;
+    const server = createServer(async (req, res) => {
+      for await (const _chunk of req) {
+        // Consume the real HTTP transport request.
+      }
+      if (req.url === "/host/v1/sessions") {
+        pairs += 1;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ protocol: 1, session_id: `host_${pairs}`, token: `cap_${pairs}`, models: [modelRow] }));
+        return;
+      }
+      if (req.method === "DELETE" || req.url?.endsWith("/cancel")) {
+        res.end("{}");
+        return;
+      }
+      assert.equal(req.url, "/host/v1/responses");
+      requests += 1;
+      if (requests === 1) {
+        res.statusCode = 401;
+        res.setHeader("content-type", "application/json");
+        if (preAdmission) res.setHeader("x-cgw-admission", "rejected");
+        res.end(JSON.stringify({ error: {
+          type: "host_protocol_error",
+          message: preAdmission ? "Capability expired" : "ChatGPT session expired",
+          ...(preAdmission ? { code: "host_capability_invalid" } : {}),
+        } }));
+        return;
+      }
+      res.setHeader("content-type", "text/event-stream");
+      res.write(`data: ${JSON.stringify({ type: "response.created", response: { id: "resp_recovered" } })}\n\n`);
+      res.end(`data: ${JSON.stringify({ type: "response.completed", response: {
+        id: "resp_recovered", status: "completed", output: [],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      } })}\n\n`);
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const provider = await createCodexWebProvider({ origin, pairingToken: "secret", cwd: "/workspace", sessionId: "primary" });
+    try {
+      const model = { ...provider.config.models![0], provider: "gentle-codex-web", api: "openai-responses", baseUrl: provider.config.baseUrl } as any;
+      const result = await provider.config.streamSimple!(model, normalizeContext({
+        messages: [{ role: "user", content: "Once", timestamp: 1 }],
+      })).result();
+      assert.equal(pairs, preAdmission ? 2 : 1);
+      assert.equal(requests, preAdmission ? 2 : 1, "a post-admission 401 must not be resubmitted");
+      assert.equal(result.stopReason, preAdmission ? "stop" : "error");
+    } finally {
+      await provider.close();
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  }
+});
+
 test("invalid output budget creates no recovery admission or model request", async () => {
   const root = await mkdtemp(join(tmpdir(), "budget-admission-"));
   const sessionFile = join(root, "session.jsonl");

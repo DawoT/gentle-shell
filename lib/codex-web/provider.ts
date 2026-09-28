@@ -165,7 +165,18 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
             }
             contexts.set(sessionId, budget);
             let response = await client.request(turnId, payload, { signal: request.signal, headers: request.headers });
-            if (response.status === 401 && !closed) {
+            let capabilityRejected = response.status === 401
+              && response.headers.get("x-cgw-admission") === "rejected";
+            if (!capabilityRejected && response.status === 401) {
+              try {
+                const clone = response.clone();
+                const data = await clone.json() as { error?: { code?: string } };
+                if (data?.error?.code === "host_capability_invalid") {
+                  capabilityRejected = true;
+                }
+              } catch {}
+            }
+            if (capabilityRejected && !closed) {
               clients.delete(sessionId);
               const freshClient = await getClient(sessionId);
               response = await freshClient.request(turnId, payload, { signal: request.signal, headers: request.headers });
