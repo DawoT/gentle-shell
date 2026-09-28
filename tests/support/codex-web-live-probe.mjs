@@ -48,7 +48,8 @@ try {
   assert.equal(result?.stopReason, "stop", JSON.stringify(result));
   const output = result.content.filter(part => part.type === "text").map(part => part.text).join("");
   assert.equal(output.replaceAll("\\_", "_"), "PI_WEB_OK");
-  assert.equal(runtime.session.messages.filter(message => message.role === "toolResult").length, 0);
+  const toolResults = runtime.session.messages.filter(message => message.role === "toolResult");
+  assert.equal(toolResults.length, 0, JSON.stringify(toolResults.map(message => message.toolName)));
   await runtime.session.prompt("/web-bridge recovery");
   console.log(JSON.stringify({ status: "passed", output, model: model.id, usage: result.usage }));
 } finally {
