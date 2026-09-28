@@ -67,6 +67,32 @@ test("normalizeRpcEvent maps pi RPC events to task deltas and ignores the rest",
 	assert.deepEqual(normalizeRpcEvent("garbage"), []);
 });
 
+test("an inaccessible child model reports a safe actionable diagnosis without provider payload", () => {
+	const upstream = '403: {"type":"server_error","message":"Upstream request failed: Model access is disabled","secret":"never-copy"}';
+	assert.deepEqual(normalizeRpcEvent({
+		type: "message_update",
+		assistantMessageEvent: { type: "error", error: { message: upstream } },
+	}), [{
+		type: TASK_EVENT.ERROR,
+		message: "model access denied (HTTP 403); choose a model available to this account",
+	}]);
+	const events = normalizeRpcEvent({
+		type: "agent_end",
+		messages: [{
+			role: "assistant",
+			content: [],
+			stopReason: "error",
+			errorMessage: upstream,
+		}],
+	});
+	assert.deepEqual(events, [{
+		type: TASK_EVENT.AGENT_END,
+		text: "",
+		outcome: "error",
+		diagnostic: "model access denied (HTTP 403); choose a model available to this account",
+	}]);
+});
+
 test("response observations are opt-in, finalized, field-specific and content-free", () => {
 	const message = { role: "assistant", provider: "openai", model: "gpt-4o", responseModel: "gpt-4o-2024-08-06",
 		providerThinkingLevel: "high", stopReason: "stop", content: [{ type: "text", text: "private response" }],

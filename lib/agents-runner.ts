@@ -119,6 +119,8 @@ export interface TaskRequest {
 	parentSessionId: string;
 	model: ModelRef | undefined;
 	thinking: string | undefined;
+	/** Dynamic providers register during session_start, after Pi parses CLI model flags. */
+	modelActivation?: "rpc";
 	sessionDir: string;
 	resumeSessionPath: string | undefined;
 	env: NodeJS.ProcessEnv;
@@ -241,8 +243,8 @@ export function childArguments(request: TaskRequest): string[] {
 	const args = ["--mode", "rpc", "--session-dir", request.sessionDir];
 	for (const path of request.extensionPaths ?? []) args.push("--extension", path);
 	if (request.resumeSessionPath) args.push("--session", request.resumeSessionPath);
-	if (request.model) args.push("--model", request.thinking ? `${formatModelRef(request.model)}:${request.thinking}` : formatModelRef(request.model));
-	else if (request.thinking) args.push("--thinking", request.thinking);
+	if (request.model && request.modelActivation !== "rpc") args.push("--model", request.thinking ? `${formatModelRef(request.model)}:${request.thinking}` : formatModelRef(request.model));
+	else if (request.thinking && request.modelActivation !== "rpc") args.push("--thinking", request.thinking);
 	const tools = request.agent.tools.length > 0 ? [...new Set([...request.agent.tools, PARENT_NOTIFICATION_TOOL])] : DEFAULT_TOOLS;
 	if (tools.length > 0) args.push("--tools", tools.join(","));
 	if (request.agent.instructions.length > 0) args.push("--append-system-prompt", request.agent.instructions);
@@ -512,25 +514,56 @@ export class AgentRunner {
 			live.stderrTail = tail.length > STDERR_TAIL_MAX ? tail.slice(-STDERR_TAIL_MAX) : tail;
 		});
 		child.on("exit", (code) => this.exited(id, code));
-		void this.send(id, { type: "get_state" }).then((response) => {
+		const deferredModel = request.modelActivation === "rpc" ? request.model : undefined;
+		const ready = this.send(id, { type: "get_state" }).then((response) => {
 			const data = response.data as { sessionFile?: unknown; model?: { provider?: unknown; id?: unknown } | null; thinkingLevel?: unknown } | undefined;
-			if (response.success !== true || live.terminal || this.live.get(id) !== live || !data) return;
+			if (response.success !== true || live.terminal || this.live.get(id) !== live || !data) return response;
 			const resolved: Partial<TaskRecord> = {};
 			if (this.canAdvanceLastStep(id, ["starting"])) resolved.lastStep = "pi ready";
 			if (typeof data.sessionFile === "string" && data.sessionFile) resolved.sessionPath = data.sessionFile;
-			if (data.model === null) resolved.model = "default";
-			else if (typeof data.model?.provider === "string" && data.model.provider && typeof data.model.id === "string" && data.model.id) {
+			if (!deferredModel && data.model === null) resolved.model = "default";
+			else if (!deferredModel && typeof data.model?.provider === "string" && data.model.provider && typeof data.model.id === "string" && data.model.id) {
 				resolved.model = formatModelRef({ provider: data.model.provider, id: data.model.id });
 			}
-			if (typeof data.thinkingLevel === "string" && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(data.thinkingLevel)) resolved.thinking = data.thinkingLevel;
+			if (!deferredModel && typeof data.thinkingLevel === "string" && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(data.thinkingLevel)) resolved.thinking = data.thinkingLevel;
 			this.store.update(id, resolved);
+			return response;
 		});
-		void this.send(id, { type: "prompt", message: promptText(request) }).then((response) => {
-			if (response.success === false) {
-				this.requestStop(id, TASK_STATUS.FAILED, String(response.error ?? "prompt rejected"));
+		const prompt = () => {
+			if (live.terminal || this.live.get(id) !== live) return;
+			void this.send(id, { type: "prompt", message: promptText(request) }).then((response) => {
+				if (response.success === false) {
+					this.requestStop(id, TASK_STATUS.FAILED, String(response.error ?? "prompt rejected"));
+					return;
+				}
+				if (!live.terminal && this.live.get(id) === live && this.canAdvanceLastStep(id, ["starting", "pi ready"])) this.store.update(id, { lastStep: "prompt accepted" });
+			});
+		};
+		if (!deferredModel) prompt();
+		else void ready.then(async (response) => {
+			if (live.terminal || this.live.get(id) !== live) return;
+			if (response.success !== true) {
+				this.requestStop(id, TASK_STATUS.FAILED, "could not inspect child before selecting model");
 				return;
 			}
-			if (!live.terminal && this.live.get(id) === live && this.canAdvanceLastStep(id, ["starting", "pi ready"])) this.store.update(id, { lastStep: "prompt accepted" });
+			const selected = await this.send(id, { type: "set_model", provider: deferredModel.provider, modelId: deferredModel.id });
+			if (live.terminal || this.live.get(id) !== live) return;
+			if (selected.success !== true) {
+				this.requestStop(id, TASK_STATUS.FAILED, `could not select model ${formatModelRef(deferredModel)} in child; provider unavailable`);
+				return;
+			}
+			if (request.thinking) {
+				const effort = await this.send(id, { type: "set_thinking_level", level: request.thinking });
+				if (live.terminal || this.live.get(id) !== live) return;
+				if (effort.success !== true) {
+					this.requestStop(id, TASK_STATUS.FAILED, "could not set child thinking level");
+					return;
+				}
+			}
+			this.store.update(id, { model: formatModelRef(deferredModel), thinking: request.thinking });
+			prompt();
+		}).catch(() => {
+			this.requestStop(id, TASK_STATUS.FAILED, "could not activate child model");
 		});
 	}
 
@@ -732,6 +765,10 @@ export class AgentRunner {
 			}
 			live.sawRunEvent = true;
 			this.store.apply(id, event, this.deps.now());
+			if (event.type === TASK_EVENT.FATAL_ERROR) {
+				this.requestStop(id, TASK_STATUS.FAILED, event.message);
+				break;
+			}
 			if (event.type === TASK_EVENT.TOOL_START && event.callId) {
 				live.inFlightTools.set(event.callId, event.name);
 				live.mutationStarts.delete(event.callId);

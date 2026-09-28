@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn as nodeSpawn } from "node:child_process";
+import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
+import { fileURLToPath } from "node:url";
 import { pendingReviewMutation, REVIEW_REMINDER_RECEIPT } from "../lib/review-reminder-receipt.ts";
 import { SESSION_WORKTREE_ENTRY, SESSION_WORKTREE_CHANGED, resolveSessionWorktree } from "../lib/session-worktree-registry.ts";
 import { installSessionChangeCapture } from "../lib/session-change-capture.ts";
@@ -2801,6 +2803,141 @@ test("subagent_list_agents and subagent_run in task mode launch a child with the
 	assert.match(tools.get("subagent_run")!.renderCall({ agent: "explore" }, plainTheme).render(60).join(""), /❀ agent run · explore/);
 });
 
+test("an unconfigured subagent inherits the active parent's Web bridge model and thinking level", async () => {
+	const agentHome = join(root, "parent-model-agent-home");
+	mkdirSync(join(agentHome, "agents"), { recursive: true });
+	writeFileSync(join(agentHome, "agents", "inherit.md"), "---\nname: inherit\ndescription: Unconfigured child.\ntools: [read]\n---\nInspect only.");
+	const { pi, tools, fire } = fakePi();
+	const harness = deps();
+	gentleAgents(pi, {}, { ...harness.deps, agentHome });
+	const { ctx } = fakeContext();
+	Object.assign(ctx, {
+		model: { provider: "gentle-codex-web", id: "chatgpt-web/gpt-5.6-sol" },
+		thinkingLevel: "high",
+	});
+	await fire("session_start", ctx);
+	try {
+		await tools.get("subagent_run")!.execute("inherit-model", { agent: "inherit", task: "Inspect lib/.", mode: "background" }, undefined, undefined, ctx);
+		await tick();
+		const args = harness.spawned[0];
+		assert.equal(args[args.indexOf("--extension") + 1], join(dirname(dirname(fileURLToPath(import.meta.url))), "extensions", "gentle-codex-web.ts"));
+		assert.equal(args.includes("--model"), false, "the Web provider registers after Pi starts");
+		assert.deepEqual(harness.children[0].written.map(command => command.type), ["get_state", "set_model", "set_thinking_level", "prompt"]);
+		assert.equal(harness.children[0].written[1].provider, "gentle-codex-web");
+		assert.equal(harness.children[0].written[1].modelId, "chatgpt-web/gpt-5.6-sol");
+	} finally {
+		await fire("session_shutdown", ctx);
+	}
+});
+
+test("two inherited Web subagents use distinct host sessions and return without model fallback", async () => {
+	const agentHome = join(root, "web-process-agent-home");
+	mkdirSync(join(agentHome, "agents"), { recursive: true });
+	writeFileSync(join(agentHome, "agents", "web-child.md"), "---\nname: web-child\ndescription: Web process child.\ntools: [read]\n---\nReport the model answer.");
+	const sessions = new Map<string, string>();
+	const requestedSessions: string[] = [];
+	const deletedSessions: string[] = [];
+	const server = createServer(async (request, response) => {
+		try {
+			const path = request.url ?? "";
+			response.setHeader("content-type", "application/json");
+			if (path === "/healthz") {
+				response.end(JSON.stringify({ hostProtocol: 1 }));
+				return;
+			}
+			if (path === "/host/v1/sessions" && request.method === "POST") {
+				assert.equal(request.headers.authorization, "Bearer web-process-pairing");
+				for await (const _chunk of request) { /* Drain the paired request. */ }
+				const id = `child-${sessions.size + 1}`;
+				const token = `cap-${id}`;
+				sessions.set(id, token);
+				response.end(JSON.stringify({ protocol: 1, session_id: id, token, models: [{ id: "chatgpt-web/runtime", name: "Web runtime", reasoning: true, contextWindow: 10_000, maxTokens: 1_000 }] }));
+				return;
+			}
+			if (path === "/host/v1/responses" && request.method === "POST") {
+				const sessionId = request.headers["x-cgw-session-id"];
+				assert.equal(typeof sessionId, "string");
+				assert.equal(request.headers.authorization, `Bearer ${sessions.get(sessionId as string)}`);
+				let body = "";
+				for await (const chunk of request) body += chunk;
+				assert.equal(JSON.parse(body).model, "chatgpt-web/runtime");
+				requestedSessions.push(sessionId as string);
+				const item = { type: "message", id: `message-${sessionId}`, role: "assistant", status: "completed", content: [{ type: "output_text", text: `CHILD_WEB_OK ${sessionId}`, annotations: [] }] };
+				response.setHeader("content-type", "text/event-stream");
+				for (const event of [
+					{ type: "response.created", response: { id: `response-${sessionId}` } },
+					{ type: "response.output_item.added", output_index: 0, item },
+					{ type: "response.output_item.done", output_index: 0, item },
+					{ type: "response.completed", response: { id: `response-${sessionId}`, status: "completed", output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } },
+				]) response.write(`data: ${JSON.stringify(event)}\n\n`);
+				response.end();
+				return;
+			}
+			if (request.method === "DELETE" && /^\/host\/v1\/sessions\/child-\d+$/.test(path)) {
+				deletedSessions.push(path.split("/").at(-1)!);
+				response.end("{}");
+				return;
+			}
+			response.writeHead(404).end("{}");
+		} catch (error) {
+			response.writeHead(500).end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+		}
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const address = server.address();
+	assert.ok(address && typeof address !== "string");
+	const { pi, tools, fire } = fakePi();
+	const harness = deps();
+	const env = {
+		...process.env,
+		PI_CODING_AGENT_DIR: agentHome,
+		GENTLE_PI_AGENT_HOME: agentHome,
+		GENTLE_CODEX_WEB_URL: `http://127.0.0.1:${address.port}`,
+		GENTLE_CODEX_WEB_TOKEN: "web-process-pairing",
+		CODEX_CHATGPT_WEB_HOME: join(agentHome, "empty-bridge-config"),
+	};
+	gentleAgents(pi, env, {
+		...harness.deps,
+		agentHome,
+		env,
+		resolveWorktree: () => undefined,
+		spawn: (command, args, options) => {
+			const child = nodeSpawn(command, args, { cwd: options.cwd, env: options.env, detached: options.detached, stdio: options.stdio });
+			assert.ok(child.stdin && child.stdout, "RPC child requires piped streams");
+			return {
+				pid: child.pid,
+				stdin: child.stdin,
+				stdout: child.stdout,
+				stderr: child.stderr,
+				kill: signal => child.kill(signal),
+				send: (message, callback) => child.send(message, callback),
+				disconnect: () => child.disconnect(),
+				channel: child.channel ?? undefined,
+				on: (event, listener) => child.on(event, listener),
+			};
+		},
+		now: Date.now,
+		schedule: (callback, delay) => { const timer = setTimeout(callback, delay); return () => clearTimeout(timer); },
+	});
+	const { ctx } = fakeContext();
+	Object.assign(ctx, { model: { provider: "gentle-codex-web", id: "chatgpt-web/runtime" }, thinkingLevel: "high" });
+	await fire("session_start", ctx);
+	try {
+		const run = tools.get("subagent_run")!;
+		const results = await Promise.all([
+			run.execute("web-1", { agent: "web-child", task: "Return the host result.", mode: "task" }, undefined, undefined, ctx),
+			run.execute("web-2", { agent: "web-child", task: "Return the host result.", mode: "task" }, undefined, undefined, ctx),
+		]);
+		assert.deepEqual(results.map(result => result.content[0].text).sort(), ["CHILD_WEB_OK child-1", "CHILD_WEB_OK child-2"]);
+		assert.deepEqual([...new Set(requestedSessions)].sort(), ["child-1", "child-2"]);
+		assert.deepEqual(deletedSessions.sort(), ["child-1", "child-2"], "finished children release their host capabilities");
+	} finally {
+		await fire("session_shutdown", ctx);
+		server.closeAllConnections();
+		await new Promise<void>(resolve => server.close(() => resolve()));
+	}
+});
+
 test("running subagent_result polls hide only their tool chrome, not the model result or final completion", async () => {
 	const { pi, tools, fire, sent, renderers } = fakePi();
 	const harness = deps();
@@ -4114,4 +4251,3 @@ test("issue #1162: task-mode subagent_run includes question directly in waiting 
 
 	await fire("session_shutdown", ctx);
 });
-

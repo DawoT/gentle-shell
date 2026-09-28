@@ -27,7 +27,7 @@ interface Harness {
 	spawnOptions: Array<{ env: NodeJS.ProcessEnv; stdio?: string[] }>;
 }
 
-function harness(options: { failStart?: boolean; process?: RunnerDeps["process"]; pid?: number; maxConcurrency?: number; stallTimeoutMs?: number; toolStallTimeoutMs?: number; answer?: Record<string, unknown>; exitOnKill?: boolean; state?: Record<string, unknown>; stateSuccess?: boolean; onNotification?: RunnerHooks["onNotification"]; onSuccessfulMutation?: RunnerHooks["onSuccessfulMutation"]; onFinish?: RunnerHooks["onFinish"] } = {}): Harness {
+function harness(options: { failStart?: boolean; process?: RunnerDeps["process"]; pid?: number; maxConcurrency?: number; stallTimeoutMs?: number; toolStallTimeoutMs?: number; answer?: Record<string, unknown>; exitOnKill?: boolean; state?: Record<string, unknown>; stateSuccess?: boolean; modelSuccess?: boolean; onNotification?: RunnerHooks["onNotification"]; onSuccessfulMutation?: RunnerHooks["onSuccessfulMutation"]; onFinish?: RunnerHooks["onFinish"] } = {}): Harness {
 	const children: FakeChild[] = [];
 	const timers: Harness["timers"] = [];
 	const asks: Harness["asks"] = [];
@@ -40,12 +40,12 @@ function harness(options: { failStart?: boolean; process?: RunnerDeps["process"]
 			if (options.failStart) throw new Error("fixture spawn failed");
 			spawnOptions.push({ env: launchOptions.env, stdio: launchOptions.stdio });
 			const fake = fakeChild({ exitOnKill: options.exitOnKill, pid: options.pid });
-			if (options.state !== undefined) {
+			if (options.state !== undefined || options.modelSuccess !== undefined) {
 				fake.child.stdin.removeAllListeners("data");
 				fake.child.stdin.on("data", (chunk) => {
 					const command = JSON.parse(String(chunk));
 					fake.written.push(command);
-					fake.emit({ type: "response", id: command.id, success: command.type !== "get_state" || options.stateSuccess !== false,
+					fake.emit({ type: "response", id: command.id, success: command.type === "get_state" ? options.stateSuccess !== false : command.type === "set_model" ? options.modelSuccess !== false : true,
 						data: command.type === "get_state" ? options.state : undefined });
 				});
 			}
@@ -587,6 +587,21 @@ test("childArguments builds an rpc launch with model, thinking, tools, session d
 	assert.ok(!resumed.includes("--model") && !resumed.includes("--tools"));
 });
 
+test("deferred Web model selection fails only its child and never sends a prompt when the provider is unavailable", async () => {
+	const { store, runner, children } = harness({ modelSuccess: false });
+	const task = runner.run(request({
+		model: { provider: "gentle-codex-web", id: "chatgpt-web/gpt-5.6-sol" },
+		thinking: "high",
+		modelActivation: "rpc",
+	}));
+	await tick();
+	await tick();
+	assert.equal(store.get(task.id)?.status, TASK_STATUS.FAILED);
+	assert.match(store.get(task.id)?.error ?? "", /Model not available|could not select model/i);
+	assert.equal(children[0].written.some(command => command.type === "prompt"), false);
+	assert.deepEqual(children[0].killed, ["SIGTERM"]);
+});
+
 test("childArguments preserves a max profile instead of the definition's medium effort", () => {
 	const agent: AgentDefinition = { ...explorer, name: "worker", thinking: "medium" };
 	const config = parseAgentsConfig({ model_profiles: { worker: { model: "openai-codex/gpt-5.6-luna", effort: "max" } } }, undefined);
@@ -764,6 +779,28 @@ test("AgentRunner classifies terminal assistant outcomes only after settlement",
 		if (scenario.error) assert.match(finished.error ?? "", scenario.error);
 		else assert.equal(finished.result, "final report");
 	}
+});
+
+test("an inaccessible model stops the child before Pi can repeat the denied request", async () => {
+	const { store, runner, children } = harness();
+	const task = runner.run(request({ model: { provider: "opencode", id: "kimi-k2.6" } }));
+	await tick();
+	children[0].emit({
+		type: "message_end",
+		message: {
+			role: "assistant",
+			stopReason: "error",
+			errorMessage: '403: {"type":"server_error","message":"Upstream request failed: Model access is disabled","secret":"never-copy"}',
+			usage: { totalTokens: 0, cost: { total: 0 } },
+		},
+	});
+	await tick();
+	const finished = store.get(task.id)!;
+	assert.equal(finished.status, TASK_STATUS.FAILED);
+	assert.equal(finished.error, "model access denied (HTTP 403); choose a model available to this account");
+	assert.equal(finished.turns, 0);
+	assert.deepEqual(children[0].killed, ["SIGTERM"]);
+	assert.equal(children[0].written.filter(command => command.type === "prompt").length, 1);
 });
 
 test("AgentRunner clears an earlier answer after a later error, but permits a successful retry before settlement", async () => {

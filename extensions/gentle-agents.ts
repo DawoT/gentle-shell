@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import { join, resolve, isAbsolute } from "node:path";
+import { join, resolve, isAbsolute, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { keyHint, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type TUI } from "@earendil-works/pi-tui";
 import { invalidateSidebar } from "../lib/shell-sidebar-layout.ts";
@@ -58,6 +59,7 @@ export const AGENTS_STALE_RESULT_TYPE = "gentle-agents.stale-result";
 const RENDER_COALESCE_MS = 400;
 const CLOCK_TICK_MS = 1000;
 const TOOL_PREFIX = "subagent_";
+const WEB_BRIDGE_EXTENSION_PATH = join(dirname(fileURLToPath(import.meta.url)), "gentle-codex-web.ts");
 
 const retiredSddAgent = (name: string): boolean => /^sdd(?:-|$)/.test(name);
 
@@ -1017,6 +1019,8 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 			})?.modelProfiles,
 		);
 		const profile = resolveAgentProfile(agent, config);
+		const model = profile.model ?? (ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined);
+		const thinking = profile.thinking ?? ctx.thinkingLevel;
 		const sessionDir = agentRuntimePaths(deps.home, agentHome).sessions;
 		if (foreign && target) {
 			const identity = resolveSessionWorktree(target, parentCwd);
@@ -1047,8 +1051,10 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 				foreignGrants.assertCurrent(ctx, identity);
 			} } : {}),
 			...(target === undefined || foreign ? {} : { onLaunch: () => { registry.register(target, "subagent:spawn"); } }),
-			model: profile.model,
-			thinking: profile.thinking,
+			model,
+			thinking,
+			...(model?.provider === "gentle-codex-web" ? { modelActivation: "rpc" as const } : {}),
+			...(model?.provider === "gentle-codex-web" ? { extensionPaths: [WEB_BRIDGE_EXTENSION_PATH] } : {}),
 			sessionDir,
 			resumeSessionPath: resume,
 			env: childEnv,

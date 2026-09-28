@@ -29,6 +29,7 @@ export const TASK_EVENT = {
 	AGENT_END: "agent_end",
 	AGENT_SETTLED: "agent_settled",
 	ERROR: "error",
+	FATAL_ERROR: "fatal_error",
 	ASK: "ask",
 	NOTE: "note",
 	USAGE: "usage",
@@ -66,6 +67,7 @@ export interface AgentEndEvent {
 }
 export interface AgentSettledEvent { type: typeof TASK_EVENT.AGENT_SETTLED }
 export interface ErrorEvent { type: typeof TASK_EVENT.ERROR; message: string }
+export interface FatalErrorEvent { type: typeof TASK_EVENT.FATAL_ERROR; message: string }
 export interface AskEvent { type: typeof TASK_EVENT.ASK; request: AskRequest }
 export interface NoteEvent { type: typeof TASK_EVENT.NOTE; text: string }
 export interface UsageEvent { type: typeof TASK_EVENT.USAGE; tokens: number; cost: number }
@@ -87,7 +89,7 @@ export interface ChildResponseObservation {
 }
 export interface ResponseObservationEvent { type: typeof TASK_EVENT.RESPONSE_OBSERVATION; observation: ChildResponseObservation }
 
-export type TaskEvent = ResponseObservationEvent | TextEvent | ThinkingEvent | ToolStartEvent | ToolUpdateEvent | ToolEndEvent | TurnEndEvent | AgentEndEvent | AgentSettledEvent | ErrorEvent | AskEvent | NoteEvent | UsageEvent;
+export type TaskEvent = ResponseObservationEvent | TextEvent | ThinkingEvent | ToolStartEvent | ToolUpdateEvent | ToolEndEvent | TurnEndEvent | AgentEndEvent | AgentSettledEvent | ErrorEvent | FatalErrorEvent | AskEvent | NoteEvent | UsageEvent;
 
 export interface TextItem { kind: typeof THREAD_ITEM.TEXT; text: string }
 export interface ThinkingItem { kind: typeof THREAD_ITEM.THINKING; text: string }
@@ -171,15 +173,29 @@ function keepTail(text: string, max: number): string {
 	return text.length <= max ? text : `${ELLIPSIS}${text.slice(text.length - max + 1)}`;
 }
 
+function safeModelAccessDiagnostic(value: unknown): string | undefined {
+	if (typeof value !== "string" || value.length > 2048) return undefined;
+	const match = /^403:\s*(\{[\s\S]*\})$/.exec(value);
+	if (!match) return undefined;
+	try {
+		const detail = JSON.parse(match[1]) as unknown;
+		if (detail && typeof detail === "object" && !Array.isArray(detail)
+			&& (detail as { message?: unknown }).message === "Upstream request failed: Model access is disabled") {
+			return "model access denied (HTTP 403); choose a model available to this account";
+		}
+	} catch { /* An unrecognized provider payload remains private. */ }
+	return undefined;
+}
+
 function terminalAssistant(messages: unknown): Omit<AgentEndEvent, "type"> {
 	if (!Array.isArray(messages)) return { text: "", outcome: "empty", diagnostic: "assistant returned no final report" };
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index] as { role?: string; content?: unknown; stopReason?: unknown };
+		const message = messages[index] as { role?: string; content?: unknown; stopReason?: unknown; errorMessage?: unknown };
 		if (message?.role !== "assistant") continue;
 		const stopReason = clean(message.stopReason).toLowerCase();
-		// Do not preserve unbounded provider error payloads. The terminal reason is
-		// enough for an operator to distinguish failure from an empty report.
-		if (stopReason === "error") return { text: "", outcome: "error", diagnostic: "assistant reported an error" };
+		// Only a recognized access-denial signature becomes actionable; never
+		// preserve an unbounded or arbitrary provider error payload.
+		if (stopReason === "error") return { text: "", outcome: "error", diagnostic: safeModelAccessDiagnostic(message.errorMessage) ?? "assistant reported an error" };
 		if (stopReason === "aborted") return { text: "", outcome: "aborted", diagnostic: "assistant aborted" };
 		const text = contentText(message.content);
 		return text.length > 0
@@ -239,7 +255,8 @@ export function normalizeRpcEvent(raw: unknown, options: { observeResponses?: bo
 			if (inner.type === "thinking_delta") return [{ type: TASK_EVENT.THINKING, text: clean(inner.delta) }];
 			if (inner.type === "error") {
 				const error = inner.error as Raw | undefined;
-				return [{ type: TASK_EVENT.ERROR, message: clean(error?.message) || clean(inner.reason) || "unknown error" }];
+				const message = safeModelAccessDiagnostic(error?.message) ?? (clean(error?.message) || clean(inner.reason) || "unknown error");
+				return [{ type: TASK_EVENT.ERROR, message }];
 			}
 			return [];
 		}
@@ -260,6 +277,10 @@ export function normalizeRpcEvent(raw: unknown, options: { observeResponses?: bo
 			if (options.observeResponses === true && message?.role === "assistant") {
 				const observation = childResponse(message);
 				if (observation) events.push({ type: TASK_EVENT.RESPONSE_OBSERVATION, observation });
+			}
+			if (message?.role === "assistant" && message.stopReason === "error") {
+				const diagnostic = safeModelAccessDiagnostic(message.errorMessage);
+				if (diagnostic) events.push({ type: TASK_EVENT.FATAL_ERROR, message: diagnostic });
 			}
 			return events;
 		}
@@ -343,6 +364,7 @@ export function applyTaskEvent(thread: TaskThread, event: TaskEvent): TaskThread
 		case TASK_EVENT.TOOL_END:
 			return updateTool(thread, event.callId, { output: event.output, running: false, isError: event.isError });
 		case TASK_EVENT.ERROR:
+		case TASK_EVENT.FATAL_ERROR:
 			return push(thread, { kind: THREAD_ITEM.NOTE, text: `error: ${event.message}` });
 		case TASK_EVENT.ASK:
 			return push(thread, { kind: THREAD_ITEM.NOTE, text: askNote(event.request) });
@@ -371,6 +393,7 @@ function recordPatch(task: TaskRecord, event: TaskEvent): Partial<TaskRecord> {
 				? { ...resumed, result: event.text, error: null, lastStep: "responded" }
 				: { ...resumed, result: null, error: event.diagnostic ?? "assistant did not produce a final report", lastStep: event.diagnostic ?? "assistant failed" };
 		case TASK_EVENT.ERROR:
+		case TASK_EVENT.FATAL_ERROR:
 			return { ...resumed, lastStep: `error: ${event.message}` };
 		case TASK_EVENT.ASK:
 			return { status: TASK_STATUS.WAITING, lastStep: askNote(event.request) };
