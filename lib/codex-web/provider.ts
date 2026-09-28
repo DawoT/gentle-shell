@@ -44,11 +44,15 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
     journals.set(sessionId, journal);
     return journal;
   };
-  const getClient = (sessionId: string): Promise<CodexWebClient> => {
-    if (closed) return Promise.reject(new Error("Bridge provider is closed; reconnect explicitly"));
+  const getClient = async (sessionId: string): Promise<CodexWebClient> => {
+    if (closed) throw new Error("Bridge provider is closed; reconnect explicitly");
     const existing = clients.get(sessionId);
-    if (existing) return existing;
-    if (clients.size >= 16) return Promise.reject(new Error("Bridge host session limit reached"));
+    if (existing) {
+      const client = await existing;
+      if (client.connected) return client;
+      clients.delete(sessionId);
+    }
+    if (clients.size >= 16) throw new Error("Bridge host session limit reached");
     const client = new CodexWebClient(settings.origin);
     const recoveryScope = settings.sessionFile ? getJournal(sessionId).scope : undefined;
     const ready = client.connect(settings.pairingToken, settings.cwd, recoveryScope).then(async () => {
@@ -96,6 +100,10 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
           const replacement = await options.onPayload?.(payload, currentModel);
           const selected = replacement ?? payload;
           if (!selected || typeof selected !== "object" || Array.isArray(selected)) throw new Error("Invalid Responses payload");
+          if (!root.connected && !closed) {
+            const recoveryScope = settings.sessionFile ? getJournal(settings.sessionId).scope : undefined;
+            await root.connect(settings.pairingToken, settings.cwd, recoveryScope).catch(() => {});
+          }
           const row = root.models.find(candidate => candidate.id === model.id);
           if (!row) throw new Error("Model is not advertised by the bridge host");
           const body = selected as Record<string, any>;
@@ -156,7 +164,13 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
               agentSignal.addEventListener("abort", cancel, { once: true });
             }
             contexts.set(sessionId, budget);
-            return await client.request(turnId, payload, { signal: request.signal, headers: request.headers });
+            let response = await client.request(turnId, payload, { signal: request.signal, headers: request.headers });
+            if (response.status === 401 && !closed) {
+              clients.delete(sessionId);
+              const freshClient = await getClient(sessionId);
+              response = await freshClient.request(turnId, payload, { signal: request.signal, headers: request.headers });
+            }
+            return response;
           } catch (error) {
             currentTurn.inFlight = false;
             throw error;
