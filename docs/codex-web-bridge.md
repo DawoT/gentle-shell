@@ -2,7 +2,7 @@
 
 The `gentle-codex-web` extension registers a Responses provider backed by a local `codex-chatgpt-web` launcher advertising host protocol v1. Pi owns its normal agent loop, tool execution, permission hooks and session lifecycle. The bridge transports model requests and tool calls. Its host mode refuses legacy local filesystem handlers, inferred command aliases and gateway fallback, and does not initialize workspace state files.
 
-On session startup the extension reads the local bridge configuration and probes `/healthz`. Only a launcher advertising `hostProtocol:1` receives a pairing request. The configuration's `controlToken` authorizes pairing; a separate random capability authorizes each host session. Credentials are not shown in the sidebar or model catalog. The extension registers the advertised Web routes without selecting one automatically.
+On session startup the extension reads the local bridge configuration and probes `/healthz`. Only a launcher advertising `hostProtocol:1` receives a pairing request. The configuration's `controlToken` authorizes pairing; a separate random capability authorizes each host session. Credentials are not shown in the sidebar or model catalog. The extension registers the advertised Web routes without selecting one automatically. Pi can refresh that catalog through a temporary pairing without revoking the active session capability; an offline refresh keeps the last advertised snapshot.
 
 Configuration defaults:
 
@@ -17,7 +17,7 @@ Use `/web-bridge connect`, `/web-bridge disconnect`, or `/web-bridge status`. Pi
 
 ## Transport and lifecycle
 
-The provider uses Pi's public OpenAI Responses factory and preserves payload/response callbacks. It binds session capability, turn ID and monotonic request sequence after user payload callbacks, and does not retry uncertain requests automatically. Model reasoning effort is selected from the route's advertised supported values; Pi's default `none` must not be sent to routes that do not support it.
+The provider uses Pi's public OpenAI Responses factory and preserves payload/response callbacks. It binds session capability, turn ID and monotonic request sequence after user payload callbacks, and does not retry uncertain requests automatically. Only an HTTP 401 explicitly marked `x-cgw-admission: rejected` permits one new capability pairing and resubmission of the same request; other 401 responses preserve the original bounded error and do not resubmit. Model reasoning effort is selected from the route's advertised account-supported values; Pi's default `none` must not be sent to routes that do not support it.
 
 Each Pi session affinity gets its own capability (at most 16 per provider instance). Full tool history is transmitted. Live results must match calls emitted to that session; historical paired calls before the latest user message remain snapshots, without authority to complete current work. The backend freezes the tool catalog within a turn and rejects identity overrides, consumed sequences, cross-session continuations and changed result replays.
 

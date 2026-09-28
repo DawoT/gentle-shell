@@ -54,6 +54,43 @@ test("pairing and requests keep session authority out of caller-controlled heade
   }
 });
 
+test("catalog pairing stops when its caller aborts", async () => {
+  let entered!: () => void;
+  const received = new Promise<void>(resolve => { entered = resolve; });
+  const server = createServer(async (req, res) => {
+    for await (const _chunk of req) {
+      // Keep the real HTTP request open until the caller cancels.
+    }
+    if (req.url === "/host/v1/sessions") {
+      entered();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        protocol: 1,
+        session_id: "late_session",
+        token: "late_capability",
+        models: [{ id: "chatgpt-web/test", name: "Test", reasoning: true, contextWindow: 10000, maxTokens: 1000 }],
+      }));
+    } else {
+      res.end("{}");
+    }
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const client = new CodexWebClient(`http://127.0.0.1:${(server.address() as { port: number }).port}`);
+  try {
+    const controller = new AbortController();
+    const pairing = client.connect("secret", "/workspace", undefined, controller.signal);
+    await received;
+    controller.abort();
+    await assert.rejects(pairing, /abort/i);
+    assert.equal(client.connected, false);
+  } finally {
+    await client.close();
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
 test("recovery inspection rejects replay authority and extra response fields", async () => {
   for (const reply of [
     {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ProviderConfig } from "@earendil-works/pi-coding-agent";
-import { CodexWebClient } from "./client.ts";
+import { CodexWebClient, type CodexWebModel } from "./client.ts";
 import { ToolReceipts } from "./tool-receipts.ts";
 import { inspectContextBudget, validateContextLimits, type ContextBudgetSnapshot } from "./context-budget.ts";
 
@@ -36,6 +36,14 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
     turn.subscriptions.clear();
   };
   let closed = false;
+  let catalogGeneration = 0;
+  let advertisedModels: CodexWebModel[] = [];
+  const toPiModels = (models: CodexWebModel[]) => models.map(model => ({
+    ...model,
+    input: ["text", "image"] as Array<"text" | "image">,
+    // Subscription transport does not expose marginal billing. These are not savings estimates.
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  }));
   const getJournal = (sessionId: string): ToolReceipts => {
     const existing = journals.get(sessionId);
     if (existing) return existing;
@@ -66,17 +74,31 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
     return ready;
   };
   const root = await getClient(settings.sessionId);
+  advertisedModels = root.models;
   const config: ProviderConfig = {
     name: "ChatGPT Web Bridge",
     api: "openai-responses",
     apiKey: "host-session",
     baseUrl: `${root.origin}/host/v1`,
-    models: root.models.map(model => ({
-      ...model,
-      input: ["text", "image"],
-      // Subscription transport does not expose marginal billing. These are not savings estimates.
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    })),
+    models: toPiModels(advertisedModels),
+    async refreshModels(context) {
+      if (closed) throw new Error("Bridge provider is closed; reconnect explicitly");
+      if (!context.allowNetwork) return toPiModels(advertisedModels);
+      context.signal.throwIfAborted();
+      const generation = ++catalogGeneration;
+      const probe = new CodexWebClient(settings.origin);
+      try {
+        await probe.connect(settings.pairingToken, settings.cwd, undefined, context.signal);
+        context.signal.throwIfAborted();
+        const refreshed = probe.models;
+        if (!refreshed.length) throw new Error("Bridge host advertised no models");
+        if (closed) throw new Error("Bridge provider closed during catalog refresh");
+        if (generation === catalogGeneration) advertisedModels = refreshed;
+        return toPiModels(advertisedModels);
+      } finally {
+        await probe.close();
+      }
+    },
     streamSimple(model, context, options = {}) {
       const sessionId = options.sessionId ?? settings.sessionId;
       const latestUser = context.messages.findLast(message => message.role === "user");
@@ -104,7 +126,7 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
             const recoveryScope = settings.sessionFile ? getJournal(settings.sessionId).scope : undefined;
             await root.connect(settings.pairingToken, settings.cwd, recoveryScope).catch(() => {});
           }
-          const row = root.models.find(candidate => candidate.id === model.id);
+          const row = advertisedModels.find(candidate => candidate.id === model.id);
           if (!row) throw new Error("Model is not advertised by the bridge host");
           const body = selected as Record<string, any>;
           validateContextLimits({
@@ -228,6 +250,7 @@ export async function createCodexWebProvider(settings: CodexWebProviderOptions) 
     },
     async close() {
       closed = true;
+      catalogGeneration += 1;
       const opened = await Promise.allSettled(clients.values());
       await Promise.allSettled(opened.map(value => value.status === "fulfilled" ? value.value.close() : undefined));
       clients.clear();

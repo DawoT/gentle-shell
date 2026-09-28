@@ -59,11 +59,68 @@ test("provider renews only a 401 proven to precede host admission", async () => 
       assert.equal(pairs, preAdmission ? 2 : 1);
       assert.equal(requests, preAdmission ? 2 : 1, "a post-admission 401 must not be resubmitted");
       assert.equal(result.stopReason, preAdmission ? "stop" : "error");
+      if (!preAdmission) assert.match(result.errorMessage ?? "", /ChatGPT session expired/);
     } finally {
       await provider.close();
       server.closeAllConnections();
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
+  }
+});
+
+test("model refresh updates Pi's catalog without revoking the active host session", async () => {
+  const newer = { ...modelRow, id: "chatgpt-web/newer", name: "Newer" };
+  let pairs = 0;
+  const requests: Array<{ session: string; model: string }> = [];
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    if (req.url === "/host/v1/sessions") {
+      pairs += 1;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        protocol: 1,
+        session_id: `host_${pairs}`,
+        token: `cap_${pairs}`,
+        models: pairs === 1 ? [modelRow] : [newer],
+      }));
+      return;
+    }
+    if (req.method === "DELETE") {
+      res.end("{}");
+      return;
+    }
+    assert.equal(req.url, "/host/v1/responses");
+    const body = JSON.parse(raw);
+    requests.push({ session: String(req.headers["x-cgw-session-id"]), model: body.model });
+    res.setHeader("content-type", "text/event-stream");
+    res.write(`data: ${JSON.stringify({ type: "response.created", response: { id: "resp_newer" } })}\n\n`);
+    res.end(`data: ${JSON.stringify({ type: "response.completed", response: {
+      id: "resp_newer", status: "completed", output: [],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    } })}\n\n`);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const provider = await createCodexWebProvider({ origin, pairingToken: "secret", cwd: "/workspace", sessionId: "primary" });
+  try {
+    assert.deepEqual(provider.config.models?.map(model => model.id), ["chatgpt-web/test"]);
+    const refreshed = await provider.config.refreshModels!({
+      allowNetwork: true,
+      signal: new AbortController().signal,
+    } as any);
+    assert.deepEqual(refreshed.map(model => model.id), ["chatgpt-web/newer"]);
+    const model = { ...refreshed[0], provider: "gentle-codex-web", api: "openai-responses", baseUrl: provider.config.baseUrl } as any;
+    const result = await provider.config.streamSimple!(model, normalizeContext({
+      messages: [{ role: "user", content: "Use newer model", timestamp: 1 }],
+    })).result();
+    assert.equal(result.stopReason, "stop");
+    assert.deepEqual(requests, [{ session: "host_1", model: "chatgpt-web/newer" }]);
+    assert.equal(pairs, 2, "catalog refresh pairs separately and does not replace the active capability");
+  } finally {
+    await provider.close();
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
 

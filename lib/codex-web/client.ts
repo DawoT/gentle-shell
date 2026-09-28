@@ -115,7 +115,8 @@ export class CodexWebClient {
     return this.#session?.models.map(model => ({ ...model })) ?? [];
   }
 
-  async connect(pairingToken: string, cwd: string, recoveryScope?: string): Promise<void> {
+  async connect(pairingToken: string, cwd: string, recoveryScope?: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (recoveryScope !== undefined && !/^[a-f0-9]{64}$/.test(recoveryScope)) {
       throw new Error("Invalid bridge recovery scope");
     }
@@ -131,7 +132,7 @@ export class CodexWebClient {
     const response = await fetch(`${this.origin}/host/v1/sessions`, {
       method: "POST",
       redirect: "error",
-      signal: AbortSignal.any([pairing.signal, AbortSignal.timeout(3000)]),
+      signal: AbortSignal.any([pairing.signal, AbortSignal.timeout(3000), ...(signal ? [signal] : [])]),
       headers: { authorization: `Bearer ${pairingToken}`, "content-type": "application/json" },
       body: JSON.stringify({ protocol: 1, host: "pi", cwd, ...(recoveryScope ? { recovery_scope: recoveryScope } : {}) }),
     });
@@ -160,7 +161,7 @@ export class CodexWebClient {
       lifetime: new AbortController(),
       uncertainTurns: new Set(),
     };
-    if (generation !== this.#generation || pairing.signal.aborted) {
+    if (generation !== this.#generation || pairing.signal.aborted || signal?.aborted) {
       await this.revoke(session);
       throw new Error("Bridge pairing was superseded");
     }
@@ -204,8 +205,16 @@ export class CodexWebClient {
       });
       if (response.status >= 500) onAbort();
       if (response.status === 401 && this.#session === session) {
+        let rejection: unknown;
+        try {
+          rejection = await readBoundedJson(response, 16 * 1024, "Bridge authorization reply");
+        } catch {
+          rejection = { error: { type: "host_protocol_error", message: "Bridge returned an unreadable HTTP 401 reply" } };
+        }
+        cleanup();
         this.#session = undefined;
         await this.revoke(session);
+        return Response.json(rejection, { status: 401, headers: response.headers });
       }
       if (!response.body) {
         if (response.ok) {
