@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { watch } from "node:fs";
+import { readFileSync, watch } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile, symlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
@@ -251,10 +251,18 @@ function waitForMarker(directory: string, name: string): Promise<string> {
       else resolve(value!);
     }
     async function check() {
-      try { finish(undefined, await readFile(join(directory, name), "utf8")); }
-      catch (error) {
+      let content: string;
+      try {
+        content = await readFile(join(directory, name), "utf8");
+      } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") finish(error as Error);
+        return;
       }
+      // A marker must be complete: a watcher can observe the file between its
+      // creation and its write, yielding an empty value. Content shape is the
+      // caller's concern; the ready marker is written atomically via rename.
+      if (content.trim() === "") return;
+      finish(undefined, content.trim());
     }
     void check();
   });
@@ -276,7 +284,7 @@ async function withProbe(mode: string, action: (directory: string) => Promise<vo
     else process.env.PATH = priorPath;
     // Failed assertions must not leak a hostile fixture child.
     try {
-      const pid = Number(await readFile(join(directory, "ready"), "utf8"));
+      const { pid } = parseReadyMarker(await readFile(join(directory, "ready"), "utf8"));
       try { process.kill(pid, "SIGKILL"); } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
@@ -284,8 +292,57 @@ async function withProbe(mode: string, action: (directory: string) => Promise<vo
   }
 }
 
-function assertChildExited(pid: number) {
-  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "comparison returned before its real Git child exited");
+function parseReadyMarker(raw: string): { pid: number; starttime?: string } {
+  const [pid, starttime] = raw.trim().split(/\s+/);
+  return { pid: Number(pid), starttime: starttime && starttime !== "unknown" ? starttime : undefined };
+}
+
+function procProcessState(pid: number, starttime?: string): "exited" | "alive" | "unknown" {
+  if (starttime === undefined) return "unknown";
+  let stat: string;
+  try {
+    stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "exited";
+    return "unknown";
+  }
+  const after = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+  if (after[19] !== starttime) return "exited"; // PID reused: the original child is gone.
+  return after[0] === "Z" ? "exited" : "alive";
+}
+
+function readProcStat(pid: number): string | undefined {
+  try {
+    return readFileSync(`/proc/${pid}/stat`, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function assertChildExited(pid: number, starttime?: string) {
+  // A just-exited child can linger as an unreaped zombie under load, and its
+  // PID can even be reused in low-pid_max environments, so a plain ESRCH
+  // probe is not identity-safe. Poll /proc state (starttime identity) when
+  // available, falling back to ESRCH polling on POSIX systems without it.
+  // A genuinely leaked child survives the 250ms SIGKILL escalation and keeps
+  // answering far beyond this window, so the assertion still fires.
+  const deadline = performance.now() + 2_000;
+  while (performance.now() < deadline) {
+    const state = procProcessState(pid, starttime);
+    if (state === "exited") return;
+    if (state === "unknown") {
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+      }
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+  const stat = readProcStat(pid);
+  assert.fail(
+    `comparison returned before its real Git child exited (pid=${pid} expected-starttime=${starttime ?? "n/a"} stat=${stat === undefined ? "absent" : stat})`,
+  );
 }
 
 for (const reason of [undefined, "stop", 42, Symbol("stop"), new Error("deadline"), { stop: true }]) {
@@ -293,12 +350,12 @@ for (const reason of [undefined, "stop", 42, Symbol("stop"), new Error("deadline
     await withProbe("delayed", async (directory) => {
       const controller = new AbortController();
       const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
-      const pid = Number(await waitForMarker(directory, "ready"));
+      const { pid, starttime } = parseReadyMarker(await waitForMarker(directory, "ready"));
       controller.abort(reason);
       const result = await pending;
       assert.deepEqual(result.outcome === "unavailable" ? result.reason : result.outcome, "git cancelled");
       assert.equal(await readFile(join(directory, "done"), "utf8"), "yes");
-      assertChildExited(pid);
+      assertChildExited(pid, starttime);
     });
   });
 }
@@ -307,11 +364,11 @@ test("caller cancellation kills a Git child that ignores SIGTERM before returnin
   await withProbe("hostile", async (directory) => {
     const controller = new AbortController();
     const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
-    const pid = Number(await waitForMarker(directory, "ready"));
+    const { pid, starttime } = parseReadyMarker(await waitForMarker(directory, "ready"));
     controller.abort("deadline");
     const result = await pending;
     assert.ok(result.outcome === "unavailable" && result.reason === "git cancelled");
-    assertChildExited(pid);
+    assertChildExited(pid, starttime);
   });
 });
 
@@ -319,23 +376,23 @@ test("real per-command deadline wins over a later caller abort and reaps hostile
   await withProbe("hostile", async (directory) => {
     const controller = new AbortController();
     const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
-    const pid = Number(await waitForMarker(directory, "ready"));
+    const { pid, starttime } = parseReadyMarker(await waitForMarker(directory, "ready"));
     await waitForMarker(directory, "terminated");
     controller.abort(new Error("later caller"));
     const result = await pending;
     assert.ok(result.outcome === "unavailable" && result.reason === "git deadline exceeded");
     assert.ok(result.elapsedMs >= 14_900 && result.elapsedMs < 20_000);
-    assertChildExited(pid);
+    assertChildExited(pid, starttime);
   });
 });
 
 test("actual Git output above 1MiB is unavailable and its SIGTERM-resistant child is reaped", { skip: process.platform === "win32", timeout: 25_000 }, async () => {
   await withProbe("overflow", async (directory) => {
     const pending = compareCommitToWorkingTree(directory, "unused");
-    const pid = Number(await waitForMarker(directory, "ready"));
+    const { pid, starttime } = parseReadyMarker(await waitForMarker(directory, "ready"));
     const result = await pending;
     assert.ok(result.outcome === "unavailable" && result.reason === "git output exceeded the capture buffer");
-    assertChildExited(pid);
+    assertChildExited(pid, starttime);
   });
 });
 

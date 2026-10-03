@@ -189,8 +189,13 @@ async function sessionStartHarness(): Promise<SessionStartHarness> {
 test("session start defers the active-override announcement to the shell card", async () => {
 	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
 	const previousShell = process.env.GENTLE_PI_SHELL;
+	const previousChildMarkers = ["GENTLE_PI_AGENTS_CHILD", "GENTLE_PI_AGENTS_OWNED_IPC", "GENTLE_PI_AGENTS_PARENT_PERMISSION_FD"].map((key) => [key, process.env[key]] as const);
 	process.env.GENTLE_PI_AGENT_HOME = await mkdtemp(join(tmpdir(), "gentle-pi-dev-agent-home-"));
 	delete process.env.GENTLE_PI_SHELL;
+	// This fixture represents a parent shell, regardless of the harness running
+	// its tests: a managed child disables the shell card, which would flip the
+	// production toast fallback and defeat the deferral under test.
+	for (const [key] of previousChildMarkers) delete process.env[key];
 	try {
 		await withDevOverride(async ({ devBinary, sha256 }) => {
 			const { sessionStart } = await sessionStartHarness();
@@ -206,6 +211,10 @@ test("session start defers the active-override announcement to the shell card", 
 		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
 		if (previousShell === undefined) delete process.env.GENTLE_PI_SHELL;
 		else process.env.GENTLE_PI_SHELL = previousShell;
+		for (const [key, value] of previousChildMarkers) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 	}
 });
 
