@@ -103,6 +103,20 @@ real signal — and the signal exposed a resolver gap: JSON module imports count
 - Suite 233/233 after both commits. Live acceptance (`relative 0`) expected on next
   restart: warm cache now invalidates AND the worker bundle computes new semantics.
 
+## Live acceptance (2026-10-03, post-restart) — PASSED
+
+- `facts_status`: `Module resolution: 1111 resolved, 1919 unresolved (builtins 1691,
+  external 228, relative 0)` — the 9 JSON false positives moved to resolved (+13/-9
+  accounting drift from source changes included). No relative example lines.
+- Evidence union live: `"typescript" | "filesystem" | "unresolved"`. Warm cache
+  invalidated by the version bump; worker bundle recomputed new semantics. Both layers
+  confirmed working together in production.
+- Native review of the bump + rebuilt bundle (lineage `review-f3be8f31060ddca0`, tier
+  high, 4 lenses): **approved**, authority burned (`gentle-ai.review-acknowledged/v1`,
+  consumed `ca1f9429…`). 10 non-blocking advisory findings (8 SUGGESTION, 2 WARNING:
+  `R3/R4-git-status-failure-conflation` in `lib/facts/facts-commit.ts`) — later work.
+- Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
+
 ## Non-goals
 
 - No change to tsconfig (resolveJsonModule is a project compile decision, not Facts').
