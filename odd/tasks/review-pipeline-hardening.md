@@ -90,8 +90,17 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   R3-provider-ledger-coverage). Live proof deferred to next reload: this session's
   process still runs pre-fix mapping, so closures until then keep recording "".
   Legacy ""-entries (9) stay open, documented.
-- [ ] S5 — Closure: focused suites, typecheck, full pnpm test, per-slice reviews
-  (user may decline via consent UI; record), receipts.
+- [x] S5 — Closure DONE: full `pnpm test` 5109 tests / 5074 pass / 0 fail / 35 safe
+  skips (live opt-in + platform); typecheck live 188 recorded, no regressions
+  (baseline file records 200 — the file predates this branch; the '186' quoted in
+  earlier session notes was stale). No generated-module changes. Feature complete:
+  S1+S1.1+S2+S3+S4 all committed, reviewed per slice, receipts burned. Docs-only
+  receipts auto-approved low tier. Advisory backlog across feature: 3+2+3+4+4 = 16
+  informational findings (recorded in ledger + docs). Live-behavior notes:
+  bindingRef and the S1.1 sha plumbing activate on next extension reload; the
+  compact docs-only reminder likewise. Stale lineage 4c803bbb still awaits user
+  disposition. Upstream U1–U4 blocked on cloning gentle-ai (user will authorize
+  when reaching that stage). No push/PR/merge performed.
 
 ## Upstream backlog (blocked on cloning Gentleman-Programming/gentle-ai; ask then)
 
