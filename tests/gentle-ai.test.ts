@@ -22,7 +22,7 @@ import { PROFILE_PIN_KIND, PROFILE_PIN_VERSION, setProfilePinWorktreeResolverFor
 import { NATIVE_REVIEW_ERROR_CODE, NativeReviewCliError, type NativeReviewCli } from "../lib/native-review-cli.ts";
 import { CandidateViewError, type CandidateViewRegistry } from "../lib/review-candidate-view.ts";
 import { installPackageAssets } from "../lib/agent-assets.ts";
-import type { ReviewCollectInputV3, ReviewStatusV3 } from "../lib/review-integration-v2.ts";
+import { decodeReviewStatusV3, type ReviewCollectInputV3, type ReviewStatusV3 } from "../lib/review-integration-v2.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 import { cardBody, cardTitle, cardTone } from "./gentle-card-text.ts";
 
@@ -3519,4 +3519,173 @@ test("advisory ledger failure never throws out of the closure annotation path", 
 	// Storage dir path collides with a file: the store fails closed.
 	await __testing.annotateAdvisoryRecurrence(closure, join(nested), undefined);
 	assert.equal((findings[0] as Record<string, unknown>).recurrence, undefined);
+});
+
+// S1 (review-pipeline-hardening): bindingRef slots in the capture facade.
+const refCaptureLineage = "binding-ref-capture";
+const refCaptureSha = `sha256:${"c".repeat(64)}`;
+function refCaptureCollectInput(): ReviewCollectInputV3 {
+	return {
+		name: "reviewer_result",
+		schema: "https://gentle-ai.dev/schema/review/reviewer/v1",
+		captureOperation: "review.capture-result",
+		arguments: [
+			{ name: "lineage", value: refCaptureLineage, token: `--lineage=${refCaptureLineage}` },
+			{ name: "target", value: refCaptureSha, token: `--target=${refCaptureSha}` },
+			{ name: "agent", value: "pi", token: "--agent=pi" },
+			{ name: "materialize", value: "true", token: "--materialize=true" },
+		],
+		submission: {
+			operationToken: "capture-result",
+			argumentTokens: ["--materialize=true", "--input={{value}}"],
+			values: [{ slot: "reviewer_result", domain: "artifact_path_or_stdin", substitutionLocation: 1 }],
+		},
+	};
+}
+function refCaptureStatus(inputCount: number, overrides: Record<string, unknown> = {}): ReviewStatusV3 {
+	return {
+		contract: "gentle-ai.review-integration/v2",
+		applicability: "current_target",
+		authority: { version: "compact-v2", lineageId: refCaptureLineage, state: "reviewing", generation: 1, revision: refCaptureSha },
+		action: "stop",
+		replayability: "not_replayable",
+		targetIdentity: refCaptureSha,
+		projection: {
+			schema: "gentle-ai.review-candidate-projection/v1",
+			kind: "current-changes",
+			projection: "workspace",
+			baseTree: "b".repeat(40),
+			initialReviewTree: "b".repeat(40),
+			currentCandidateTree: "b".repeat(40),
+			pathsDigest: refCaptureSha,
+			paths: ["app.ts"],
+			intendedUntracked: [],
+			intendedUntrackedProof: refCaptureSha,
+			initialSnapshotIdentity: refCaptureSha,
+			currentSnapshotIdentity: refCaptureSha,
+		},
+		candidates: [],
+		nextTransition: { kind: "collect", reasonCode: "capture_required", collect: { inputs: Array.from({ length: inputCount }, () => refCaptureCollectInput()) } },
+		raw: { schema: "gentle-ai.review-integration.status/v5" },
+		...overrides,
+	} as unknown as ReviewStatusV3;
+}
+const refCaptureNative = (status: ReviewStatusV3) => ({ targetStatus: async () => status }) as unknown as NativeReviewCli;
+
+// Minimal replica of the captured binary group fixture harness (see
+// review-host-relay-routing.test.ts): a fully valid four-lens materialize
+// reviewer group, decoded from the provider fixture so group bindingRef
+// resolution exercises the exact complete-distinct-group validation.
+function capturedGroupedStatus(lineageId: string): ReviewStatusV3 {
+	const raw = JSON.parse(readFileSync(new URL("./fixtures/devbinary/status-v5-capture-result-submission.captured.json", import.meta.url), "utf8")) as Record<string, unknown>;
+	raw.action = "stop";
+	const authority = raw.authority as Record<string, unknown>, repositoryContext = raw.repository_context as Record<string, unknown>;
+	authority.lineage_id = lineageId;
+	const phaseRevision = String(repositoryContext.revision), targetIdentity = String(raw.target_identity);
+	const source = ((((raw.next_transition as Record<string, unknown>).collect as Record<string, unknown>).inputs as Array<Record<string, unknown>>)[0]!);
+	const lenses = ["review-risk", "review-resilience", "review-readability", "review-reliability"];
+	((raw.next_transition as Record<string, unknown>).collect as Record<string, unknown>).inputs = lenses.map((lens, order) => {
+		const input = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
+		const subjectHash = `sha256:${String(order + 1).repeat(64)}`;
+		const arguments_ = input.arguments as Array<Record<string, unknown>>;
+		for (const argument of arguments_) {
+			const value = argument.name === "lineage" ? lineageId
+				: argument.name === "lens" ? lens
+				: argument.name === "order" ? String(order)
+				: argument.name === "subject-hash" ? subjectHash
+				: argument.value;
+			argument.value = value;
+			argument.token = `--${String(argument.name)}=${String(value)}`;
+		}
+		const submission = input.submission as Record<string, unknown>;
+		submission.argument_tokens = [...arguments_.filter((argument) => argument.name !== "agent" && argument.name !== "materialize").map((argument) => argument.token), "--input={{value}}"];
+		const artifactSubject = input.artifact_subject as Record<string, unknown>;
+		artifactSubject.subject_hash = subjectHash;
+		artifactSubject.lineage_id = lineageId;
+		artifactSubject.authority_revision = phaseRevision;
+		artifactSubject.target_identity = targetIdentity;
+		artifactSubject.lens = lens;
+		artifactSubject.selected_order = order;
+		return input;
+	});
+	return decodeReviewStatusV3(raw);
+}
+
+test("gentle_review_capture resolves a bindingRef to the byte-exact retained STATUS binding", async (t) => {
+	const status = refCaptureStatus(1);
+	const native = refCaptureNative(status);
+	let launches = 0;
+	let submissionArg: unknown;
+	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
+	__testing.setReviewHostRelayRunnerForTesting(async (request) => {
+		launches += 1;
+		submissionArg = (request as { submission: unknown }).submission;
+		return { promptByteLength: 1, resultByteLength: 1, submission: "{}" };
+	});
+	const captured = await __testing.executeReviewCaptureOperation({
+		lineageId: refCaptureLineage,
+		collectBinding: { bindingRef: 0 },
+		reviewerRunAcknowledged: true,
+	}, process.cwd(), native);
+	assert.equal(captured.status, "captured");
+	assert.equal(launches, 1);
+	// Byte-exact: the relayed submission is the provider-issued one from STATUS,
+	// not a caller-transcribed reconstruction.
+	assert.deepEqual(submissionArg, refCaptureCollectInput().submission);
+});
+
+test("gentle_review_capture_group resolves a full bindingRef group independently", async (t) => {
+	const status = capturedGroupedStatus(refCaptureLineage);
+	const inputs = (status.nextTransition as { collect: { inputs: readonly ReviewCollectInputV3[] } }).collect.inputs;
+	const result = await __testing.executeReviewCaptureGroupOperation({
+		lineageId: refCaptureLineage,
+		collectBindings: inputs.map((_, index) => ({ bindingRef: index })),
+	}, process.cwd(), refCaptureNative(status));
+	// Every ref resolved and validated against STATUS: the exact forecast gate is reached.
+	assert.equal(result.status, "blocked");
+	assert.equal(result.outcome, "reviewer-model-run-forecast");
+	assert.equal((result.cost_forecast as Record<string, unknown>).model_runs, inputs.length);
+});
+
+test("gentle_review_capture_group accepts mixed full and bindingRef slots", async (t) => {
+	const status = capturedGroupedStatus(refCaptureLineage);
+	const inputs = (status.nextTransition as { collect: { inputs: readonly ReviewCollectInputV3[] } }).collect.inputs;
+	const result = await __testing.executeReviewCaptureGroupOperation({
+		lineageId: refCaptureLineage,
+		collectBindings: inputs.map((input, index) => index % 2 === 0 ? { bindingRef: index } : JSON.stringify(input) as unknown),
+	}, process.cwd(), refCaptureNative(status));
+	assert.equal(result.status, "blocked");
+	assert.equal(result.outcome, "reviewer-model-run-forecast");
+	assert.equal((result.cost_forecast as Record<string, unknown>).model_runs, inputs.length);
+});
+
+test("gentle_review_capture refuses a bindingRef whose lineage mismatches the retained STATUS", async (t) => {
+	const result = await __testing.executeReviewCaptureOperation({
+		lineageId: "other-lineage",
+		collectBinding: { bindingRef: 0 },
+	}, process.cwd(), refCaptureNative(refCaptureStatus(1)));
+	assert.equal(result.status, "blocked");
+	assert.equal(result.outcome, "capture-binding-rejected");
+	assert.match(String(result.reason), /bindingRef retained STATUS belongs to lineage/);
+});
+
+test("gentle_review_capture_group refuses an out-of-range bindingRef", async (t) => {
+	const result = await __testing.executeReviewCaptureGroupOperation({
+		lineageId: refCaptureLineage,
+		collectBindings: [{ bindingRef: 2 }],
+	}, process.cwd(), refCaptureNative(refCaptureStatus(2)));
+	assert.equal(result.status, "blocked");
+	assert.equal(result.outcome, "capture-group-rejected");
+	assert.match(String(result.reason), /bindingRef 2 is out of range for 2/);
+});
+
+test("bindingRef fails closed when the retained STATUS offers no collect bindings", async (t) => {
+	const stale = refCaptureStatus(0, { nextTransition: { kind: "stop", reasonCode: "capture_required" } });
+	const result = await __testing.executeReviewCaptureOperation({
+		lineageId: refCaptureLineage,
+		collectBinding: { bindingRef: 0 },
+	}, process.cwd(), refCaptureNative(stale));
+	assert.equal(result.status, "blocked");
+	assert.equal(result.outcome, "capture-binding-rejected");
+	assert.match(String(result.reason), /retained bound STATUS with collect bindings/);
 });

@@ -154,6 +154,7 @@ import {
 	type ReviewProjectionV1,
 } from "../lib/review-snapshot.ts";
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
+import { parseCollectBindingRefSlot, resolveBindingRef, type ReviewCaptureBindingRefFailure, type ReviewCaptureBindingRefSuccess } from "../lib/review-capture-binding-ref.ts";
 import { renderGentleAiLifecycleCall, renderGentleAiResult, type GentleAiRenderContext } from "../lib/gentle-ai-renderer.ts";
 import { sanitizeTerminalText, stripAnsi } from "../lib/terminal-theme.ts";
 import { BASE_REF_ACCEPTED_FORMS, CandidateViewError, CandidateViewRegistry, injectReviewCandidateView, readCandidateContextManifestPage, resolveCanonicalCandidateBase, isProviderCandidateBaseTree, type CandidateView } from "../lib/review-candidate-view.ts";
@@ -4919,7 +4920,7 @@ const REVIEW_CAPTURE_PARAMETERS = {
 		},
 		collectBinding: {
 			...REVIEW_JSON_ARGUMENT,
-			description: "JSON object or serialized exact copy of one complete provider-owned collect input from current STATUS; never compose or alter it.",
+			description: "JSON object or serialized exact copy of one complete provider-owned collect input from current STATUS; never compose or alter it. Alternatively pass the compact {\"bindingRef\": N} object resolving to the Nth collectBinding (0-based) of the current STATUS projection for this lineage.",
 		},
 		reviewerRunAcknowledged: {
 			type: "boolean",
@@ -4939,7 +4940,11 @@ const REVIEW_CAPTURE_PARAMETERS = {
 
 interface ReviewCaptureParameters {
 	lineageId: string;
-	collectBinding: string;
+	// S1 (review-pipeline-hardening): exactly one of collectBinding (full
+	// provider-issued JSON, unchanged path) or collectBindingRefSlot (0-based
+	// index into the retained bound STATUS collectBindings projection) is set.
+	collectBinding?: string;
+	collectBindingRefSlot?: number;
 	reviewerRunAcknowledged?: boolean;
 	correctionLines?: number;
 	workspaceRoot?: string;
@@ -4951,7 +4956,7 @@ const REVIEW_CAPTURE_GROUP_PARAMETERS = {
 	required: ["lineageId", "collectBindings"],
 	properties: {
 		lineageId: { type: "string", minLength: 1, description: "Exact lineage from the current provider-issued collect transition." },
-		collectBindings: { type: "array", minItems: 1, items: REVIEW_JSON_ARGUMENT, description: "Ordered JSON objects or serialized exact copies of the complete current STATUS materialize reviewer collect set; never mix, reorder, or alter bindings." },
+		collectBindings: { type: "array", minItems: 1, items: REVIEW_JSON_ARGUMENT, description: "Ordered JSON objects or serialized exact copies of the complete current STATUS materialize reviewer collect set, each optionally replaced by the compact {\"bindingRef\": N} reference into the current STATUS collectBindings projection (0-based); never mix, reorder, or alter bindings." },
 		reviewerRunAcknowledged: { type: "boolean", description: "Required after the one group forecast; authorizes exactly the forecast reviewer runs." },
 		workspaceRoot: { type: "string", description: "Optional explicit existing Git worktree root, resolved with the controller's worktree confinement semantics." },
 	},
@@ -4959,7 +4964,11 @@ const REVIEW_CAPTURE_GROUP_PARAMETERS = {
 
 interface ReviewCaptureGroupParameters {
 	lineageId: string;
-	collectBindings: readonly string[];
+	// S1 (review-pipeline-hardening): per slot, collectBindings[i] is the full
+	// provider-issued binding exactly when collectBindingRefSlots[i] is
+	// undefined; otherwise the slot resolves as a compact bindingRef.
+	collectBindings: readonly (string | undefined)[];
+	collectBindingRefSlots: readonly (number | undefined)[];
 	reviewerRunAcknowledged?: boolean;
 	workspaceRoot?: string;
 }
@@ -5163,14 +5172,16 @@ function parseReviewCaptureParameters(value: unknown): ReviewCaptureParameters {
 	const unexpected = Object.keys(value).find((key) => !allowed.has(key));
 	if (unexpected !== undefined) throw new Error(`Review capture does not accept ${unexpected}`);
 	if (!isCanonicalProcessString(value.lineageId)) throw new Error("Review capture requires an exact non-empty lineageId");
-	const collectBinding = serializeReviewJsonArgument(value.collectBinding);
-	if (collectBinding.length === 0) throw new Error("Review capture requires a non-empty collectBinding");
+	const collectBindingRefSlot = parseCollectBindingRefSlot(value.collectBinding);
+	const collectBinding = collectBindingRefSlot === undefined ? serializeReviewJsonArgument(value.collectBinding) : undefined;
+	if (collectBinding !== undefined && collectBinding.length === 0) throw new Error("Review capture requires a non-empty collectBinding");
 	if (value.reviewerRunAcknowledged !== undefined && typeof value.reviewerRunAcknowledged !== "boolean") throw new Error("Review capture reviewerRunAcknowledged must be boolean");
 	if (value.correctionLines !== undefined && (!Number.isSafeInteger(value.correctionLines) || value.correctionLines < 1)) throw new Error("Review capture correctionLines must be a positive integer");
 	if (value.workspaceRoot !== undefined && typeof value.workspaceRoot !== "string") throw new Error("Review capture workspaceRoot must be a string");
 	return {
 		lineageId: value.lineageId,
-		collectBinding,
+		...(collectBinding === undefined ? {} : { collectBinding }),
+		...(collectBindingRefSlot === undefined ? {} : { collectBindingRefSlot }),
 		...(value.reviewerRunAcknowledged === undefined ? {} : { reviewerRunAcknowledged: value.reviewerRunAcknowledged }),
 		...(value.correctionLines === undefined ? {} : { correctionLines: value.correctionLines }),
 		...(value.workspaceRoot === undefined ? {} : { workspaceRoot: value.workspaceRoot }),
@@ -5184,13 +5195,15 @@ function parseReviewCaptureGroupParameters(value: unknown): ReviewCaptureGroupPa
 	if (unexpected !== undefined) throw new Error(`Review capture group does not accept ${unexpected}`);
 	if (!isCanonicalProcessString(value.lineageId)) throw new Error("Review capture group requires an exact non-empty lineageId");
 	if (!Array.isArray(value.collectBindings) || value.collectBindings.length === 0) throw new Error("Review capture group requires one or more collectBindings");
-	const collectBindings = value.collectBindings.map(serializeReviewJsonArgument);
-	if (collectBindings.some((binding) => binding.length === 0)) throw new Error("Review capture group requires non-empty collectBindings");
+	const collectBindingRefSlots = value.collectBindings.map((entry) => parseCollectBindingRefSlot(entry));
+	const collectBindings = value.collectBindings.map((entry, index) => collectBindingRefSlots[index] === undefined ? serializeReviewJsonArgument(entry) : undefined);
+	if (collectBindings.some((binding) => binding !== undefined && binding.length === 0)) throw new Error("Review capture group requires non-empty collectBindings");
 	if (value.reviewerRunAcknowledged !== undefined && typeof value.reviewerRunAcknowledged !== "boolean") throw new Error("Review capture group reviewerRunAcknowledged must be boolean");
 	if (value.workspaceRoot !== undefined && typeof value.workspaceRoot !== "string") throw new Error("Review capture group workspaceRoot must be a string");
 	return {
 		lineageId: value.lineageId,
 		collectBindings,
+		collectBindingRefSlots,
 		...(value.reviewerRunAcknowledged === undefined ? {} : { reviewerRunAcknowledged: value.reviewerRunAcknowledged }),
 		...(value.workspaceRoot === undefined ? {} : { workspaceRoot: value.workspaceRoot }),
 	};
@@ -7709,6 +7722,35 @@ function publicReviewCaptureBindings(status: ReviewStatusV3): readonly PublicRev
 	return (status.nextTransition.collect?.inputs ?? []).filter((input) => input.captureOperation !== "external.select_intended_untracked").map((input) => ({ collectBinding: canonicalReviewCaptureBinding(input) }));
 }
 
+// S1 (review-pipeline-hardening): a {"bindingRef": N} slot resolves against
+// the same negotiated bound STATUS the exact-match stale check validates with:
+// the provider-issued publicReviewCaptureBindings projection, byte-exact.
+// Full bindings pass through unchanged; every slot — resolved or full — still
+// goes through the identical canonical parse and exact-match validation.
+function resolveCaptureBindingSlots(
+	status: ReviewStatusV3,
+	requestedLineageId: string,
+	canonicalBindings: readonly (string | undefined)[],
+	refSlots: readonly (number | undefined)[],
+	group: boolean,
+): readonly string[] | Record<string, unknown> {
+	if (canonicalBindings.every((binding) => binding !== undefined)) return canonicalBindings as readonly string[];
+	const retainedBindings = publicReviewCaptureBindings(status).map((entry) => entry.collectBinding);
+	const bindings: string[] = [];
+	for (let index = 0; index < canonicalBindings.length; index += 1) {
+		const binding = canonicalBindings[index];
+		if (binding !== undefined) {
+			bindings.push(binding);
+			continue;
+		}
+		const resolved = resolveBindingRef(retainedBindings, status.authority?.lineageId, requestedLineageId, refSlots[index]!);
+		// strict:false disables discriminated-union narrowing; cast explicitly.
+		if (resolved.ok !== true) return captureBindingRejected((resolved as ReviewCaptureBindingRefFailure).reason, group);
+		bindings.push((resolved as ReviewCaptureBindingRefSuccess).binding);
+	}
+	return bindings;
+}
+
 function captureBindingRejected(reason: string, group = false): Record<string, unknown> {
 	return {
 		tool: group ? "gentle_review_capture_group" : "gentle_review_capture",
@@ -7887,10 +7929,10 @@ async function executeReviewCaptureOperation(
 			mutation_outcome: "none",
 		};
 	}
-	const canonicalBinding = parseCanonicalReviewCaptureBinding(parameters.collectBinding);
+	const canonicalBinding = parameters.collectBindingRefSlot === undefined ? parseCanonicalReviewCaptureBinding(parameters.collectBinding!) : undefined;
 	const cwd = resolveReviewControllerWorkspaceRoot(parameters.workspaceRoot, sessionCwd, candidateViews, parameters.lineageId);
 	const implicitWorkspaceRoot = candidateViews?.resolveWorkspaceRoot(parameters.lineageId) ?? sessionCwd;
-	let route = readRetainedNativeCaptureRoute(retainedUntrackedSelections, canonicalBinding);
+	let route = canonicalBinding === undefined ? undefined : readRetainedNativeCaptureRoute(retainedUntrackedSelections, canonicalBinding);
 	if (requireRegisteredRoute && route !== undefined && (route.workspaceRoot !== cwd || route.lineageId !== parameters.lineageId)) {
 		return captureBindingRejected("collectBinding belongs to a different registered route");
 	}
@@ -7909,7 +7951,9 @@ async function executeReviewCaptureOperation(
 	} catch (error) {
 		return nativeOperationFailure("gentle_review_capture", error);
 	}
-	const selected = selectExactReviewCapture(status, parameters.lineageId, canonicalBinding);
+	const resolvedBinding = resolveCaptureBindingSlots(status, parameters.lineageId, [canonicalBinding], [parameters.collectBindingRefSlot], false);
+	if (!Array.isArray(resolvedBinding)) return resolvedBinding;
+	const selected = selectExactReviewCapture(status, parameters.lineageId, resolvedBinding[0]!);
 	if (!isSelectedReviewCapture(selected)) return selected;
 	// Exact fresh native admission validates this routing snapshot independently
 	// of cache capacity. Carry its trusted selector into every downstream path.
@@ -8054,10 +8098,10 @@ async function executeReviewCaptureGroupOperation(
 ): Promise<Record<string, unknown>> {
 	const parameters = parseReviewCaptureGroupParameters(parametersValue);
 	if (nativeReviewCli === null || nativeReviewCli.targetStatus === undefined) return { ...captureGroupRejected("native target STATUS is unavailable"), outcome: "native-status-unsupported" };
-	const canonicalBindings = parameters.collectBindings.map((binding) => parseCanonicalReviewCaptureBinding(binding));
+	let canonicalBindings: readonly string[] = parameters.collectBindings.map((binding) => binding === undefined ? undefined : parseCanonicalReviewCaptureBinding(binding));
 	const cwd = resolveReviewControllerWorkspaceRoot(parameters.workspaceRoot, sessionCwd, candidateViews, parameters.lineageId);
 	const implicitWorkspaceRoot = candidateViews?.resolveWorkspaceRoot(parameters.lineageId) ?? sessionCwd;
-	const routes = canonicalBindings.map((binding) => readRetainedNativeCaptureRoute(retainedUntrackedSelections, binding));
+	const routes = canonicalBindings.map((binding) => binding === undefined ? undefined : readRetainedNativeCaptureRoute(retainedUntrackedSelections, binding));
 	let route = routes.find((candidate) => candidate !== undefined);
 	if (requireRegisteredRoute && routes.some((candidate) => candidate !== undefined && (candidate.workspaceRoot !== cwd || candidate.lineageId !== parameters.lineageId || candidate.baseRef !== route?.baseRef))) {
 		return captureGroupRejected("collectBindings belong to different registered routes");
@@ -8077,6 +8121,9 @@ async function executeReviewCaptureGroupOperation(
 	} catch (error) {
 		return { ...captureGroupRejected(error instanceof Error ? error.message : String(error)), outcome: "native-status-failed" };
 	}
+	const resolvedBindings = resolveCaptureBindingSlots(status, parameters.lineageId, canonicalBindings, parameters.collectBindingRefSlots, true);
+	if (!Array.isArray(resolvedBindings)) return resolvedBindings;
+	canonicalBindings = resolvedBindings;
 	const group = selectExactReviewCaptureGroup(status, parameters.lineageId, canonicalBindings);
 	if (!("slots" in group && "binding" in group)) return group;
 	route = { workspaceRoot: cwd, lineageId: parameters.lineageId, ...(baseRef === undefined ? {} : { baseRef, committedOnly: true }) };
