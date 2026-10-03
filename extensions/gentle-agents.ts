@@ -61,6 +61,7 @@ const RENDER_COALESCE_MS = 400;
 const CLOCK_TICK_MS = 1000;
 const TOOL_PREFIX = "subagent_";
 const WEB_BRIDGE_EXTENSION_PATH = join(dirname(fileURLToPath(import.meta.url)), "gentle-codex-web.ts");
+const CODEX_NATIVE_EXTENSION_PATH = join(dirname(fileURLToPath(import.meta.url)), "codex-native.ts");
 // Wakes an idle parent after child content was stored as a custom message.
 // It names itself as automated so the model never attributes it to the human.
 const PARENT_WAKE_TEXT = "[System-generated Gentle Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
@@ -1260,6 +1261,9 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 		);
 		const profile = resolveAgentProfile(agent, config);
 		const model = profile.model ?? (ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined);
+		if (model?.provider === "codex-native" && deps.env.GENTLE_CODEX_NATIVE !== "1") {
+			throw new Error("Codex Native is experimental and disabled. Start the parent with GENTLE_CODEX_NATIVE=1 to opt in.");
+		}
 		const thinking = profile.thinking ?? ctx.thinkingLevel;
 		if (admittedModel !== undefined) {
 			const checkedModel = profile.model ?? ctx.model;
@@ -1302,10 +1306,11 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 			...(target === undefined || foreign ? {} : { onLaunch: () => { registry.register(target, "subagent:spawn"); } }),
 			model,
 			thinking,
-			...(model?.provider === "gentle-codex-web" ? { modelActivation: "rpc" as const } : {}),
-			...((deps.childExtensionPaths && deps.childExtensionPaths.length > 0) || model?.provider === "gentle-codex-web" ? {
+			...(model?.provider === "gentle-codex-web" || model?.provider === "codex-native" ? { modelActivation: "rpc" as const } : {}),
+			...((deps.childExtensionPaths && deps.childExtensionPaths.length > 0) || model?.provider === "gentle-codex-web" || model?.provider === "codex-native" ? {
 				extensionPaths: [
 					...(model?.provider === "gentle-codex-web" ? [WEB_BRIDGE_EXTENSION_PATH] : []),
+					...(model?.provider === "codex-native" ? [CODEX_NATIVE_EXTENSION_PATH] : []),
 					...(deps.childExtensionPaths ?? []),
 				],
 			} : {}),

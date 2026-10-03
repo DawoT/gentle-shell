@@ -3063,6 +3063,57 @@ test("an unconfigured subagent inherits the active parent's Web bridge model and
 	}
 });
 
+test("disabled Codex child fails with actionable opt-in message without spawning", async () => {
+	const agentHome = join(root, "disabled-native-agent-home");
+	mkdirSync(join(agentHome, "agents"), { recursive: true });
+	writeFileSync(join(agentHome, "agents", "disabled-native.md"), "---\nname: disabled-native\ndescription: Native child.\ntools: [read]\n---\nInspect only.");
+	const { pi, tools, fire } = fakePi();
+	const harness = deps();
+	gentleAgents(pi, {}, { ...harness.deps, agentHome });
+	const { ctx } = fakeContext();
+	Object.assign(ctx, { model: { provider: "codex-native", id: "gpt-6.1-sol" } });
+	await fire("session_start", ctx);
+	try {
+		await assert.rejects(() => tools.get("subagent_run")!.execute("disabled-native", { agent: "disabled-native", task: "Inspect lib/.", mode: "background" }, undefined, undefined, ctx), /GENTLE_CODEX_NATIVE=1/);
+		assert.equal(harness.spawned.length, 0);
+	} finally { await fire("session_shutdown", ctx); }
+});
+
+test("subagent inheriting or using codex-native injects codex-native extension and activates model via RPC", async () => {
+	const agentHome = join(root, "codex-native-agent-home");
+	mkdirSync(join(agentHome, "agents"), { recursive: true });
+	writeFileSync(join(agentHome, "agents", "inherit-native.md"), "---\nname: inherit-native\ndescription: Native child.\ntools: [read]\n---\nInspect only.");
+	const { pi, tools, fire } = fakePi();
+	const harness = deps();
+	let childGate: string | undefined;
+	const originalSpawn = harness.deps.spawn!;
+	harness.deps.spawn = (command, args, options) => {
+		childGate = options.env?.GENTLE_CODEX_NATIVE;
+		return originalSpawn(command, args, options);
+	};
+	gentleAgents(pi, {}, { ...harness.deps, agentHome, env: { PATH: "/bin", GENTLE_CODEX_NATIVE: "1" } });
+	const { ctx } = fakeContext();
+	Object.assign(ctx, {
+		model: { provider: "codex-native", id: "gpt-6.1-sol" },
+		thinkingLevel: "off",
+	});
+	await fire("session_start", ctx);
+	try {
+		await tools.get("subagent_run")!.execute("inherit-native-task", { agent: "inherit-native", task: "Inspect lib/.", mode: "background" }, undefined, undefined, ctx);
+		await tick();
+		const args = harness.spawned[0];
+		assert.equal(args[args.indexOf("--extension") + 1], join(dirname(dirname(fileURLToPath(import.meta.url))), "extensions", "codex-native.ts"));
+		assert.equal(args.includes("--model"), false, "codex-native registers after Pi starts via extension");
+		assert.deepEqual(harness.children[0].written.map(command => command.type), ["get_state", "set_model", "set_thinking_level", "prompt"]);
+		assert.equal(childGate, "1");
+		assert.equal(harness.children[0].written[1].provider, "codex-native");
+		assert.equal(harness.children[0].written[1].modelId, "gpt-6.1-sol");
+		assert.equal(harness.children[0].written[2].level, "off");
+	} finally {
+		await fire("session_shutdown", ctx);
+	}
+});
+
 test("two inherited Web subagents use distinct host sessions and return without model fallback", async () => {
 	const agentHome = join(root, "web-process-agent-home");
 	mkdirSync(join(agentHome, "agents"), { recursive: true });
@@ -3121,7 +3172,7 @@ test("two inherited Web subagents use distinct host sessions and return without 
 	assert.ok(address && typeof address !== "string");
 	const { pi, tools, fire } = fakePi();
 	const harness = deps();
-	const env = {
+	const env: NodeJS.ProcessEnv = {
 		...process.env,
 		PI_CODING_AGENT_DIR: agentHome,
 		GENTLE_PI_AGENT_HOME: agentHome,
@@ -3129,6 +3180,10 @@ test("two inherited Web subagents use distinct host sessions and return without 
 		GENTLE_CODEX_WEB_TOKEN: "web-process-pairing",
 		CODEX_CHATGPT_WEB_HOME: join(agentHome, "empty-bridge-config"),
 	};
+	// This fixture represents a parent, regardless of the harness running its tests.
+	delete env.GENTLE_PI_AGENTS_CHILD;
+	delete env.GENTLE_PI_AGENTS_OWNED_IPC;
+	delete env.GENTLE_PI_AGENTS_PARENT_PERMISSION_FD;
 	gentleAgents(pi, env, {
 		...harness.deps,
 		agentHome,
