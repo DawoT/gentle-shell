@@ -68,11 +68,16 @@ All fixes are display/reporting-layer accuracy improvements; no extractor semant
 
 ## Outcome (2026-10-03)
 
-- Status: COMPLETE. Commits: `6cd75ef9` (T1), `f408acd4` (T2), `42636147` (T3+T4).
+- Status: COMPLETE + REVIEWED. Commits: `6cd75ef9` (T1), `f408acd4` (T2), `42636147` (T3+T4), `56ab575c` (docs).
 - Independent verification (gentle-ai-verify): suite 227/227 pass (15.3s); typecheck no
   regressions (baseline 186 recorded, 12 pairs improved); tree hygiene clean (only this
   doc untracked at check time); diff scope exact — no undeclared files in any commit.
-- Next (user-owned): delivery (push/PR/merge) and native review switch decisions.
+- Native review (lineage `review-709362d61e78e7ea`, tier high, 4 lenses on
+  `zai/glm-5.3-flash`): **approved**, authority burned (`gentle-ai.review-acknowledged/v1`,
+  consumed revision `d1cc70af…`). 13 non-blocking advisory findings (12 SUGGESTION,
+  1 WARNING `R4-sync-observability` in `lib/facts/facts-commit.ts:36-51`) recorded as
+  separate later work; no correction opened.
+- Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
 
 ## Non-goals
 
