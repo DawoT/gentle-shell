@@ -22,12 +22,21 @@ closed: keys are `changedPathManifestSha256` + pinned generations.
 
 ## Sprints
 
-- [ ] S1 (U1) — Advisory ledger with fix receipts. New `lib/review-advisory-ledger.ts`
-  (FactsStore lock+generation pattern, NOT FactsDatabase-typed). Hook at closure
-  mapping (`extensions/gentle-ai.ts` mapLastEventClosure ~:7077 / decode ~:7126).
-  Key: `lens|id|location` + `changedPathManifestSha256`. Annotate recurring findings;
-  fix receipt when a recorded finding stops appearing while its path set persists.
-  Dedup on id alone is unsafe — include location + tree key. Presentation-only.
+- [x] S1 (U1) — DONE: `51ca2619` ledger (620 lines: lib 327, tests 150+73 hook) +
+  doc `56d41e2f`. ReviewAdvisoryLedgerStore: lock+generation pattern, key
+  `lens|id|location|manifestSha`, occurrences across differing manifests only,
+  path-persisted fix receipts, 500-entry LRU, corrupt/empty fails closed+rebuilds,
+  two-instance serialization. Hook: mapAndClearLastEventClosure async, additive
+  `recurrence` annotation post-decode (provider schema untouched), ledger failures
+  never break closure (swallow+warn, collision-tested). Group path plumbs frozen
+  manifestSha; single-capture records "" and skips comparison (S2 plumbing).
+  RED: module-load fail before lib existed (ledger suite); hook tests labeled
+  triangulation. GREEN: ledger 10/10, gentle-ai 104/104, typecheck baseline.
+  Independent verifier READY (114 pass; 4 non-blocking coverage gaps noted).
+  Native review `review-de10c3d1d9695ae4` medium/1-lens approved+acknowledged
+  (consumed `sha256:0025285ed0122494e7d344e8dab6a26a66bfdc2d71dc377f7f381ce7d2ec2f4b`,
+  5 informational advisories: R3-evict-current, R3-fix-race, R3-staging-eexist,
+  R3-untested-wiring, R3-wiring-gap — recorded as backlog).
 - [ ] S2a (U2 compute) — Tree-pair subject digest: `indexFactsTree` on (baseTree,
   candidateTree) restricted to changed paths, keyed by `changedPathManifestSha256`,
   stored under a new source.kind "tree-pair"; fail closed when candidate tree moved.
