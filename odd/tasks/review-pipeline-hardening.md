@@ -63,10 +63,19 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   `sha256:5cd22dcfc006e0f14cf9ca4e722706b164ceb5baa9ba7c3a496f13975b066628`; 4
   informational advisories backlog: R3-fs-watch-throw WARNING, R3-helper-copy-coupling,
   R3-vacuous-race, R3-validate-throws).
-- [ ] S4 — Reminder suppression for docs-only mutations. The RDD reminder
-  generator skips (or shortens) when the pending mutation generation contains
-  only non-executable paths (docs/*.md, odd/**). Keep full reminder for anything
-  executable. Surfaces: extensions/gentle-ai.ts reminder construction + tests.
+- [x] S4 — Docs-only reminder suppression DONE: `1a98a132` (+128/-3 in
+  extensions/gentle-ai.ts + tests). Seam: renderAgentEndReviewPreflightMessage
+  (~:7643) + emission at agent_end (~:10066). Compact variant for all-non-executable
+  generations (.md, or under odd/ or docs/ — default-deny) keeps target sha +
+  inspect-on-demand + leave-unreviewed note, drops START/consent paragraphs. Any
+  executable file or unknown path list → full variant (fail open). Path visibility
+  best-effort: tool_result seam → capped map (256) pruned via nudged receipt id;
+  subagent-written/evicted paths fail open. Emitter timing/authority untouched.
+  RED: 3 tests failed on unexported renderer. GREEN: 114/114; typecheck no
+  regressions. Review `review-def635572087fdc2` medium/1-lens approved+acknowledged
+  (consumed `sha256:533b47c62d683ce9514cf5b67df94280394181db7e8fb9cfb0c65fb617ae71c5`;
+  4 informational advisories backlog: R3-prune-heuristic WARNING,
+  R3-input-path-undefined, R3-integration-untested, R3-prune-order-assumption).
 - [x] S1.1 — DONE: `fabc4d1d`. Frozen sha plumbed as optional trailing param through
   executeReviewHostRelayCapture + executeProviderRoleVectorCapture into
   mapAndClearLastEventClosure at every site (incl. correction-plan mapping), sourced
