@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
+import { watch } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile, symlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, delimiter } from "node:path";
 import test from "node:test";
 import { compareCommitToWorkingTree, describeGitFailure, indexFactsCommit } from "../lib/facts/facts-commit.ts";
 
@@ -224,6 +225,118 @@ test("commit working-tree comparison reports unavailable when Git is missing", {
     else process.env.PATH = priorPath;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+// A reason-text classifier must not turn caller cancellation into a deadline.
+for (const reason of [undefined, "stop", 42, Symbol("stop"), new Error("deadline maxBuffer ENOENT"), { deadline: true }]) {
+  test(`preaborted comparison preserves caller provenance for ${typeof reason}`, async () => {
+    const result = await compareCommitToWorkingTree(".", "unused", AbortSignal.abort(reason));
+    assert.equal(result.outcome, "unavailable");
+    assert.ok(result.outcome === "unavailable" && result.reason === "git cancelled");
+  });
+}
+
+// Subscribe before reading: readiness comes from a real child, not a timed sleep.
+function waitForMarker(directory: string, name: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const watcher = watch(directory, () => { void check(); });
+    const timer = setTimeout(() => finish(new Error(`Missing child marker: ${name}`)), 20_000);
+    let settled = false;
+    function finish(error?: Error, value?: string) {
+      if (settled) return;
+      settled = true;
+      watcher.close();
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value!);
+    }
+    async function check() {
+      try { finish(undefined, await readFile(join(directory, name), "utf8")); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") finish(error as Error);
+      }
+    }
+    void check();
+  });
+}
+
+async function withProbe(mode: string, action: (directory: string) => Promise<void>) {
+  const directory = await mkdtemp(join(tmpdir(), "facts-probe-test-"));
+  const priorPath = process.env.PATH;
+  try {
+    const bin = join(directory, "bin");
+    await mkdir(bin);
+    const worker = await readFile(new URL("./support/facts-probe-worker.mjs", import.meta.url), "utf8");
+    await writeFile(join(bin, "git"), worker.replace("#!/usr/bin/env node", `#!${process.execPath}`), { mode: 0o700 });
+    await writeFile(join(directory, "mode"), mode);
+    process.env.PATH = `${bin}${delimiter}${priorPath ?? ""}`;
+    await action(directory);
+  } finally {
+    if (priorPath === undefined) delete process.env.PATH;
+    else process.env.PATH = priorPath;
+    // Failed assertions must not leak a hostile fixture child.
+    try {
+      const pid = Number(await readFile(join(directory, "ready"), "utf8"));
+      try { process.kill(pid, "SIGKILL"); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }
+}
+
+function assertChildExited(pid: number) {
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "comparison returned before its real Git child exited");
+}
+
+for (const reason of [undefined, "stop", 42, Symbol("stop"), new Error("deadline"), { stop: true }]) {
+  test(`active caller cancellation waits for close with ${typeof reason} reason`, { skip: process.platform === "win32", timeout: 25_000 }, async () => {
+    await withProbe("delayed", async (directory) => {
+      const controller = new AbortController();
+      const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
+      const pid = Number(await waitForMarker(directory, "ready"));
+      controller.abort(reason);
+      const result = await pending;
+      assert.deepEqual(result.outcome === "unavailable" ? result.reason : result.outcome, "git cancelled");
+      assert.equal(await readFile(join(directory, "done"), "utf8"), "yes");
+      assertChildExited(pid);
+    });
+  });
+}
+
+test("caller cancellation kills a Git child that ignores SIGTERM before returning", { skip: process.platform === "win32", timeout: 25_000 }, async () => {
+  await withProbe("hostile", async (directory) => {
+    const controller = new AbortController();
+    const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
+    const pid = Number(await waitForMarker(directory, "ready"));
+    controller.abort("deadline");
+    const result = await pending;
+    assert.ok(result.outcome === "unavailable" && result.reason === "git cancelled");
+    assertChildExited(pid);
+  });
+});
+
+test("real per-command deadline wins over a later caller abort and reaps hostile Git", { skip: process.platform === "win32", timeout: 25_000 }, async () => {
+  await withProbe("hostile", async (directory) => {
+    const controller = new AbortController();
+    const pending = compareCommitToWorkingTree(directory, "unused", controller.signal);
+    const pid = Number(await waitForMarker(directory, "ready"));
+    await waitForMarker(directory, "terminated");
+    controller.abort(new Error("later caller"));
+    const result = await pending;
+    assert.ok(result.outcome === "unavailable" && result.reason === "git deadline exceeded");
+    assert.ok(result.elapsedMs >= 14_900 && result.elapsedMs < 20_000);
+    assertChildExited(pid);
+  });
+});
+
+test("actual Git output above 1MiB is unavailable and its SIGTERM-resistant child is reaped", { skip: process.platform === "win32", timeout: 25_000 }, async () => {
+  await withProbe("overflow", async (directory) => {
+    const pending = compareCommitToWorkingTree(directory, "unused");
+    const pid = Number(await waitForMarker(directory, "ready"));
+    const result = await pending;
+    assert.ok(result.outcome === "unavailable" && result.reason === "git output exceeded the capture buffer");
+    assertChildExited(pid);
+  });
 });
 
 test("describeGitFailure maps Git probe failures to stable reasons without throwing", () => {
