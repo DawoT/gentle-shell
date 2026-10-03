@@ -39,9 +39,11 @@ const requiredPaths = [
   "docs/skill-style-guide.md",
   "docs/review-integration.md",
   "extensions/gentle-ai.ts",
+  "extensions/resume-hint.ts",
   "extensions/skill-registry.ts",
   "lib/gentle-ai-binary.ts",
   "lib/gentle-shell-launcher.ts",
+  "lib/gentle-shell-resume-hint.ts",
   "lib/native-review-cli.ts",
   "lib/provider-contract-bundle.ts",
   "lib/review-host-relay.ts",
@@ -62,6 +64,7 @@ const requiredPaths = [
   "lib/telemetry-trigger.ts",
 	"runtime/gentle-ai-binary.mjs",
 	"runtime/gentle-shell-launcher.mjs",
+	"runtime/gentle-shell-resume-hint.mjs",
 	"runtime/native-review-cli.mjs",
 	"runtime/review-integration-v2.mjs",
 	"runtime/review-risk-assessment.mjs",
@@ -345,7 +348,7 @@ async function main() {
   });
 
   if (driftedContracts.length > 0) {
-    console.error("gentle-pi packaged review-integration/v1 and review-integration/v2 contract bytes drifted from the pinned v3.7.0 runtime's vendored Gentle AI contract artifacts:");
+    console.error("gentle-pi packaged review-integration/v1 and review-integration/v2 contract bytes drifted from the pinned v4.0.0 runtime's vendored Gentle AI contract artifacts:");
     for (const drift of driftedContracts) console.error(`- ${drift.relativePath}: expected ${drift.expected}, got ${drift.actual}`);
     process.exit(1);
   }
@@ -390,7 +393,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`gentle-pi package resource check passed (${requiredPaths.length} files; ${Object.keys(contractHashes).length} exact byte-pinned contract artifacts for the v3.7.0 runtime).`);
+  console.log(`gentle-pi package resource check passed (${requiredPaths.length} files; ${Object.keys(contractHashes).length} exact byte-pinned contract artifacts for the v4.0.0 runtime).`);
 }
 
 const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;

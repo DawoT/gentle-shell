@@ -182,16 +182,15 @@ test("resolveRddModeStatus resolves to undefined within the deadline when review
 		},
 	};
 	const deadlineMs = 150;
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), deadlineMs);
+	const keepalive = setTimeout(() => {}, deadlineMs + 2000);
 	const start = Date.now();
 	try {
-		const status = await resolveRddModeStatus(neverSettling, "/repo-hung", controller.signal);
+		const status = await resolveRddModeStatus(neverSettling, "/repo-hung", AbortSignal.timeout(deadlineMs));
 		const elapsed = Date.now() - start;
 		assert.equal(status, undefined);
 		assert.ok(elapsed < deadlineMs + 1000, `expected the read to resolve near the ${deadlineMs}ms deadline, took ${elapsed}ms`);
 	} finally {
-		clearTimeout(timer);
+		clearTimeout(keepalive);
 		settleHungPromise();
 	}
 });
