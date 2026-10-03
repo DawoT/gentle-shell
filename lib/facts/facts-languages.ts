@@ -11,6 +11,29 @@ export function factsLanguage(path: string): FactsLanguage | undefined {
   return undefined;
 }
 
+const displayLanguages: Record<string, string> = {
+  ".mjs": "javascript",
+  ".js": "javascript",
+  ".cjs": "javascript",
+  ".jsx": "javascript",
+  ".ts": "typescript",
+  ".tsx": "typescript",
+  ".mts": "typescript",
+  ".cts": "typescript",
+  ".py": "python",
+  ".go": "go",
+};
+
+/**
+ * Display-only language label for listing rows, derived from the file extension.
+ * Deliberately ignores the stored facts language: that value (factsLanguage) routes
+ * extraction — the whole JS family is bucketed as "typescript" — and is not display
+ * truth. This value is never written back to stored facts.
+ */
+export function displayLanguage(filePath: string): string {
+  return displayLanguages[extname(filePath).toLowerCase()] ?? "unknown";
+}
+
 async function extract(path: string, source: string, sha: string, signal?: AbortSignal): Promise<FileFacts> {
   signal?.throwIfAborted();
   const language = factsLanguage(path);

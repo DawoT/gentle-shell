@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { FactsHistory, type FactsHistoryReceipt } from "./facts-history.ts";
-import { pageFacts, paginationProperties } from "./facts-response.ts";
+import { displayLanguage } from "./facts-languages.ts";
+import { pageFacts, paginationProperties, symbolRow } from "./facts-response.ts";
 import type { FactsService } from "./facts-service.ts";
 
 const ENTRY_TYPE = "gentle-facts-snapshot-v1";
@@ -47,8 +48,8 @@ export function registerFactsHistory(pi: ExtensionAPI): void {
       const snapshot = await new FactsHistory(sessionFile).load(receipt, receipt.root, signal);
       const entries = Object.entries(snapshot.database.files).sort(([a], [b]) => a.localeCompare(b, "en"));
       const rows = params.name
-        ? entries.flatMap(([file, facts]) => facts.symbols.filter((symbol) => symbol.name.toLowerCase() === params.name.toLowerCase()).map((symbol) => `${file}:${symbol.startLine}\n${symbol.signature}`))
-        : entries.map(([file, facts]) => `${file}: ${facts.symbols.length} symbols (${facts.language ?? "typescript"})`);
+        ? entries.flatMap(([file, facts]) => facts.symbols.filter((symbol) => symbol.name.toLowerCase() === params.name.toLowerCase()).map((symbol) => symbolRow(file, symbol)))
+        : entries.map(([file, facts]) => `${file}: ${facts.symbols.length} symbols (${displayLanguage(file)})`);
       const page = pageFacts(rows, params, (row) => row);
       return {
         content: [{ type: "text", text: `Historical Facts — observed ${new Date(receipt.observedAt).toISOString()}\nRoot: ${receipt.root}\nSnapshot: ${receipt.digest}\nSnapshot evidence as of ${new Date(receipt.observedAt).toISOString()}; not live working-tree truth.\n\n${page.text || "No matching facts."}` }],

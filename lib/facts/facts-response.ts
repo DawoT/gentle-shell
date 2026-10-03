@@ -22,6 +22,18 @@ interface PageOptions {
   limit?: number;
 }
 
+/**
+ * Renders a name-lookup row as `file:startLine-endLine` followed by the signature.
+ * Defensive for historical snapshots: a missing or invalid endLine (non-integer,
+ * NaN, or before startLine) falls back to rendering the start line only.
+ */
+export function symbolRow(filePath: string, symbol: { startLine: number; endLine: number; signature: string }): string {
+  const location = Number.isSafeInteger(symbol.endLine) && symbol.endLine >= symbol.startLine
+    ? `${filePath}:${symbol.startLine}-${symbol.endLine}`
+    : `${filePath}:${symbol.startLine}`;
+  return `${location}\n${symbol.signature}`;
+}
+
 export function pageFacts<T>(items: T[], options: PageOptions, format: (item: T) => string) {
   const offset = options.offset ?? 0;
   const limit = options.limit ?? 10;
