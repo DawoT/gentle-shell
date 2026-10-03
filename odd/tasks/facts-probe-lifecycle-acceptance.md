@@ -58,14 +58,24 @@ review covers a work unit/PR slice, never an accumulated feature branch or check
   deadline and PID absence before return. POSIX lifecycle cases skip on Windows;
   stderr/multibyte/second-command deadlines, descendants and synchronous spawn-throw
   cleanup were not verified. Native unit review remains pending (see authority note).
-- [ ] S1 — PARTIAL/BLOCKED: stabilize experimental opt-in routing/Codex closure. Surfaces:
-  `extensions/gentle-agents.ts`, `lib/agents-config.ts`, `lib/model-routing-authority.ts`,
-  `tests/agents-config.test.ts`, `tests/gentle-agents.test.ts`,
-  `extensions/codex-native.ts`, `lib/codex-native/{auth,models,provider}.ts`,
-  `tests/codex-native-{auth,models,provider,extension,live}.test.ts`,
-  `docs/codex-native.md`. Validate malformed credential fields, Request headers,
-  local endpoints, lazy opt-in registration, explicit live gate and deadline.
-  Tests/semantic checks must protect routing pins and defaults. No global config edits.
+- [x] S1 — DONE: three functional groups committed and reviewed.
+  A routing normalization `fdba399c`; B standalone opt-in provider `2a675ba3`
+  (review `review-5c8c33e43ed32190` approved, authority burned, revision
+  `sha256:62b4b1bef4d20a4628473aeb04a290e8acec6a109e0f4fa2088bc7bf199e7108`, 14
+  informational advisories); C child integration + hermetic fixture `e58597d5`
+  (192/192 routing, offline Codex 26/26, live skip by default). Project-local
+  repair: `.pi/subagents.json` default model set to the already-declared
+  `zai/glm-5.3-flash` after the opt-in gate made the codex default unregisterable
+  (git-ignored file; user asked for the fix; no global/model config changed).
+- [x] PR-slice review T1+A+C+docs: `review-4d9987194c26b39b` approved and
+  acknowledged (base `f6c7c6e3`, 20 files/1422 lines, target
+  `sha256:65fc37c91725ff27c12590793e3bb54847e07fa150e8f5eb89a94f5546c0ac27`,
+  consumed `sha256:120daf50fb8718c1102abd1ca12329a1c7e49461ba733abb27134b8ebd9de2e2`,
+  authority burned). 17 informational advisories logged as future backlog
+  (provider duplication/complexity, thinking-alias duplication, auth JWT/claim
+  suggestions, test-coverage suggestions). A first START attempt failed closed
+  on an expired consent binding (`consent-binding-expired`, no lineage); the
+  retry minted a fresh envelope and completed.
 - [ ] T2 — PENDING: synchronization match/differs/unavailable messages and metadata
   through mock Pi registration with real Git; clean/untracked-only fixtures. Surfaces:
   `tests/facts-extension.test.ts`, `tests/facts-commit.test.ts`,
@@ -74,10 +84,11 @@ review covers a work unit/PR slice, never an accumulated feature branch or check
   preservation. Surfaces: `tests/facts-lock.test.ts`, `tests/facts-process.test.ts`,
   `tests/support/facts-commit-worker.mjs` if needed. No lock production write unless a
   reproduced defect is separately scoped. Include deterministic contention checks.
-- [ ] S2 — PENDING: independent full branch checks, authored-count/slice accounting,
-  clean bounded delivery commits, and target-scoped native review reconciliation.
-  Preserve the open lineage; no abandon/reset/recover without explicit authorization.
-  Report all failed/skipped/unavailable checks, including live/environment gates.
+- [ ] S2 — IN PROGRESS: independent full-branch checks (`pnpm test` full suite
+  first run on this branch, typecheck baseline, runtime parity), then closure
+  report. Stale open lineage `review-4c803bbb8b5f5886` (old 5-file routing WIP
+  candidate, no captures) awaits user disposition; not abandoned without
+  authorization. No push/PR/merge performed.
 
 ## Verification commands
 
