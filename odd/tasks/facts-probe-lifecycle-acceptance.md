@@ -84,11 +84,25 @@ review covers a work unit/PR slice, never an accumulated feature branch or check
   preservation. Surfaces: `tests/facts-lock.test.ts`, `tests/facts-process.test.ts`,
   `tests/support/facts-commit-worker.mjs` if needed. No lock production write unless a
   reproduced defect is separately scoped. Include deterministic contention checks.
-- [ ] S2 — IN PROGRESS: independent full-branch checks (`pnpm test` full suite
-  first run on this branch, typecheck baseline, runtime parity), then closure
-  report. Stale open lineage `review-4c803bbb8b5f5886` (old 5-file routing WIP
-  candidate, no captures) awaits user disposition; not abandoned without
-  authorization. No push/PR/merge performed.
+- [x] S2 — DONE: full-branch closure verified. First full `pnpm test` runs
+  exposed three fixture defects (not production regressions): the probe worker's
+  ready marker could be read empty between create and write (pid 0 → kill(0,0)
+  hits the process group), the deadline test hit the same race on the terminated
+  marker, and the dev-binary surfacing fixture inherited managed-child markers
+  (shellEnabled false → toast fallback). Fixed test-side: atomic write+rename
+  markers, non-empty marker validation, /proc-starttime identity exit assertion
+  with ESRCH fallback, child-marker stripping with restoration. Final full suite:
+  5025 tests / 4990 pass / 0 fail / 35 safe skips (live opt-in, platform),
+  provider-contract and runtime-harness stages pass; typecheck 186 baseline, no
+  regressions; runtime parity 11. The codex-web bridge runtime test passed
+  isolated and in the green full run after one load-sensitive failure — watched,
+  not patched. Commit `71155878`.
+  Stale open lineage `review-4c803bbb8b5f5886` (old 5-file routing WIP candidate,
+  no captures) awaits user disposition; not abandoned without authorization.
+  Remaining scope: T2 (synchronization message/details assertions) and T3
+  (commit-cache contention characterization) stay PENDING as the next Facts
+  follow-ups. No push/PR/merge performed. Advisory backlog: 14 (provider slice)
+  + 17 (PR slice) informational findings.
 
 ## Verification commands
 
