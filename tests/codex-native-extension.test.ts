@@ -4,15 +4,32 @@ import type { Provider } from "@earendil-works/pi-ai";
 import registerCodexNativeExtension from "../extensions/codex-native.ts";
 import { CODEX_NATIVE_PROVIDER_ID } from "../lib/codex-native/models.ts";
 
-test("codex-native extension is disabled unless explicitly opted in", () => {
-	for (const env of [{}, { GENTLE_CODEX_NATIVE: "0" }, { GENTLE_CODEX_NATIVE: "true" }]) {
+test("codex-native extension registers unconditionally so models appear in selectors", () => {
+	// Registration is visibility; activation/credentials stay gated inside the
+	// provider (lib/codex-native/provider.ts) and child selection stays gated
+	// in gentle-agents. Any env shape must still register exactly once.
+	for (const env of [{}, { GENTLE_CODEX_NATIVE: "0" }, { GENTLE_CODEX_NATIVE: "true" }, { GENTLE_CODEX_NATIVE: "1" }]) {
 		let calls = 0;
-		registerCodexNativeExtension({ registerProvider() { calls++; } }, env);
-		assert.equal(calls, 0);
+		let registeredProvider: Provider | undefined;
+		registerCodexNativeExtension(
+			{
+				registerProvider(provider: string | Provider) {
+					assert.notEqual(typeof provider, "string");
+					if (typeof provider !== "string") {
+						registeredProvider = provider;
+						calls++;
+					}
+				},
+			},
+			env,
+		);
+		assert.equal(calls, 1);
+		assert.ok(registeredProvider, "Provider should be registered regardless of opt-in flag");
+		assert.equal(registeredProvider.id, CODEX_NATIVE_PROVIDER_ID);
 	}
 });
 
-test("codex-native extension registers provider with Pi", () => {
+test("codex-native extension registers provider with Pi and exposes the sol model", () => {
 	let registeredProvider: Provider | undefined;
 	const mockPi = {
 		registerProvider(provider: string | Provider) {
