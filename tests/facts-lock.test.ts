@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, stat, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -63,6 +63,41 @@ test("Facts writer cleanup does not remove a replacement owner's lock", async ()
       await writeFile(join(lock, replacement), JSON.stringify(record));
     });
     assert.deepEqual(await readdir(lock), [replacement]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// Characterization: a 0-byte (corrupt) owner record is never stolen, and a
+// second writer contending beyond the 15s budget fails closed with
+// FactsBusyError. The production deadline is exercised once, here, to keep
+// the suite bounded.
+test("Facts commit-cache lock fails closed on a corrupt owner record after the 15s deadline", { timeout: 25000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "facts-lock-corrupt-"));
+  const store = new FactsStore(directory, ".pi/facts-commit-cache");
+  const lock = join(directory, ".pi", "facts-commit-cache", "facts.lock");
+  await mkdir(join(directory, ".pi", "facts-commit-cache"), { recursive: true });
+  try {
+    await mkdir(lock);
+    // Simulate an externally held lock with a 0-byte owner record, written
+    // atomically (temp file + rename) so no observer can see a partial name.
+    const name = `owner-${randomUUID()}.json`;
+    const temporary = `${name}.tmp`;
+    await writeFile(join(lock, temporary), "");
+    await rename(join(lock, temporary), join(lock, name));
+    const started = performance.now();
+    await assert.rejects(store.withWriterLock(async () => {
+      throw new Error("must never acquire the lock");
+    }), (error: unknown) => {
+      assert.equal((error as Error).name, "FactsBusyError");
+      assert.equal((error as Error).message, "Facts cache is locked by another writer. Retry; unknown or legacy lock owners require manual verification before recovery.");
+      return true;
+    });
+    assert.ok(performance.now() - started >= 15_000, "must wait out the full 15s budget before failing closed");
+    // The corrupt record is preserved exactly: no second owner was written and
+    // the lock was never stolen or removed.
+    assert.deepEqual(await readdir(lock), [name]);
+    assert.equal((await stat(join(lock, name))).size, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
