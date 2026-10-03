@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { formatResolutionSummary } from "./facts-module-resolver.ts";
 import { FactsService } from "./facts-service.ts";
 import { indexFactsCommit } from "./facts-commit.ts";
 import { analyzeFactsImpact } from "./facts-impact.ts";
@@ -249,10 +250,7 @@ export class FactsMcpServer {
           await this.factsService.sync(signal);
           signal.throwIfAborted();
           const block = this.factsService.getSummaryPromptBlock();
-          const edges = this.factsService.getResolutionEdges();
-          const resolved = edges.filter((e) => e.evidence === "typescript").length;
-          const unresolved = edges.filter((e) => e.evidence === "unresolved").length;
-          const text = `${block}\n- Module resolution: ${resolved} resolved, ${unresolved} unresolved.`;
+          const text = `${block}\n${formatResolutionSummary(this.factsService.getResolutionEdges())}`;
           return { content: [{ type: "text", text }] };
         }
 

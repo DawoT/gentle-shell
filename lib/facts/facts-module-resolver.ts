@@ -12,6 +12,50 @@ export interface FactsModuleEdge {
   reason?: string;
 }
 
+export type UnresolvedCategory = "builtin" | "external" | "relative";
+
+/**
+ * Classify an unresolved specifier by shape alone, at the reporter/consumer side,
+ * so every unresolved-edge producer (module resolver and non-TypeScript languages)
+ * is covered without changing edge semantics. "builtin" marks node: builtins and
+ * "external" marks bare package specifiers; both are expected, not actionable.
+ * "relative" marks genuinely broken relative (./ ../) or absolute imports.
+ * Defensive: empty or non-string input (e.g. from dynamic callers) is "external".
+ */
+export function classifyUnresolvedSpecifier(specifier: string): UnresolvedCategory {
+  if (typeof specifier !== "string" || specifier.length === 0) return "external";
+  if (specifier.startsWith("node:")) return "builtin";
+  if (specifier.startsWith(".") || isAbsolute(specifier)) return "relative";
+  return "external";
+}
+
+/**
+ * Render the facts_status resolution summary: one line with resolved/unresolved
+ * counts split by category, plus up to three importer -> specifier examples for
+ * the actionable "relative" category, sorted by importer then specifier.
+ */
+export function formatResolutionSummary(edges: FactsModuleEdge[]): string {
+  const resolved = edges.filter((edge) => edge.evidence === "typescript").length;
+  const unresolved = edges.filter((edge) => edge.evidence === "unresolved");
+  const counts: Record<UnresolvedCategory, number> = { builtin: 0, external: 0, relative: 0 };
+  for (const edge of unresolved) {
+    counts[classifyUnresolvedSpecifier(edge.specifier)] += 1;
+  }
+  const lines = [
+    `- Module resolution: ${resolved} resolved, ${unresolved.length} unresolved (builtins ${counts.builtin}, external ${counts.external}, relative ${counts.relative})`,
+  ];
+  const examples = unresolved
+    .filter((edge) => classifyUnresolvedSpecifier(edge.specifier) === "relative")
+    .sort((left, right) => left.importer === right.importer
+      ? (left.specifier < right.specifier ? -1 : left.specifier > right.specifier ? 1 : 0)
+      : (left.importer < right.importer ? -1 : 1))
+    .slice(0, 3);
+  for (const edge of examples) {
+    lines.push(`  - ${edge.importer} -> ${edge.specifier}`);
+  }
+  return lines.join("\n");
+}
+
 interface ResolutionConfig {
   options: ts.CompilerOptions;
   invalid: boolean;
