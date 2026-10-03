@@ -84,6 +84,25 @@ real signal — and the signal exposed a resolver gap: JSON module imports count
   rejected the facade's own STATUS projection.
 - Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
 
+## Follow-up (2026-10-03, post-restart audit)
+
+- Live acceptance FAILED on first restart: warm cache. `.pi/facts.json` (mtime pre-fix)
+  kept old edges because invalidation keyed only on source inputs — resolver changes were
+  invisible to it.
+- Fix commit `9b8fb7f9`: FACTS_DATABASE_VERSION "1.2.0" -> "1.3.0" (the designed
+  invalidation lever; store marks mismatches incompatible -> full resync). 12 current-
+  version test fixtures migrated to the imported constant; "1.2.0" kept deliberately as
+  the previous-release literal in the new integration test (old version -> incompatible
+  -> recompute -> republish; RED observed pre-bump).
+- Root cause of the whole live failure, deeper: `runtime/facts/facts-module-resolver.mjs`
+  (the worker bundle sync actually resolves edges through) was stale since before the
+  classification feature. Fix commit `6e776b02`: regenerated via
+  `build:runtime-modules`; `check:runtime-modules` matches. Process lesson adopted:
+  lib changes to bundled modules require `build:runtime-modules` in the same feature —
+  `prepack` enforces it via `check:runtime-modules`.
+- Suite 233/233 after both commits. Live acceptance (`relative 0`) expected on next
+  restart: warm cache now invalidates AND the worker bundle computes new semantics.
+
 ## Non-goals
 
 - No change to tsconfig (resolveJsonModule is a project compile decision, not Facts').
