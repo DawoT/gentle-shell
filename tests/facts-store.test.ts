@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { extractExecutionReceipts } from "../lib/facts/facts-receipts-extractor.ts";
 import { FactsStore } from "../lib/facts/facts-store.ts";
 import { FactsService } from "../lib/facts/facts-service.ts";
+import { FACTS_DATABASE_VERSION } from "../lib/facts/facts-types.ts";
 
 test("FactsStore rejects incompatible versions and malformed cached facts", async () => {
   const { dir, cleanup } = await createFixture();
@@ -15,8 +16,8 @@ test("FactsStore rejects incompatible versions and malformed cached facts", asyn
     await mkdir(join(dir, ".pi"));
     for (const data of [
       { version: "1.0.0", root: dir, updatedAt: 1, files: {} },
-      { version: "1.2.0", root: dir, updatedAt: 1, files: { "bad.ts": null } },
-      { version: "1.2.0", root: dir, updatedAt: 1, files: { "bad.ts": { path: "bad.ts", sha: "sha", symbols: [], imports: [123], exports: [] } } },
+      { version: FACTS_DATABASE_VERSION, root: dir, updatedAt: 1, files: { "bad.ts": null } },
+      { version: FACTS_DATABASE_VERSION, root: dir, updatedAt: 1, files: { "bad.ts": { path: "bad.ts", sha: "sha", symbols: [], imports: [123], exports: [] } } },
     ]) {
       await writeFile(join(dir, ".pi", "facts.json"), JSON.stringify(data));
       assert.equal(await store.load(), null);
@@ -131,7 +132,7 @@ test("FactsStore saves and loads facts database atomically", async () => {
     assert.equal(initial, null);
 
     const sampleData = {
-      version: "1.2.0",
+      version: FACTS_DATABASE_VERSION,
       root: dir,
       updatedAt: Date.now(),
       files: {
@@ -156,7 +157,7 @@ test("FactsStore saves and loads facts database atomically", async () => {
 
     const loaded = await store.load();
     assert.ok(loaded);
-    assert.equal(loaded.version, "1.2.0");
+    assert.equal(loaded.version, FACTS_DATABASE_VERSION);
     assert.equal(loaded.files["src/index.ts"]?.symbols[0]?.name, "app");
   } finally {
     await cleanup();
@@ -489,7 +490,7 @@ test("FactsStore refuses an oversized publication and preserves the existing cac
   const { dir, cleanup } = await createFixture();
   try {
     const store = new FactsStore(dir);
-    const database = { version: "1.2.0", root: dir, updatedAt: 1, files: {} };
+    const database = { version: FACTS_DATABASE_VERSION, root: dir, updatedAt: 1, files: {} };
     await store.save(database);
     const original = await readFile(join(dir, ".pi", "facts.json"), "utf8");
     await assert.rejects(store.save({ ...database, root: "x".repeat(64 * 1024 * 1024) }), /cache byte limit/);
@@ -504,7 +505,7 @@ test("FactsStore refuses a valid but oversized disk cache", async () => {
   try {
     await mkdir(join(dir, ".pi"));
     await writeFile(join(dir, ".pi", "facts.json"), JSON.stringify({
-      version: "1.2.0",
+      version: FACTS_DATABASE_VERSION,
       root: "x".repeat(64 * 1024 * 1024),
       updatedAt: 1,
       files: {},
@@ -553,7 +554,7 @@ test("FactsStore distinguishes missing, incompatible, corrupt and reusable disk 
     await writeFile(cache, "{ broken");
     await store.load();
     assert.equal(store.getLoadState(), "invalid");
-    await store.save({ version: "1.2.0", root: dir, updatedAt: 1, files: {} });
+    await store.save({ version: FACTS_DATABASE_VERSION, root: dir, updatedAt: 1, files: {} });
     await store.load();
     assert.equal(store.getLoadState(), "hit");
   } finally {
@@ -565,7 +566,7 @@ test("FactsStore does not publish after caller cancellation", async () => {
   const { dir, cleanup } = await createFixture();
   try {
     const store = new FactsStore(dir);
-    const database = { version: "1.2.0", root: dir, updatedAt: 1, files: {} };
+    const database = { version: FACTS_DATABASE_VERSION, root: dir, updatedAt: 1, files: {} };
     await store.save(database);
     const controller = new AbortController();
     controller.abort();
@@ -842,6 +843,46 @@ test("continuous resolver metadata drift preserves the last publication", async 
     assert.equal(service.getDiagnostics().failure?.code, "snapshot_validation");
     assert.equal(service.getGeneration(), generation);
     assert.equal(await readFile(join(dir, ".pi/facts.json"), "utf8"), before);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a stale database version is incompatible and the next sync republishes current resolution semantics", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    await writeFile(join(dir, "source.ts"), "import data from './data.json';\nexport const value = data.name;\n");
+    await writeFile(join(dir, "data.json"), '{"name": "sample"}\n');
+    execFileSync("git", ["add", "."], { cwd: dir });
+
+    // Simulate a warm workspace cached by the previous resolver release: same
+    // sources, but the relative JSON import was persisted without filesystem
+    // evidence under the old FACTS_DATABASE_VERSION.
+    await mkdir(join(dir, ".pi"));
+    await writeFile(join(dir, ".pi", "facts.json"), JSON.stringify({
+      version: "1.2.0",
+      root: dir,
+      updatedAt: 1,
+      files: {},
+      moduleEdges: [{ importer: "source.ts", specifier: "./data.json", evidence: "unresolved", reason: "legacy-resolution" }],
+    }));
+    const stale = new FactsStore(dir);
+    assert.equal(await stale.load(), null);
+    assert.equal(stale.getLoadState(), "incompatible");
+
+    const result = await new FactsService(dir).sync();
+    assert.equal(result.indexedCount, 1);
+    assert.equal(result.cachedCount, 0);
+
+    const republished = await new FactsStore(dir).load();
+    assert.equal(republished?.version, FACTS_DATABASE_VERSION);
+    assert.ok((republished?.updatedAt ?? 0) > 1);
+    // The persisted legacy edge set is discarded and edges are recomputed for
+    // the same import. The filesystem classification of this exact specifier is
+    // covered by facts-resolution-classification.test.ts; the worker runtime
+    // bundle is regenerated separately via build:runtime-modules.
+    assert.ok(!republished?.moduleEdges?.some((candidate) => candidate.reason === "legacy-resolution"));
+    assert.ok(republished?.moduleEdges?.some((candidate) => candidate.importer === "source.ts" && candidate.specifier === "./data.json"));
   } finally {
     await cleanup();
   }

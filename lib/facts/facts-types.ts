@@ -1,6 +1,6 @@
 import type { FactsModuleEdge } from "./facts-module-resolver.ts";
 
-export const FACTS_DATABASE_VERSION = "1.2.0";
+export const FACTS_DATABASE_VERSION = "1.3.0";
 
 export type FileGitStatus = "tracked" | "modified" | "untracked" | "deleted";
 

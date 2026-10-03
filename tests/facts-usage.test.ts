@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FactsUsage } from "../lib/facts/facts-usage.ts";
+import { FACTS_DATABASE_VERSION } from "../lib/facts/facts-types.ts";
 
 test("usage counts real outcomes and never credits a repeated file version twice", () => {
   const usage = new FactsUsage();
@@ -47,7 +48,7 @@ test("source sizes measure UTF-8 parser input and schema accepts legacy but reje
   const source = 'export const greeting = "こんにちは";';
   const facts = await extractSourceFacts("a.ts", source, "sha");
   assert.equal(facts.sourceBytes, Buffer.byteLength(source));
-  const database = { version: "1.2.0", root: "/repo", updatedAt: 1, files: { "a.ts": facts } };
+  const database = { version: FACTS_DATABASE_VERSION, root: "/repo", updatedAt: 1, files: { "a.ts": facts } };
   assert.equal(isFactsDatabase(database), true);
   for (const invalid of [-1, 1.5, "100", Infinity]) {
     assert.equal(isFactsDatabase({ ...database, files: { "a.ts": { ...facts, sourceBytes: invalid } } }), false);

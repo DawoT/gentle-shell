@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { FactsStore } from "../lib/facts/facts-store.ts";
-import type { FactsDatabase, FileFacts } from "../lib/facts/facts-types.ts";
+import { FACTS_DATABASE_VERSION, type FactsDatabase, type FileFacts } from "../lib/facts/facts-types.ts";
 
 function file(path: string, sha: string): FileFacts {
   return { path, sha, symbols: [], imports: [], exports: [] };
@@ -14,7 +14,7 @@ async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "facts-generations-"));
   const store = new FactsStore(directory);
   const database: FactsDatabase = {
-    version: "1.2.0",
+    version: FACTS_DATABASE_VERSION,
     root: directory,
     updatedAt: 1,
     files: { "a.ts": file("a.ts", "a1"), "b.ts": file("b.ts", "b1") },

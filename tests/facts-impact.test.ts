@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeFactsImpact } from "../lib/facts/facts-impact.ts";
-import type { FactsDatabase } from "../lib/facts/facts-types.ts";
+import { FACTS_DATABASE_VERSION, type FactsDatabase } from "../lib/facts/facts-types.ts";
 
 function database(files: Record<string, string>, edges: Array<[string, string]>): FactsDatabase {
   return {
-    version: "1.2.0", root: "/repo", updatedAt: 1,
+    version: FACTS_DATABASE_VERSION, root: "/repo", updatedAt: 1,
     files: Object.fromEntries(Object.entries(files).map(([path, sha]) => [path, { path, sha, symbols: [], imports: [], exports: [] }])),
     moduleEdges: edges.map(([importer, target]) => ({ importer, target, specifier: `./${target}`, evidence: "typescript" })),
   };
