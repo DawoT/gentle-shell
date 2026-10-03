@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { commitMatchesWorkingTree, indexFactsCommit } from "../lib/facts/facts-commit.ts";
+import { compareCommitToWorkingTree, describeGitFailure, indexFactsCommit } from "../lib/facts/facts-commit.ts";
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "facts-commit-test-"));
@@ -174,31 +174,39 @@ test("committed package scope and submodule omissions are explicit", async () =>
   }
 });
 
-test("commit working-tree match is true exactly for a clean checkout of HEAD", async () => {
+test("commit working-tree comparison reports match exactly for a clean checkout of HEAD", async () => {
   const { directory, commit } = await fixture();
   try {
-    assert.equal(await commitMatchesWorkingTree(directory, commit), true);
+    const clean = await compareCommitToWorkingTree(directory, commit);
+    assert.equal(clean.outcome, "match");
+    assert.ok(Number.isFinite(clean.elapsedMs) && clean.elapsedMs >= 0);
     await writeFile(join(directory, "source.ts"), "export const dirtyValue = 2;\n");
-    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+    const dirty = await compareCommitToWorkingTree(directory, commit);
+    assert.equal(dirty.outcome, "differs");
+    assert.ok(Number.isFinite(dirty.elapsedMs) && dirty.elapsedMs >= 0);
+    await writeFile(join(directory, "untracked.py"), "def stray():\n  pass\n");
+    assert.equal((await compareCommitToWorkingTree(directory, commit)).outcome, "differs");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("commit working-tree match is false for a non-HEAD commit", async () => {
+test("commit working-tree comparison reports differs for a non-HEAD commit", async () => {
   const { directory, git, commit } = await fixture();
   try {
     await writeFile(join(directory, "source.ts"), "export const nextValue = 3;\n");
     git("add", ".");
     git("commit", "-m", "second");
     assert.notEqual(git("rev-parse", "HEAD"), commit);
-    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+    const comparison = await compareCommitToWorkingTree(directory, commit);
+    assert.equal(comparison.outcome, "differs");
+    assert.ok(Number.isFinite(comparison.elapsedMs) && comparison.elapsedMs >= 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("commit working-tree match is false when Git is unavailable", { skip: process.platform === "win32" }, async () => {
+test("commit working-tree comparison reports unavailable when Git is missing", { skip: process.platform === "win32" }, async () => {
   const { directory, commit } = await fixture();
   const priorPath = process.env.PATH;
   try {
@@ -207,11 +215,28 @@ test("commit working-tree match is false when Git is unavailable", { skip: proce
     const emptyBin = join(directory, "empty-bin");
     await mkdir(emptyBin);
     process.env.PATH = `${emptyBin}${delimiter}`;
-    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+    const comparison = await compareCommitToWorkingTree(directory, commit);
+    assert.equal(comparison.outcome, "unavailable");
+    assert.ok(comparison.outcome === "unavailable" && comparison.reason === "git is not available");
+    assert.ok(Number.isFinite(comparison.elapsedMs) && comparison.elapsedMs >= 0);
   } finally {
     if (priorPath === undefined) delete process.env.PATH;
     else process.env.PATH = priorPath;
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("describeGitFailure maps Git probe failures to stable reasons without throwing", () => {
+  assert.equal(describeGitFailure(Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" })), "git is not available");
+  assert.equal(describeGitFailure(new Error("Facts Git deadline exceeded")), "git deadline exceeded");
+  assert.equal(describeGitFailure(Object.assign(new Error("This operation was aborted"), { name: "AbortError" })), "git deadline exceeded");
+  assert.equal(describeGitFailure(Object.assign(new Error("stdout maxBuffer length exceeded"), { code: "ENOBUFS" })), "git output exceeded the capture buffer");
+  assert.equal(describeGitFailure(new Error("child stdout maxBuffer exceeded")), "git output exceeded the capture buffer");
+  assert.equal(describeGitFailure(new Error("fatal: bad object")), "git failed");
+  for (const weird of [undefined, null, "boom", 42, {}, Symbol("weird")]) {
+    const described = describeGitFailure(weird);
+    assert.equal(typeof described, "string");
+    assert.ok(described.length > 0);
   }
 });
 

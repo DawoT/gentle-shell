@@ -7,7 +7,9 @@ import { FACTS_DATABASE_VERSION, type FactsDatabase } from "./facts-types.ts";
 import { execFile } from "node:child_process";
 import { devNull } from "node:os";
 
-function gitStatusCommand(cwd: string, args: string[], signal?: AbortSignal): Promise<string> {
+const GIT_COMMAND_DEADLINE_MS = 15_000;
+
+function runGitCommand(cwd: string, args: string[], signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
   const environment: NodeJS.ProcessEnv = {
     ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))),
@@ -21,7 +23,7 @@ function gitStatusCommand(cwd: string, args: string[], signal?: AbortSignal): Pr
   return new Promise((resolve, reject) => {
     const deadline = new AbortController();
     const active = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
-    const timer = setTimeout(() => deadline.abort(new Error("Facts Git deadline exceeded")), 15_000);
+    const timer = setTimeout(() => deadline.abort(new Error("Facts Git deadline exceeded")), GIT_COMMAND_DEADLINE_MS);
     execFile("git", args, { cwd, env: environment, encoding: "utf8", maxBuffer: 1024 * 1024, signal: active }, (error, stdout) => {
       clearTimeout(timer);
       if (active.aborted) reject(active.reason);
@@ -32,17 +34,49 @@ function gitStatusCommand(cwd: string, args: string[], signal?: AbortSignal): Pr
 }
 
 /**
- * True only when HEAD is exactly `commitId` and `git status --porcelain` reports no changes.
- * Never throws: returns false when Git is unavailable, fails, times out, or the signal aborts.
+ * Maps a thrown Git probe failure to one stable, non-empty reason string (never throws):
+ * - "git output exceeded the capture buffer": ENOBUFS error code or a message mentioning "maxBuffer".
+ * - "git is not available": ENOENT-style spawn failure (error code or message).
+ * - "git deadline exceeded": the probe deadline fired or the caller's signal aborted it (deadline or AbortError-style reasons).
+ * - "git failed": anything else, including non-Error values.
  */
-export async function commitMatchesWorkingTree(cwd: string, commitId: string, signal?: AbortSignal): Promise<boolean> {
+export function describeGitFailure(error: unknown): string {
   try {
-    const head = (await gitStatusCommand(cwd, ["rev-parse", "HEAD"], signal)).trim();
-    if (head !== commitId) return false;
-    const status = await gitStatusCommand(cwd, ["status", "--porcelain"], signal);
-    return status.length === 0;
+    if (error && typeof error === "object") {
+      const failure = error as NodeJS.ErrnoException;
+      const message = typeof failure.message === "string" ? failure.message : "";
+      const name = typeof failure.name === "string" ? failure.name : "";
+      if (failure.code === "ENOBUFS" || message.includes("maxBuffer")) return "git output exceeded the capture buffer";
+      if (failure.code === "ENOENT" || message.includes("ENOENT")) return "git is not available";
+      if (name === "AbortError" || /deadline|abort/i.test(message)) return "git deadline exceeded";
+    }
   } catch {
-    return false;
+    return "git failed";
+  }
+  return "git failed";
+}
+
+export type CommitWorkingTreeComparison =
+  | { outcome: "match"; elapsedMs: number }
+  | { outcome: "differs"; elapsedMs: number }
+  | { outcome: "unavailable"; reason: string; elapsedMs: number };
+
+/**
+ * Compares `commitId` to the current working tree:
+ * - "match": HEAD is exactly `commitId` and `git status --porcelain` reports no changes.
+ * - "differs": HEAD differs or the status is non-empty; untracked files count as differs because the working tree genuinely differs from the commit.
+ * - "unavailable": Git is missing, failed, exceeded the probe deadline, or its output exceeded the capture buffer; `reason` comes from describeGitFailure.
+ * Never throws.
+ */
+export async function compareCommitToWorkingTree(cwd: string, commitId: string, signal?: AbortSignal): Promise<CommitWorkingTreeComparison> {
+  const started = performance.now();
+  try {
+    const head = (await runGitCommand(cwd, ["rev-parse", "HEAD"], signal)).trim();
+    if (head !== commitId) return { outcome: "differs", elapsedMs: performance.now() - started };
+    const status = await runGitCommand(cwd, ["status", "--porcelain"], signal);
+    return { outcome: status.length === 0 ? "match" : "differs", elapsedMs: performance.now() - started };
+  } catch (error) {
+    return { outcome: "unavailable", reason: describeGitFailure(error), elapsedMs: performance.now() - started };
   }
 }
 

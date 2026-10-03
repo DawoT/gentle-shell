@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { commitMatchesWorkingTree, indexFactsCommit } from "./facts-commit.ts";
+import { compareCommitToWorkingTree, indexFactsCommit } from "./facts-commit.ts";
 import { displayLanguage } from "./facts-languages.ts";
 import { pageFacts, paginationProperties, symbolRow } from "./facts-response.ts";
 
@@ -25,9 +25,12 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
       }
       pageFacts([], params, (row: string) => row);
       const result = await indexFactsCommit(ctx.cwd, params.revision, signal);
-      const synchronization = await commitMatchesWorkingTree(ctx.cwd, result.commit, signal)
+      const comparison = await compareCommitToWorkingTree(ctx.cwd, result.commit, signal);
+      const synchronization = comparison.outcome === "match"
         ? "Committed facts match the current working tree (HEAD, clean)."
-        : `Snapshot evidence from commit ${result.commit}; working-tree edits after indexing are not included.`;
+        : comparison.outcome === "differs"
+          ? `Snapshot evidence from commit ${result.commit}; working-tree edits after indexing are not included.`
+          : "Committed facts could not be compared to the working tree (git unavailable or timed out).";
       const entries = Object.entries(result.database.files).sort(([a], [b]) => a.localeCompare(b, "en"));
       const rows = params.name
         ? entries.flatMap(([file, facts]) => facts.symbols.filter((symbol) => symbol.name.toLowerCase() === params.name.toLowerCase())
@@ -44,6 +47,11 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
           generation: result.generation,
           omittedCount: result.omitted.length,
           omitted: result.omitted.slice(0, 50),
+          synchronization: {
+            outcome: comparison.outcome,
+            elapsedMs: comparison.elapsedMs,
+            ...(comparison.outcome === "unavailable" ? { reason: comparison.reason } : {}),
+          },
           ...page.details,
         },
       };
