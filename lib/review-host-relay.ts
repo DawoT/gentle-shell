@@ -397,6 +397,13 @@ export interface ReviewHostRelayRequest {
 	/** Names the routing config key (e.g. "review-risk") in refusal messages; defaults to a generic label when absent. */
 	readonly routingKey?: string;
 	/**
+	 * Operator-facing hint appended to the missing-model refusal (e.g. the
+	 * resolved models.json paths a human must edit); owned by the caller, which
+	 * knows the config paths. Empty or absent leaves the refusal message
+	 * unchanged. Never appended to the missing-registry refusal.
+	 */
+	readonly routingHint?: string;
+	/**
 	 * Overrides the reviewer bound entirely. Production leaves it unset and the
 	 * relay derives the bound from the materialized prompt bytes and
 	 * {@link REVIEW_HOST_RELAY_PI_TIMEOUT_ENV}; this seam exists so tests can
@@ -606,10 +613,11 @@ function validateReviewerSelectionConfiguration(request: ReviewHostRelayRequest)
 		);
 	}
 	if (typeof request.selection !== "string" || request.selection.length === 0) {
+		const routingHint = typeof request.routingHint === "string" && request.routingHint.length > 0 ? request.routingHint : undefined;
 		throw new ReviewHostRelayError(
 			REVIEW_HOST_RELAY_FAILURE.REVIEWER_CONFIG_INVALID,
 			"pi",
-			`Pi host relay reviewer launch configuration is invalid: no model is configured for ${routingKey}; assign it a model in the agent model routing config`,
+			`Pi host relay reviewer launch configuration is invalid: no model is configured for ${routingKey}; assign it a model in the agent model routing config${routingHint === undefined ? "" : ` (${routingHint})`}`,
 		);
 	}
 	return {

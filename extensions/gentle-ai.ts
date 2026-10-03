@@ -7188,6 +7188,9 @@ async function executeReviewHostRelayCapture(
 				targetCwd: cwd,
 				submission: slot.submission,
 				...launch,
+				// Operator-facing hint for the missing-model refusal: the caller knows
+				// the resolved config paths, the relay only knows the routing key.
+				routingHint: `${modelConfigPath(cwd)} (or legacy ${legacyProjectModelConfigPath(cwd)})`,
 				...(modelRegistry === undefined ? {} : { reviewerRegistry: modelRegistry }),
 				...(reviewerSessionId === undefined ? {} : { reviewerSessionId }),
 				...(signal === undefined ? {} : { signal }),
@@ -8045,6 +8048,9 @@ async function executeReviewCaptureGroupOperation(
 		targetCwd: cwd,
 		submission: slot.submission!,
 		...reviewHostRelaySelection(slot.lens, reviewerRouting),
+		// Operator-facing hint for the missing-model refusal: the caller knows
+		// the resolved config paths, the relay only knows the routing key.
+		routingHint: `${modelConfigPath(cwd)} (or legacy ${legacyProjectModelConfigPath(cwd)})`,
 		...(modelRegistry === undefined ? {} : { reviewerRegistry: modelRegistry }),
 		...(reviewerSessionId === undefined ? {} : { reviewerSessionId }),
 		...(signal === undefined ? {} : { signal }),

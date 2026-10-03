@@ -595,6 +595,26 @@ test("a routing entry with no configured model is refused typed, naming the rout
 	assert.match(error.message, /review-risk/);
 });
 
+// gentle-pi#661 T2: the caller (extensions/gentle-ai.ts) knows the resolved
+// models.json paths, so it may ride an operator-facing routingHint on the
+// request; the relay appends it to the missing-model refusal only. Absent or
+// empty, the refusal message stays byte-identical to the pre-hint text.
+test("a routing entry with no configured model appends the caller's routingHint to the refusal", async (t) => {
+	const fixture = harness(t);
+	const { runReviewer, calls } = textReviewer(REVIEWER_TEXT);
+	const error = await rejectsWithRelayError(runRelay(fixture, { selection: undefined, routingKey: "review-risk", routingHint: "/tmp/models.json (or legacy /tmp/.pi/gentle-ai/models.json)" }, runReviewer), REVIEW_HOST_RELAY_FAILURE.REVIEWER_CONFIG_INVALID, "pi");
+	assert.equal(calls.length, 0);
+	assert.equal(error.message, "Pi host relay reviewer launch configuration is invalid: no model is configured for review-risk; assign it a model in the agent model routing config (/tmp/models.json (or legacy /tmp/.pi/gentle-ai/models.json))");
+});
+
+test("a routing entry with no configured model and no routingHint keeps the refusal message byte-identical", async (t) => {
+	const fixture = harness(t);
+	const { runReviewer, calls } = textReviewer(REVIEWER_TEXT);
+	const error = await rejectsWithRelayError(runRelay(fixture, { selection: undefined, routingKey: "review-risk" }, runReviewer), REVIEW_HOST_RELAY_FAILURE.REVIEWER_CONFIG_INVALID, "pi");
+	assert.equal(calls.length, 0);
+	assert.equal(error.message, "Pi host relay reviewer launch configuration is invalid: no model is configured for review-risk; assign it a model in the agent model routing config");
+});
+
 test("a tool call's cancelled signal maps to REVIEWER_ABORTED and forwards the caller's own signal to the completion", async (t) => {
 	const fixture = harness(t);
 	const controller = new AbortController();
