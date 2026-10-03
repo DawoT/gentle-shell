@@ -3729,3 +3729,49 @@ test("bindingRef fails closed when the retained STATUS offers no collect binding
 	assert.equal(result.outcome, "capture-binding-rejected");
 	assert.match(String(result.reason), /retained bound STATUS with collect bindings/);
 });
+
+// S4 (review-pipeline-hardening): docs-only mutation generations get a compact
+// RDD reminder variant; anything executable (or an unavailable/empty path list)
+// keeps the full variant byte-for-byte.
+test("renderAgentEndReviewPreflightMessage: docs-only generation emits the compact variant", () => {
+	const target = "sha256:deadbeef";
+	const message = __testing.renderAgentEndReviewPreflightMessage(target, ["README.md", "odd/tasks/review-pipeline-hardening.md"]);
+	// Compact variant preserves the target identity and the on-demand review route.
+	assert.ok(message.includes(target), "compact variant must include the target sha256");
+	assert.ok(message.includes("gentle_review"), "compact variant must name gentle_review");
+	assert.ok(message.includes('"operation":"inspect"'), "compact variant must name the inspect operation");
+	// Compact variant preserves the explicit leave-unreviewed disposition note.
+	assert.match(message, /unreviewed/);
+	// Compact variant drops the START instruction and consent-relay paragraphs.
+	assert.ok(!message.includes("review.start"), "compact variant must not carry the review.start instruction");
+	assert.ok(!message.includes("consent/v3"), "compact variant must not carry the consent-relay paragraphs");
+	assert.ok(!message.includes("Never answer consent"), "compact variant must not carry consent-answering guidance");
+});
+
+test("renderAgentEndReviewPreflightMessage: any executable file keeps the full variant byte-for-byte", () => {
+	const target = "sha256:deadbeef";
+	const full = __testing.renderAgentEndReviewPreflightMessage(target);
+	const mixed = __testing.renderAgentEndReviewPreflightMessage(target, ["README.md", "src/auth.ts"]);
+	assert.equal(mixed, full, "one executable file must keep the full variant");
+	// Default-deny: unknown extension and dotfiles are executable.
+	assert.equal(__testing.renderAgentEndReviewPreflightMessage(target, ["config.unknown"]), full);
+	assert.equal(__testing.renderAgentEndReviewPreflightMessage(target, [".gitignore"]), full);
+	assert.equal(__testing.renderAgentEndReviewPreflightMessage(target, ["odd/tasks/x.md", "docs/a.md", "run.sh"]), full);
+	// Unavailable or empty path list fails open to the full variant.
+	assert.equal(__testing.renderAgentEndReviewPreflightMessage(target, undefined), full);
+	assert.equal(__testing.renderAgentEndReviewPreflightMessage(target, []), full);
+});
+
+test("isDocsOnlyGeneration: default-deny non-executable rules", () => {
+	assert.equal(__testing.isDocsOnlyGeneration(["README.md", "docs/guide.md", "odd/tasks/x.json"]), true);
+	assert.equal(__testing.isDocsOnlyGeneration(["nested/dir/odd/notes.txt"]), true);
+	assert.equal(__testing.isDocsOnlyGeneration(["nested/docs/readme"]), true);
+	assert.equal(__testing.isDocsOnlyGeneration(["src/odd.md"]), true);
+	// Default-deny: everything else is executable.
+	assert.equal(__testing.isDocsOnlyGeneration([".github/odd/workflow"]), true);
+	assert.equal(__testing.isDocsOnlyGeneration(["src/auth.ts"]), false);
+	assert.equal(__testing.isDocsOnlyGeneration(["oddx/x.txt"]), false);
+	assert.equal(__testing.isDocsOnlyGeneration(["docsx/a.json"]), false);
+	assert.equal(__testing.isDocsOnlyGeneration([]), false);
+	assert.equal(__testing.isDocsOnlyGeneration(undefined), false);
+});

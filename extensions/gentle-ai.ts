@@ -7640,8 +7640,36 @@ async function resolveNegotiatedReviewStatusForSession(
 // through `agent_end`. It never runs START itself, so it names the one
 // supported continuation (gentle_review inspect) and defers the resulting
 // consent envelope to the human.
-function renderAgentEndReviewPreflightMessage(targetIdentity: string): string {
+function renderFullReviewPreflightMessage(targetIdentity: string): string {
 	return `Receipt-driven development is enabled, and this worktree holds an unreviewed candidate (target ${targetIdentity}). First determine whether the user explicitly left this exact target unreviewed. If yes, do not invoke review; report that disposition and continue. Only otherwise, call the gentle_review tool with {"operation":"inspect"} and follow the transition it returns; it currently offers review.start for this target. An eligible interactive Pi host may resolve consent directly with its own three-action UI. If gentle_review instead returns an unresolved gentle-ai.review-integration.consent/v3 envelope, relay that original two-choice provider envelope to the human losslessly. Never answer consent from model prose or tool arguments.\n\nThis extension never runs START itself. This reminder consumes only this session's observed mutation generation.`;
+}
+
+// S4 (review-pipeline-hardening): default-deny non-executable classification.
+// Only paths ending in .md, or under a directory named odd/ or docs/ (any
+// depth, any extension — ODD task docs), are non-executable; unknown
+// extensions and dotfiles stay executable.
+function isNonExecutablePath(path: string): boolean {
+	const segments = path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0 && segment !== ".");
+	const directorySegments = segments.slice(0, -1);
+	return path.endsWith(".md") || directorySegments.some((segment) => segment === "odd" || segment === "docs");
+}
+
+function isDocsOnlyGeneration(paths: readonly string[] | undefined): boolean {
+	return Array.isArray(paths) && paths.length > 0 && paths.every(isNonExecutablePath);
+}
+
+// Compact variant for docs-only generations: keeps the target identity, the
+// on-demand inspect route, and the leave-unreviewed disposition note; drops
+// the review.start instruction block and the consent-relay paragraphs.
+function renderCompactReviewPreflightMessage(targetIdentity: string): string {
+	return `Receipt-driven development is enabled, and this worktree holds an unreviewed candidate (target ${targetIdentity}). This mutation generation changed only non-executable files (documentation), so this is a compact reminder: review remains available on demand via gentle_review {"operation":"inspect"}, and the user may explicitly leave this target unreviewed. This extension never runs START itself. This reminder consumes only this session's observed mutation generation.`;
+}
+
+function renderAgentEndReviewPreflightMessage(targetIdentity: string, pendingPaths?: readonly string[]): string {
+	// Fail open: an unavailable or empty file list keeps the full variant.
+	return isDocsOnlyGeneration(pendingPaths)
+		? renderCompactReviewPreflightMessage(targetIdentity)
+		: renderFullReviewPreflightMessage(targetIdentity);
 }
 
 function canonicalReviewCaptureBinding(value: unknown): string {
@@ -9357,6 +9385,9 @@ export const __testing = {
 	// S1 (U1): the existing __testing seam exposes pure production helpers;
 	// advisory recurrence annotation is one of them (no new test-only surface).
 	annotateAdvisoryRecurrence,
+	renderAgentEndReviewPreflightMessage,
+	isDocsOnlyGeneration,
+	isNonExecutablePath,
 	getPiModelOptions,
 	MODEL_CONTROL_OPTIONS,
 	switchLiveOrchestrator,
@@ -9972,6 +10003,37 @@ function createGentleAiExtensionForTesting(
 		return undefined;
 	});
 
+	// S4 (review-pipeline-hardening): best-effort in-process record of direct
+	// write/edit paths since the last nudge, used only to pick the compact
+	// docs-only reminder variant. Reminder bookkeeping only: never review scope
+	// or authority. Subagent-written paths and any entry evicted by the cap are
+	// unknown, which fails open to the full reminder variant. Receipt ids embed
+	// the toolCallId (see review-reminder-receipt), enabling prefix pruning at nudge.
+	const directMutationPaths = new Map<string, string>();
+	const DIRECT_MUTATION_PATH_CAP = 256;
+
+	function rememberDirectMutationPath(toolCallId: string, path: string): void {
+		if (directMutationPaths.has(toolCallId)) directMutationPaths.delete(toolCallId);
+		directMutationPaths.set(toolCallId, path);
+		while (directMutationPaths.size > DIRECT_MUTATION_PATH_CAP) {
+			const oldest = directMutationPaths.keys().next().value;
+			if (oldest === undefined) break;
+			directMutationPaths.delete(oldest);
+		}
+	}
+
+	function pruneDirectMutationPathsThrough(toolCallId: string | undefined): void {
+		if (toolCallId === undefined) {
+			directMutationPaths.clear();
+			return;
+		}
+		for (const id of directMutationPaths.keys()) {
+			const done = id === toolCallId;
+			directMutationPaths.delete(id);
+			if (done) break;
+		}
+	}
+
 	// gentle-pi#556 / gentle-ai#4051: with RDD enabled, the agent could finish
 	// an authorized implementation and report completion without ever running
 	// the review STATUS preflight or offering the consent question. This
@@ -10001,15 +10063,29 @@ function createGentleAiExtensionForTesting(
 		if (!pendingReviewMutation(ctx.sessionManager, root, mutation)) return;
 		if (status.nextTransition?.kind !== "execute" || status.nextTransition.execute.operation !== "review.start") return;
 		const targetIdentity = status.targetIdentity;
+		// Docs-only compaction input: the best-effort observed path list of this
+		// pending generation, snapshotted before the nudge prunes its prefix.
+		const pendingPaths = directMutationPaths.size > 0 ? [...directMutationPaths.values()] : undefined;
 		pi.sendMessage(
 			{
 				customType: "gentle-pi.review-preflight",
-				content: renderAgentEndReviewPreflightMessage(targetIdentity),
+				content: renderAgentEndReviewPreflightMessage(targetIdentity, pendingPaths),
 				display: true,
 			},
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
 		consumeReviewMutation(pi, ctx.sessionManager, root, mutation, "nudged", targetIdentity);
+		// The nudged prefix is consumed; drop its observed paths so a later
+		// docs-only generation is not shadowed by earlier executable writes.
+		const nudgedToolCallId = (() => {
+			try {
+				const parsed: unknown = JSON.parse(mutation);
+				return Array.isArray(parsed) && typeof parsed[2] === "string" ? parsed[2] : undefined;
+			} catch {
+				return undefined;
+			}
+		})();
+		pruneDirectMutationPathsThrough(nudgedToolCallId);
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
@@ -10021,7 +10097,10 @@ function createGentleAiExtensionForTesting(
 			const root = identity?.root ?? prospectiveRoot;
 			// Persist the observed own write before any await. Preparation is not
 			// mutation evidence, and cannot invent a pre-write Changes baseline.
-			if (root) recordReviewMutation(pi, ctx.sessionManager, root, { source: "direct", toolName: event.toolName, toolCallId: event.toolCallId, ...directWriterProfile(pi, ctx) });
+			if (root) {
+				recordReviewMutation(pi, ctx.sessionManager, root, { source: "direct", toolName: event.toolName, toolCallId: event.toolCallId, ...directWriterProfile(pi, ctx) });
+				rememberDirectMutationPath(event.toolCallId, event.input.path);
+			}
 			if (prospectiveRoot && !resolveSessionWorktree(ctx.cwd, ctx.cwd)) await prepareBoundSessionRepository(ctx.sessionManager, ctx.sessionManager.getCwd?.() ?? ctx.cwd, ctx.signal);
 		} catch { /* Preparation and receipt persistence cannot change a successful tool result. */ }
 	});
