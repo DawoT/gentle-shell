@@ -37,9 +37,20 @@ closed: keys are `changedPathManifestSha256` + pinned generations.
   (consumed `sha256:0025285ed0122494e7d344e8dab6a26a66bfdc2d71dc377f7f381ce7d2ec2f4b`,
   5 informational advisories: R3-evict-current, R3-fix-race, R3-staging-eexist,
   R3-untested-wiring, R3-wiring-gap — recorded as backlog).
-- [ ] S2a (U2 compute) — Tree-pair subject digest: `indexFactsTree` on (baseTree,
-  candidateTree) restricted to changed paths, keyed by `changedPathManifestSha256`,
-  stored under a new source.kind "tree-pair"; fail closed when candidate tree moved.
+- [x] S2a (U2 compute) — DONE: `eb5920e7` (lib/facts/facts-tree-pair.ts 138 + tests
+  112). computeTreePairDigest: pure function over immutable trees (no cache/staleness
+  by construction), typed unknown-tree rejection before any indexing, file
+  classification by sha (added/modified/deleted), exported-symbol deltas, boundary
+  edges, unchangedDependents blast radius, deterministic ordering. RED module-load →
+  GREEN 5/5 (determinism-vs-timestamp was a spec clarification); adjacent facts-commit
+  27/27; typecheck baseline. Independent verifier PASS with own git fixture (32 pass;
+  gap noted: multi-edge sort ordering untested — backlog). Native review
+  `review-3fb887c4f78de796` high/4-lens approved+acknowledged (consumed
+  `sha256:14f9496b8265ca28b6ffff1ae71def5740a6076dfecf093625acebb68768cf6f`; prompts
+  ~21.8KB/lens vs 116KB on large slices; 12 informational advisories incl.
+  R4-swallowed-git-errors, R4-unbounded-subprocess, R2-dead-classification-ternary —
+  backlog). One group capture was rejected (my transcription dropped `value` fields);
+  nothing mutated; fresh STATUS + exact resubmit succeeded.
 - [ ] S2b (U2 inject) — Feasibility gate FIRST: verify whether the relay contract
   permits host framing around frozen prompt bytes (`lib/review-host-relay.ts:9,100`).
   If prohibited: digest stays parent-facing triage context; document the limit.
