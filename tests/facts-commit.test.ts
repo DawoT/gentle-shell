@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, watch } from "node:fs";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile, symlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import test from "node:test";
+import { waitForMarker } from "./support/atomic-marker.mjs";
 import { compareCommitToWorkingTree, describeGitFailure, indexFactsCommit } from "../lib/facts/facts-commit.ts";
 
 async function fixture() {
@@ -236,38 +237,9 @@ for (const reason of [undefined, "stop", 42, Symbol("stop"), new Error("deadline
   });
 }
 
-// Subscribe before reading: readiness comes from a real child, not a timed sleep.
-function waitForMarker(directory: string, name: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const watcher = watch(directory, () => { void check(); });
-    const timer = setTimeout(() => finish(new Error(`Missing child marker: ${name}`)), 20_000);
-    let settled = false;
-    function finish(error?: Error, value?: string) {
-      if (settled) return;
-      settled = true;
-      watcher.close();
-      clearTimeout(timer);
-      if (error) reject(error);
-      else resolve(value!);
-    }
-    async function check() {
-      let content: string;
-      try {
-        content = await readFile(join(directory, name), "utf8");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") finish(error as Error);
-        return;
-      }
-      // A marker must be complete: a watcher can observe the file between its
-      // creation and its write, yielding an empty value. Content shape is the
-      // caller's concern; the ready marker is written atomically via rename.
-      if (content.trim() === "") return;
-      finish(undefined, content.trim());
-    }
-    void check();
-  });
-}
-
+// Subscribe before reading: readiness comes from a real child, not a timed
+// sleep. Shared utility: non-empty validation + watcher cleanup are handled
+// there; this suite's default non-empty semantics match.
 async function withProbe(mode: string, action: (directory: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "facts-probe-test-"));
   const priorPath = process.env.PATH;
@@ -275,6 +247,9 @@ async function withProbe(mode: string, action: (directory: string) => Promise<vo
     const bin = join(directory, "bin");
     await mkdir(bin);
     const worker = await readFile(new URL("./support/facts-probe-worker.mjs", import.meta.url), "utf8");
+    // The worker imports the shared atomic-marker helper relatively, so the
+    // helper must be copied next to the shim for the import to resolve.
+    await writeFile(join(bin, "atomic-marker.mjs"), await readFile(new URL("./support/atomic-marker.mjs", import.meta.url), "utf8"));
     await writeFile(join(bin, "git"), worker.replace("#!/usr/bin/env node", `#!${process.execPath}`), { mode: 0o700 });
     await writeFile(join(directory, "mode"), mode);
     process.env.PATH = `${bin}${delimiter}${priorPath ?? ""}`;
