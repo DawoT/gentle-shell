@@ -7579,6 +7579,28 @@ function canonicalReviewCaptureBinding(value: unknown): string {
 	return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalReviewCaptureBinding(value[key])}`).join(",")}}`;
 }
 
+// Accepts both a raw provider collect input (as an object or serialized JSON)
+// and the facade's own public STATUS projection shape: publicReviewCaptureBindings
+// publishes each collect input wrapped as {"collectBinding": "<serialized json>"},
+// so callers echoing that projection back must land on the same canonical form.
+// The unwrap is unambiguous: real provider collect inputs carry arguments,
+// artifactSubject, submission, and captureOperation keys and never a lone
+// collectBinding key. The unwrap recurses (bounded naturally by JSON nesting
+// depth) so a wrapper within a wrapper still resolves to the inner collect input.
+function unwrapPublicCollectBindingWrapper(value: unknown): unknown {
+	let current = value;
+	while (isRecord(current) && Object.keys(current).length === 1 && Object.keys(current)[0] === "collectBinding") {
+		current = current.collectBinding;
+		if (typeof current !== "string") continue;
+		try {
+			current = JSON.parse(current);
+		} catch (error) {
+			throw new Error(`Review capture collectBinding is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	return current;
+}
+
 function parseCanonicalReviewCaptureBinding(input: string): string {
 	let binding: unknown;
 	try {
@@ -7586,6 +7608,7 @@ function parseCanonicalReviewCaptureBinding(input: string): string {
 	} catch (error) {
 		throw new Error(`Review capture collectBinding is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
 	}
+	if (isRecord(binding)) binding = unwrapPublicCollectBindingWrapper(binding);
 	if (!isRecord(binding)) throw new Error("Review capture collectBinding must encode exactly one collect input object");
 	return canonicalReviewCaptureBinding(binding);
 }

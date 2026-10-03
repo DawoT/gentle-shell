@@ -349,6 +349,80 @@ test("capture route recovery rejects fresh foreign, terminal, stale and malforme
 	assert.equal(relays, 0);
 });
 
+// The public STATUS projection wraps every collect input as
+// {"collectBinding": "<serialized json>"}; echoing that exact facade shape
+// back must proceed exactly like the unwrapped binding instead of failing as
+// a missing or stale collectBinding (group: set-completeness).
+test("public STATUS wrapper-shaped collectBinding captures exactly like its unwrapped equivalent", async (t) => {
+	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
+	const cwd = repository(t), lineageId = "wrapped-single", input = relayCollectInput(lineageId, "review-risk", 0);
+	const selections = new Map(), current = finalizeStatus(lineageId, [input]);
+	const harness = nativeHarness([current, current, current]);
+	let relays = 0;
+	__testing.setReviewHostRelayRunnerForTesting(async () => {
+		relays += 1;
+		return { promptByteLength: 64, resultByteLength: 32, submission: '{"admission_decision":"completed"}' };
+	});
+	await __testing.executeReviewControllerOperation({ operation: "status", lineageId }, cwd, harness.native, undefined, null, undefined, selections);
+	const parameters = { lineageId, collectBinding: JSON.stringify({ collectBinding: JSON.stringify(input) }) };
+	const forecast = await __testing.executeReviewCaptureOperation(parameters, cwd, harness.native, undefined, null, selections, true);
+	assert.equal(forecast.outcome, "reviewer-model-run-forecast");
+	assert.equal(relays, 0);
+	selections.clear();
+	const result = await __testing.executeReviewCaptureOperation({ ...parameters, reviewerRunAcknowledged: true }, cwd, harness.native, undefined, null, selections, true);
+	assert.equal(result.status, "captured");
+	assert.equal(relays, 1);
+	assert.equal(harness.statusCalls.length, 3);
+	assert.ok(harness.statusCalls.every((request) => request.agent === "pi"));
+});
+
+test("public STATUS wrapper-shaped collectBindings capture the whole group exactly like their unwrapped equivalents", async (t) => {
+	t.after(() => __testing.setReviewHostRelayGroupRunnersForTesting());
+	const cwd = repository(t), lineageId = "wrapped-group", inputs = groupInputs(lineageId), selections = new Map();
+	const harness = nativeHarness([finalizeStatus(lineageId, inputs), finalizeStatus(lineageId, inputs), finalizeStatus(lineageId, inputs), ...inputs.map((_input, index) => finalizeStatus(lineageId, inputs.slice(index))), finalizeStatus(lineageId)]);
+	let relays = 0, submissions = 0;
+	__testing.setReviewHostRelayGroupRunnersForTesting(async (requests) => { relays += requests.length; return requests.map(prepared); }, async () => {
+		submissions += 1;
+		return { promptByteLength: 64, resultByteLength: 32, submission: "{}" };
+	});
+	await __testing.executeReviewControllerOperation({ operation: "status", lineageId }, cwd, harness.native, undefined, null, undefined, selections);
+	const parameters = { lineageId, collectBindings: inputs.map((input) => JSON.stringify({ collectBinding: JSON.stringify(input) })) };
+	const forecast = await __testing.executeReviewCaptureGroupOperation(parameters, cwd, harness.native, undefined, null, selections, true);
+	assert.equal(forecast.outcome, "reviewer-model-run-forecast");
+	assert.equal(relays, 0);
+	selections.clear();
+	const result = await __testing.executeReviewCaptureGroupOperation({ ...parameters, reviewerRunAcknowledged: true }, cwd, harness.native, undefined, null, selections, true);
+	assert.equal(result.outcome, "native-reviewer-group-status-reconciled");
+	assert.equal(relays, 4);
+	assert.equal(submissions, 4);
+	assert.equal(harness.statusCalls.length, 8);
+});
+
+test("the public wrapper unwrap stays strict and recurses only through lone-collectBinding records", async (t) => {
+	t.after(() => { __testing.setReviewHostRelayRunnerForTesting(); __testing.setReviewHostRelayGroupRunnersForTesting(); });
+	const cwd = repository(t), lineageId = "wrapper-strictness", inputs = groupInputs(lineageId);
+	let relays = 0;
+	__testing.setReviewHostRelayRunnerForTesting(async () => { relays += 1; throw new Error("unexpected relay"); });
+	__testing.setReviewHostRelayGroupRunnersForTesting(async () => { relays += 1; throw new Error("unexpected group"); }, async () => { throw new Error("unexpected submission"); });
+	const current = finalizeStatus(lineageId, inputs);
+	// A wrapper around a non-object unwraps to a non-object and keeps the exact-one error.
+	await assert.rejects(
+		__testing.executeReviewCaptureOperation({ lineageId, collectBinding: JSON.stringify({ collectBinding: 7 }), reviewerRunAcknowledged: true }, cwd, nativeHarness([current]).native, undefined, null, new Map(), true),
+		{ message: "Review capture collectBinding must encode exactly one collect input object" },
+	);
+	// A two-key record is not a wrapper: it is treated as a raw collect input and rejected against STATUS.
+	const twoKeys = await __testing.executeReviewCaptureOperation({ lineageId, collectBinding: JSON.stringify({ collectBinding: JSON.stringify(inputs[0]), other: 1 }), reviewerRunAcknowledged: true }, cwd, nativeHarness([current]).native, undefined, null, new Map(), true);
+	assert.equal(twoKeys.outcome, "capture-binding-rejected");
+	assert.match(String(twoKeys.reason), /missing or stale/);
+	const groupTwoKeys = await __testing.executeReviewCaptureGroupOperation({ lineageId, collectBindings: inputs.map((input) => JSON.stringify({ collectBinding: JSON.stringify(input), other: 1 })), reviewerRunAcknowledged: true }, cwd, nativeHarness([current]).native, undefined, null, new Map(), true);
+	assert.equal(groupTwoKeys.outcome, "capture-group-rejected");
+	assert.equal(groupTwoKeys.reason, "collectBindings must be the complete distinct current reviewer group in exact provider order");
+	// Nesting the wrapper recurses to the inner collect input.
+	const doubleForecast = await __testing.executeReviewCaptureOperation({ lineageId, collectBinding: JSON.stringify({ collectBinding: JSON.stringify({ collectBinding: JSON.stringify(inputs[0]) }) }) }, cwd, nativeHarness([current]).native, undefined, null, new Map(), true);
+	assert.equal(doubleForecast.outcome, "reviewer-model-run-forecast");
+	assert.equal(relays, 0);
+});
+
 test("one materialize binding routes exactly one provider slot through the host relay", async (t) => {
 	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
 	const cwd = repository(t);
