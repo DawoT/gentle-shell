@@ -5,7 +5,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-interface ProcessContext {
+export interface ProcessContext {
   boot: string;
   host: string;
   namespace: string;
@@ -18,7 +18,8 @@ export class FactsBusyError extends Error {
   }
 }
 
-async function processContext(): Promise<ProcessContext | undefined> {
+// Exported read-only for the facts lock doctor; behavior unchanged.
+export async function readProcessContext(): Promise<ProcessContext | undefined> {
   if (process.platform !== "linux") return undefined;
   try {
     const boot = (await readFile("/proc/sys/kernel/random/boot_id", "utf8")).trim();
@@ -89,7 +90,7 @@ export async function withFactsWriterLock<T>(storageDir: string, operation: () =
   signal?.throwIfAborted();
   await mkdir(storageDir, { recursive: true });
   const path = join(storageDir, "facts.lock");
-  const context = await processContext();
+  const context = await readProcessContext();
   const owner = `owner-${randomUUID()}.json`;
   const deadline = performance.now() + 15_000;
   while (true) {
