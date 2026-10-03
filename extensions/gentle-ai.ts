@@ -7225,6 +7225,9 @@ async function executeReviewHostRelayCapture(
 	// keeps compiling unchanged.
 	reviewerSessionId?: string,
 	implicitWorkspaceRoot?: string,
+	// S1.1: frozen changed-path manifest sha of the negotiated STATUS this
+	// capture came from; recorded in the advisory ledger like the group path.
+	changedPathManifestSha256?: string,
 ): Promise<Record<string, unknown>> {
 	try {
 		if (slot.submission === undefined) {
@@ -7261,7 +7264,7 @@ async function executeReviewHostRelayCapture(
 			};
 		})());
 		const closure = decodeRelayLastEventClosure(result.submission);
-		if (closure !== undefined) return await mapAndClearLastEventClosure(closure, binding, selections, cwd, implicitWorkspaceRoot);
+		if (closure !== undefined) return await mapAndClearLastEventClosure(closure, binding, selections, cwd, implicitWorkspaceRoot, changedPathManifestSha256);
 		return {
 			tool: "gentle_review_capture",
 			status: "captured",
@@ -7447,6 +7450,8 @@ async function executeProviderRoleVectorCapture(
 	route: RetainedNativeCaptureRoute | undefined,
 	signal?: AbortSignal,
 	implicitWorkspaceRoot?: string,
+	// S1.1: frozen changed-path manifest sha, same ledger identity as the group path.
+	changedPathManifestSha256?: string,
 ): Promise<Record<string, unknown>> {
 	if (nativeReviewCli.captureProviderRole === undefined) {
 		return {
@@ -7465,7 +7470,7 @@ async function executeProviderRoleVectorCapture(
 			cwd,
 			...(signal === undefined ? {} : { signal }),
 		});
-		if ("operation" in artifact) return mapAndClearLastEventClosure(artifact, binding, selections, cwd, implicitWorkspaceRoot);
+		if ("operation" in artifact) return mapAndClearLastEventClosure(artifact, binding, selections, cwd, implicitWorkspaceRoot, changedPathManifestSha256);
 		return {
 			tool: "gentle_review_capture",
 			status: "captured",
@@ -7984,7 +7989,7 @@ async function executeReviewCaptureOperation(
 				mutation_outcome: "none",
 			};
 		}
-		return withCorrectionTarget(await executeReviewHostRelayCapture(hostRelaySlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, modelRegistry, reviewerSessionId, implicitWorkspaceRoot));
+		return withCorrectionTarget(await executeReviewHostRelayCapture(hostRelaySlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, modelRegistry, reviewerSessionId, implicitWorkspaceRoot, status.frozen?.changedPathManifestSha256));
 	}
 
 	// gentle-pi#311 P3: gentle-ai's v9 contract renders the refuter and
@@ -8010,7 +8015,7 @@ async function executeReviewCaptureOperation(
 				mutation_outcome: "none",
 			};
 		}
-		return withCorrectionTarget(await executeReviewHostRelayCapture(hostMediatedRoleSlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, modelRegistry, reviewerSessionId, implicitWorkspaceRoot));
+		return withCorrectionTarget(await executeReviewHostRelayCapture(hostMediatedRoleSlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, modelRegistry, reviewerSessionId, implicitWorkspaceRoot, status.frozen?.changedPathManifestSha256));
 	}
 
 	if (selected.input.captureOperation === "review.capture-correction-plan") {
@@ -8040,7 +8045,7 @@ async function executeReviewCaptureOperation(
 				cwd,
 				...(signal === undefined ? {} : { signal }),
 			});
-			return withCorrectionTarget(await mapAndClearLastEventClosure(closure, selected.binding, retainedUntrackedSelections, cwd, implicitWorkspaceRoot));
+			return withCorrectionTarget(await mapAndClearLastEventClosure(closure, selected.binding, retainedUntrackedSelections, cwd, implicitWorkspaceRoot, status.frozen?.changedPathManifestSha256));
 		} catch (error) {
 			return await reconcileUnknownReviewCaptureFailure(error, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route);
 		}
@@ -8051,7 +8056,7 @@ async function executeReviewCaptureOperation(
 		if (parameters.reviewerRunAcknowledged !== undefined || parameters.correctionLines !== undefined) {
 			return captureBindingRejected("reviewerRunAcknowledged and correctionLines are not valid for a provider role capture");
 		}
-		return withCorrectionTarget(await executeProviderRoleVectorCapture(providerRoleSlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, implicitWorkspaceRoot));
+		return withCorrectionTarget(await executeProviderRoleVectorCapture(providerRoleSlots[0]!, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route, signal, implicitWorkspaceRoot, status.frozen?.changedPathManifestSha256));
 	}
 	return captureBindingRejected(`unsupported provider capture operation: ${selected.input.captureOperation}`);
 }

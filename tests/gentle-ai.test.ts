@@ -3679,6 +3679,46 @@ test("gentle_review_capture_group refuses an out-of-range bindingRef", async (t)
 	assert.match(String(result.reason), /bindingRef 2 is out of range for 2/);
 });
 
+// S1.1 (review-pipeline-hardening): the single-capture acknowledge path must
+// record ledger entries under the negotiated STATUS's frozen changed-path
+// manifest sha (same tree identity as the group path), so recurrence detection
+// and fix receipts work. Flipped from the previously documented ""-recording
+// limitation.
+test("single-capture closure records ledger entries under the negotiated STATUS frozen manifest sha", async (t) => {
+	const { ReviewAdvisoryLedgerStore } = await import("../lib/review-advisory-ledger.ts");
+	const root = mkdtempSync(join(tmpdir(), "gentle-ai-single-capture-ledger-"));
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	// The controller binds only to real worktrees: seed a minimal one for the ledger root.
+	execFileSync("git", ["init", "-q"], { cwd: root, stdio: "ignore" });
+	writeFileSync(join(root, "app.ts"), "export {};\n");
+	execFileSync("git", ["add", "app.ts"], { cwd: root, stdio: "ignore" });
+	execFileSync("git", ["-c", "user.name=Review Test", "-c", "user.email=review@example.invalid", "commit", "-q", "-m", "base"], { cwd: root, stdio: "ignore" });
+	const manifestSha = createHash("sha256").update("single-capture-tree").digest("hex");
+	const status = refCaptureStatus(1, { frozen: { tier: "low", originalChangedLines: 1, correctionBudget: 1, changedPathManifestSha256: manifestSha } });
+	const findings = [{ id: "A1", lens: "review-risk", location: "src/a.ts", severity: "WARNING", disposition: "informational" }] as const;
+	const closure = {
+		schema: "gentle-ai.review-last-event-closure/v1",
+		operation: "review/capture-result",
+		lineage_id: refCaptureLineage,
+		state: "approved",
+		store_revision: "sha256:" + "d".repeat(64),
+		action: "done",
+		advisory_findings: { statement: "s", findings },
+	};
+	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
+	__testing.setReviewHostRelayRunnerForTesting(async () => ({ promptByteLength: 1, resultByteLength: 1, submission: JSON.stringify(closure) }));
+	const captured = await __testing.executeReviewCaptureOperation({
+		lineageId: refCaptureLineage,
+		collectBinding: { bindingRef: 0 },
+		reviewerRunAcknowledged: true,
+	}, root, refCaptureNative(status));
+	assert.equal(captured.status, "closed");
+	const stored = await new ReviewAdvisoryLedgerStore(root).getLedger();
+	assert.equal(stored.length, 1);
+	// The recorded entry carries the exact negotiated frozen sha, not "".
+	assert.equal(stored[0]!.changedPathManifestSha256, manifestSha);
+});
+
 test("bindingRef fails closed when the retained STATUS offers no collect bindings", async (t) => {
 	const stale = refCaptureStatus(0, { nextTransition: { kind: "stop", reasonCode: "capture_required" } });
 	const result = await __testing.executeReviewCaptureOperation({
