@@ -36,14 +36,20 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   input schema + resolution at parse site), tests/gentle-ai.test.ts, plus a new
   lib/review-capture-binding-ref.ts + tests if the resolution logic warrants a
   pure module.
-- [ ] S2 — Facts lock doctor. Report mode: enumerate storage dirs (.pi/facts.lock,
-  .pi/*cache*/facts.lock), validate each owner record against the recoverDeadOwner
-  rules (version/pid/context/ESRCH) and classify valid-live / recoverable-dead /
-  corrupt-unknown. Recovery mode (--recovery, explicit): remove ONLY
-  corrupt-unknown or recoverable-dead locks via the same unlink+rmdir sequence,
-  never touching storage data. CLI entry next to existing bin scripts; lib logic
-  exported from facts-lock.ts (refactor: export pure validators, keep behavior).
-  Tests: all classifications incl. the 0-byte incident shape.
+- [x] S2 — Facts lock doctor DONE: `88bc02b3` (doctor lib 121 + CLI 48 + tests 299).
+  `node bin/gentle-facts-doctor.mjs [storageDir...] [--recovery] [--json]`: classifies
+  absent/empty-dir/valid-live/valid-unknown-liveness/recoverable-dead/corrupt-unknown
+  with rules transcribing recoverDeadOwner exactly (verifier: zero parity divergence,
+  incl. O_NOFOLLOW + 4097-byte cap + EPERM-as-live). --recovery removes only
+  recoverable-dead/corrupt-unknown/empty-dir (unlink+rmdir), never valid-* nor storage
+  data. Exit 1 iff recovery still needed. facts-lock.ts refactor exports-only
+  (readProcessContext); behavior byte-identical. 22 new tests incl. the exact 0-byte
+  incident shape + real dead-pid ESRCH; lock 12/12, store 38/38, CLI exercised live
+  (forged-context → corrupt-unknown, exit 1, data intact); typecheck no regressions.
+  Review `review-0f8f3180c2ba9c63` medium/1-lens approved+acknowledged (consumed
+  `sha256:1d7e2bcdfe3e742c90280fb5f3b31ef0dfc63913de27409237e454fdad97dfa5`; 3
+  informational advisories backlog: R3-crash-nonregdir WARNING,
+  R3-flaky-deadpid, R3-missing-nonregdir-coverage).
 - [ ] S3 — Shared atomic marker test utility. tests/support/atomic-marker.mjs:
   atomicWriteMarker(dir,name,content) (tmp+rename), waitForMarker (watcher +
   non-empty validation + timeout), restore for env-stripping not in scope.
