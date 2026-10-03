@@ -65,7 +65,8 @@ are a design signal, not noise.
 
 ## Outcome (2026-10-03)
 
-- Status: COMPLETE. Commit `2456b1da`: tri-state `compareCommitToWorkingTree`
+- Status: CODE COMMITTED, NATIVE REVIEW APPROVED; additional independent verification
+  is pending due to verifier model routing. Commit `2456b1da`: tri-state `compareCommitToWorkingTree`
   (match/differs/unavailable + reason + elapsedMs), `runGitCommand` rename,
   `GIT_COMMAND_DEADLINE_MS`, `describeGitFailure` mapping (ENOBUFS/missing/deadline/
   failed), extension renders three honest lines + `details.synchronization`.
@@ -74,3 +75,41 @@ are a design signal, not noise.
   false, R3-gitstatus-maxbuffer, R4-git-probe-latency (now observable),
   R4-sync-observability, R2-git-timeout-constant, R2-git-runner-name.
 - Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
+
+## Review status: APPROVED and acknowledged
+
+- Correction to the interruption report: transcript corruption was not established.
+  The earlier group call returned a valid forecast and ran no reviewers; the parent
+  stopped prematurely. No provider rejection proved a channel integrity defect.
+- Resumed lineage `review-5bb532c10727596e` using its current provider bindings.
+  Four reviewers were prepared and admitted; native closure was `approved` with
+  12 non-blocking advisories. They are separate later work, not correction obligations.
+- Exact acknowledgement succeeded: target
+  `sha256:0eb291915383d1f4b59f64294af4a480b9716e9c10983aad023d6e97b051fddf`,
+  consumed revision
+  `sha256:675c4f2df7e3317fe7f5d7c42bd26009e9b9e4a3472fa43af6ee7f2ceab3c199`,
+  authority `burned` (`gentle-ai.review-acknowledged/v1`).
+- The prior 14-line documentation delta was separately approved and acknowledged as
+  low tier, with no lenses, under `review-c2ec481d51c30659` for target
+  `sha256:ac68249519ed93ef331bf158942ebcc92b8fa502e28dbf98fbcfc72fefb9dacf`.
+- Review scope limitation: the already-open code lineage covered the stacked
+  29-file / 1191-line range, not only this work unit. Future starts should use a
+  work-unit or PR slice rather than the accumulated feature branch.
+
+## Additional verification: RESOLVED post-reload
+
+- A fresh `gentle-ai-verify` run succeeded after reload (no model routing failure;
+  no configuration changed by this session). Observed: focused 12/12, Facts 234/234,
+  typecheck 186 baseline/no regressions, extension syntax check, 11 runtime modules
+  match. Read-only live probes: dirty HEAD differs (~14ms), older commit differs,
+  preaborted signal unavailable, missing Git (isolated PATH) unavailable with reason
+  "git is not available".
+- Parent live Facts checks: tri-state indexed at HEAD, legacy boolean only in history;
+  `facts_commit(HEAD)` pins the commit and renders the honest snapshot disclaimer;
+  repeated queries return the same generation; one transient parallel cache-writer
+  lock refusal resolved by sequential retry.
+- Known coverage limits at that boundary (superseded by the follow-up feature
+  `facts-probe-lifecycle-acceptance`): cancellation-vs-deadline conflation, no real
+  deadline/buffer-exhaustion probes, no extension synchronization assertions,
+  no cross-process commit-cache contention coverage. Clean-match coverage existed
+  only in fixtures; the checkout was dirty.
