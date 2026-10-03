@@ -2,109 +2,125 @@
 
 ## Intent and authorization
 
-Strengthen Facts Git comparison reliability and observable tool contracts after live
-dogfooding. User authorized implementation, a feature branch, local work-unit commits,
-and a feature/tracker branch chain. No push, PR creation, merge, model configuration,
-or changes to unrelated concurrent work are authorized.
+Stabilize the current branch, completing Facts acceptance and the routing/Codex-native
+WIP dependency closure. The user authorized local work-unit commits and a
+feature/tracker branch chain, chose Codex experimental/opt-in, and confirmed other
+writers are paused. No push, PR, merge, global/model configuration changes,
+destructive Git, review abandonment, reset, or recovery is authorized.
+Original WIP authorship is not established. Preserve existing behavior unless a
+verified defect or the explicit opt-in policy requires a change.
 
 Branch: `odd/facts-probe-lifecycle-acceptance`.
-Starting boundary: `f6c7c6e3019db0f7f875a7e661191ba51a476cf6`.
-Delivery strategy: `auto-chain`; chain strategy: `feature-branch-chain`.
-Forecast: 320–530 authored changed lines, generated output excluded. Three reviewable
-units, each with behavior/tests/evidence together. Running committed count: 0.
+Initial boundary: `f6c7c6e3019db0f7f875a7e661191ba51a476cf6`.
+Delivery: `auto-chain`, `feature-branch-chain`.
+Original Facts forecast: 320–530 authored lines. Expanded Codex closure is a separate
+review slice; include existing untracked lines in its count. T1 code count: 199
+(additions + deletions: 187 + 12), not the previously reported additions-only 187.
 
-## Problem and architectural decisions
+## Architectural decisions and constraints
 
-- Cancellation currently loses provenance: preabort and arbitrary reasons can appear
-  as deadlines or generic Git failures. Track abort origin, not user reason text.
-- The comparison runner can return on callback before the child closes. Adopt the
-  existing Git-object lifecycle pattern: await close, bounded kill escalation.
-- Extension synchronization text/details need consumer-level integration assertions.
-  Fixtures must ignore `.pi/` so indexing does not dirty an otherwise clean tree.
-- Cache writer locking already polls every 25ms for up to 15s. Do not add nested retry,
-  extend latency, or reclaim legacy/unknown owners. Characterize contention first.
+- Cancellation classification uses first-abort provenance, not caller reason text.
+- Await Git child close and bound termination escalation. Preserve the public
+  comparison signature/union, Git environment isolation, 15s per-command deadline,
+  capture cap, and untracked-as-differs semantics.
+- Synchronization integration tests exercise registered tools with real Git. Ignore
+  generated `.pi/` caches in isolated clean fixtures.
+- Writer locks already wait up to 15s with 25ms abortable polling. No nested retry,
+  longer latency budget, or reclaim of legacy/unknown owners without new evidence.
+- Codex registration/use is explicitly experimental and opt-in. Ordinary tests must
+  not read real credentials or perform inference. Opted-in live tests need a deadline.
+  Validate auth fields and preserve HTTP Request semantics; credential-bearing
+  endpoint overrides must remain local loopback, not arbitrary remote origins.
+- Existing routing normalization and pin precedence must remain coherent with the
+  Codex child-extension dependency. No credential files may be read or written.
+- No generalized retry/process framework or public API solely for tests. Use real
+  process boundaries, readiness handshakes, bounded cleanup and no sleep-based races.
 
-## Constraints and acceptance
+## Classification and execution
 
-Keep the public comparison signature and match/differs/unavailable result shape.
-Untracked files still count as differs. Keep Git environment isolation, the 15s
-per-command deadline, and capture cap. No generalized retry/process framework or
-public timeout API solely for testing. Use isolated fixtures, real subprocesses,
-readiness handshakes, bounded cleanup, and no fixed sleep-based race assertions.
-No shared-checkout cleanup, destructive Git, test-only production methods, invented
-RED evidence, or re-opening consumed review lineages.
-
-Use test-first for behavior changes: observed expected RED, minimal GREEN, refactor.
-For tests characterizing existing correct behavior, immediate GREEN is legitimate;
-record it as characterization, not invented RED. Independently verify commands and
-native risk assessment; source changes require current native review when RDD is on.
-Review only the unit or PR slice, not the accumulated stacked feature history.
-
-## Classification and isolation
-
-T1/T2: R1×M (local subprocess lifecycle and extension integration), delegated writer
-because multi-file edits/preparation exceed inline scope. T3: R2×M characterization
-of shared cache concurrency; no shared lock production edit without new evidence.
-Use a separate read-only verifier and native immutable-tree reviewers. Prompt scope
-is not claimed as a verified sandbox; concurrency acceptance requires human review
-before merge. No SHS cryptographic certification or isolation guarantee is claimed;
-no governance bootstrap or forged A/V signatures is in this feature's scope.
+T1/T2: R1×M. S1 credentials and T3 shared-concurrency characterization: R2×M.
+One bounded writer at a time; separate read-only verifier and immutable native review.
+Prompt restrictions are not claimed as a verified sandbox. Human review remains
+required before merge for sensitive units; no cryptographic SHS certification,
+forged signatures, governance bootstrap or isolation guarantee is claimed.
+Use observed behavioral RED→GREEN before production changes. Characterization of
+already-correct behavior may be immediately GREEN; record that honestly. Native
+review covers a work unit/PR slice, never an accumulated feature branch or checkbox.
 
 ## Tasks
 
-- [x] T1 — **DONE** (`89c2f6cd`): typed first-abort provenance (caller/deadline/buffer)
-  rejects as GitProbeFailure; `describeGitFailure` returns "git cancelled" for any
-  caller reason; settlement waits for child close with 250ms SIGKILL escalation;
-  timer/listener cleanup on close. Public API/union unchanged. 15 new real-subprocess
-  tests with readiness handshakes; POSIX-only probes skip on Windows.
-  Evidence: RED 27 tests / 12 pass / 15 fail before production writes; GREEN 27/27
-  focused, Facts 249/249, typecheck 186 baseline no regressions, 11 runtime modules
-  match. Independent verifier confirmed current 27/27 + typecheck, first-origin
-  preservation, PID-gone-before-return, real ~15.26s deadline. Verifier-noted gaps:
-  no stderr-overflow/multibyte/second-command-deadline cases, Windows unverified,
-  descendant cleanup unproven. Running committed count: 187. (Doc anomaly: this
-  entry was externally mutated to "VERIFIED, COMMIT/REVIEW PENDING" between parent
-  writes; concurrent actor suspected; reconciled to committed evidence.)
-- [ ] T2 — **PENDING**: assert visible match/differs/unavailable synchronization
-  messages and metadata through existing mock Pi tool registration with real Git.
-  Include clean fixtures and isolated untracked changes. Update unavailable wording
-  if needed to cover cancellation honestly. Surfaces: `tests/facts-extension.test.ts`,
-  `tests/facts-commit.test.ts`, `lib/facts/facts-commit-extension.ts`.
-  Route: delegated writer, independent verifier.
-- [ ] T3 — **PENDING**: characterize cross-process commit-cache contention, release,
-  cancellation and owner preservation with readiness gates. No production retry by
-  default; any proven production defect requires rescoping before a writer touches
-  lock code. Surfaces: `tests/facts-lock.test.ts`, `tests/facts-process.test.ts`,
-  `tests/support/facts-commit-worker.mjs` if needed. Route: delegated writer and
-  independent verifier. Close with applicable full Facts checks and live acceptance.
+- [x] T1 — DONE: code `89c2f6cd`, tracking `e3ca739f`. Typed first-failure provenance,
+  stable `git cancelled`, child-close settlement, 250ms SIGKILL escalation and
+  timer/listener cleanup. Fifteen real-subprocess cases added, public API unchanged.
+  RED: 27 tests/12 pass/15 fail before production writes. GREEN: 27/27 focused,
+  Facts249/249, baseline typecheck186/no regressions, runtime parity11. Independent
+  verifier confirmed focused27/27 and typecheck, first-origin retention, real15.26s
+  deadline and PID absence before return. POSIX lifecycle cases skip on Windows;
+  stderr/multibyte/second-command deadlines, descendants and synchronous spawn-throw
+  cleanup were not verified. Native unit review remains pending (see authority note).
+- [ ] S1 — PARTIAL/BLOCKED: stabilize experimental opt-in routing/Codex closure. Surfaces:
+  `extensions/gentle-agents.ts`, `lib/agents-config.ts`, `lib/model-routing-authority.ts`,
+  `tests/agents-config.test.ts`, `tests/gentle-agents.test.ts`,
+  `extensions/codex-native.ts`, `lib/codex-native/{auth,models,provider}.ts`,
+  `tests/codex-native-{auth,models,provider,extension,live}.test.ts`,
+  `docs/codex-native.md`. Validate malformed credential fields, Request headers,
+  local endpoints, lazy opt-in registration, explicit live gate and deadline.
+  Tests/semantic checks must protect routing pins and defaults. No global config edits.
+- [ ] T2 — PENDING: synchronization match/differs/unavailable messages and metadata
+  through mock Pi registration with real Git; clean/untracked-only fixtures. Surfaces:
+  `tests/facts-extension.test.ts`, `tests/facts-commit.test.ts`,
+  `lib/facts/facts-commit-extension.ts`. Correct unavailable wording for cancellation.
+- [ ] T3 — PENDING: cross-process commit-cache wait/release/cancellation and owner
+  preservation. Surfaces: `tests/facts-lock.test.ts`, `tests/facts-process.test.ts`,
+  `tests/support/facts-commit-worker.mjs` if needed. No lock production write unless a
+  reproduced defect is separately scoped. Include deterministic contention checks.
+- [ ] S2 — PENDING: independent full branch checks, authored-count/slice accounting,
+  clean bounded delivery commits, and target-scoped native review reconciliation.
+  Preserve the open lineage; no abandon/reset/recover without explicit authorization.
+  Report all failed/skipped/unavailable checks, including live/environment gates.
 
-## Verification
+## Verification commands
 
-- Focused: `node --experimental-strip-types --test tests/facts-commit.test.ts`.
-- Integration: `node --experimental-strip-types --test tests/facts-extension.test.ts`.
-- Lock/process: `node --experimental-strip-types --test tests/facts-lock.test.ts tests/facts-process.test.ts`.
-- Closure: `pnpm test:facts`, `node scripts/check-types.mjs`,
-  `node --experimental-strip-types --check lib/facts/facts-commit-extension.ts`,
-  `pnpm run check:runtime-modules`.
-- Before this feature: 12/12 focused, 234/234 Facts, typecheck baseline 186/no
-  regressions, 11 runtime modules match. No zero-diagnostic claim.
-- Build generated modules only if affected by the actual changed import graph.
-  Full `pnpm test` may involve concurrent unrelated changes; report actual outcomes.
+Focused routing: `node --experimental-strip-types --test tests/agents-config.test.ts tests/gentle-agents.test.ts`.
+Codex offline: run the four non-live `tests/codex-native-*.test.ts` files explicitly.
+Facts: `node --experimental-strip-types --test tests/facts-commit.test.ts tests/facts-extension.test.ts tests/facts-lock.test.ts tests/facts-process.test.ts`.
+Closure: `pnpm test:facts`, `pnpm test`, `node scripts/check-types.mjs`, extension
+syntax checks and `pnpm run check:runtime-modules`. Build only affected generated
+modules. Typecheck is baseline-aware, not diagnostic-free. Live Codex inference is
+not authorized by the stabilization request; tests must skip without reading auth.
 
-## Evidence and next action
+## Authority and incident evidence
 
-Exploration: comparison runner conflates abort/deadline, while Git-object runner
-already waits for close and escalates; lock already has bounded abortable polling.
-T1 writer evidence: expected RED exit 1 (27 tests: 12 pass/15 fail), then GREEN
-27/27; full Facts 249/249; typecheck baseline 186/no regressions; runtime parity11.
-Independent verifier: focused27/27 exit0 (~19.46s), typecheck exit0/no regressions.
-Real deadline ~15.26s; actual1MiB+1 stdout capture and hostile SIGTERM-ignore child;
-PID absent before cleanup. First-origin deadline survived later caller cancellation.
-Private typed failures, child.close settlement,250ms escalation; no new exports.
-Native ASSESS could not classify due untracked inventory: treated as high and ran
-independent verifier. Commit and fresh bounded native review remain pending.
-Platform gaps: POSIX lifecycle probes skip Windows; descendant cleanup, actual stderr
-exhaustion/multibyte boundaries and synchronous execFile-throw cleanup not verified.
-These are coverage limits, not assertions that the paths passed. Next: commit T1.
-Unrelated agents/model-routing/Codex-native edits and the prior tracking document
-are retained outside every unit's staging scope.
+ASSESS failed with undeclared untracked paths; conservative high verification was
+satisfied by writer and separate verifier. Committed-range START returned
+`native-start-retained-selection-candidate-mismatch`: selector/candidate mismatch,
+not proven inventory churn. Repeated inventory
+`sha256:26e554098224bc50e5aad01aa758f108f773aa79cc855c9ae4c2170bc3f91cb8` stayed stable.
+Resolving workspace selection created `review-4c803bbb8b5f5886` on five routing paths,
+not T1 or the untracked Codex closure. It remains reviewing; no capture or
+acknowledgement observed. Do not infer approval of any broader unit.
+A task-file status differed from an earlier parent write; attribution was not
+established. Reconciled from observed evidence, not an assertion of another actor.
+An initial live Facts declaration query was blocked by cache contention; no lock
+recovery used. Source-derived scout found malformed-auth trim TypeError, ungated live
+inference and dependency on untracked Codex extension.
+
+## S1 partial evidence and active blocker
+
+Writer observed RED (offline20:17pass/3fail; additional redirect/default-provider/
+child-gate failures), then offline GREEN26/26. Routing192:191pass/1fail; inherited
+Web-subagent fixture reads `.execute` from undefined tool (also failed before the
+production child-gate edit). Live test with explicit disabled flags:1 safe skip,
+no real auth/inference. Typecheck186/no regressions and runtime parity11 passed.
+No full suite or independent S1 verdict yet; do not mark S1 done or commit as verified.
+Full S1 footprint1050 lines: routing normalization24 + coherent Codex1026; independent
+slicing diagnosis pending. Do not minify/remove tests or split broken dependencies.
+Verifier launch failed: `could not select model codex-native/gpt-6.1-sol in child;
+provider unavailable`. Read-only incident checks confirmed project
+`.pi/subagents.json` default model is that Codex model, while runtime
+`GENTLE_CODEX_NATIVE` is unset and the extension registers only for exact value `1`.
+No global/project model configuration was changed. User must explicitly opt in this
+harness runtime or authorize a different available model before delegated work can
+resume. Live acceptance remains separately opt-in and is not authorized.
+Next: resolve harness opt-in/routing; diagnose fixture, verify slices, finish S1,
+then T2/T3 and full branch gates. No new commit since `e3ca739f`.
