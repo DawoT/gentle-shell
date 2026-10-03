@@ -55,6 +55,17 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   generator skips (or shortens) when the pending mutation generation contains
   only non-executable paths (docs/*.md, odd/**). Keep full reminder for anything
   executable. Surfaces: extensions/gentle-ai.ts reminder construction + tests.
+- [ ] S1.1 — Follow-up (evidence from live dogfooding 2026-10-03): fix-receipt flow
+  did not trigger on a real closure. Observed: after the locale-fix slice review
+  (manifest 32c193f4…) mapped 3 NEW advisories (extensions/gentle-ai.ts locations),
+  the 3 prior open entries (facts-tier-proposal paths, manifest fe1531e6…) remained
+  `open` across generations — no receipts, though their location paths persist in
+  the new manifest and their findings are absent. Root-cause hypothesis:
+  `markFixedIfAbsent(manifestSha, findings)` cannot evaluate the path-persistence
+  guard because the hook (extensions/gentle-ai.ts:7153) passes only findings, not
+  the new manifest's path list (available in STATUS frozen projection). Fix: plumb
+  changed paths into the ledger call and test the receipt path end-to-end
+  (entry fixed on absence + persisted path; not fixed when path left the diff).
 - [ ] S5 — Closure: focused suites, typecheck, full pnpm test, per-slice reviews
   (user may decline via consent UI; record), receipts.
 
