@@ -157,6 +157,7 @@ import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { renderGentleAiLifecycleCall, renderGentleAiResult, type GentleAiRenderContext } from "../lib/gentle-ai-renderer.ts";
 import { sanitizeTerminalText, stripAnsi } from "../lib/terminal-theme.ts";
 import { BASE_REF_ACCEPTED_FORMS, CandidateViewError, CandidateViewRegistry, injectReviewCandidateView, readCandidateContextManifestPage, resolveCanonicalCandidateBase, isProviderCandidateBaseTree, type CandidateView } from "../lib/review-candidate-view.ts";
+import { ReviewAdvisoryLedgerStore } from "../lib/review-advisory-ledger.ts";
 import {
 	GentleAiDevBinaryOverrideError,
 	GENTLE_AI_INSTALL_RECOVERY_COMMAND,
@@ -7093,16 +7094,66 @@ function mapLastEventClosure(
 	};
 }
 
-function mapAndClearLastEventClosure(
+async function mapAndClearLastEventClosure(
 	closure: ReviewLastEventClosureV1,
 	binding: ReviewLastEventClosureBinding,
 	selections: Map<string, RetainedNativeStatusSelection>,
 	workspaceRoot: string,
 	implicitWorkspaceRoot?: string,
-): Record<string, unknown> {
+	// Frozen changed-path manifest digest of the reviewed tree when the caller
+	// has one (group capture path reads STATUS frozen metadata). Absent → the
+	// ledger records under "" and skips cross-manifest comparison (documented
+	// S1 behavior: no tree identity, no recurrence/fix evidence).
+	changedPathManifestSha256?: string,
+): Promise<Record<string, unknown>> {
 	const mapped = mapLastEventClosure(closure, binding, workspaceRoot, implicitWorkspaceRoot);
 	clearRetainedNativeStatusSelectionsOnTerminal(selections, workspaceRoot, closure.lineageId, closure.state);
+	// Presentation-only advisory recurrence bookkeeping. Awaited (bounded local
+	// I/O) so the annotation lands in the mapped closure deterministically, but
+	// every ledger failure is swallowed: the closure path never throws or loses
+	// provider content because of the ledger.
+	await annotateAdvisoryRecurrence(closure, workspaceRoot, changedPathManifestSha256);
 	return mapped;
+}
+
+// S1 (U1) facts-informed-review: persist native advisory findings and annotate
+// recurring ones. Additive-only on the Pi-mapped finding objects; the decoded
+// provider shape (id/lens/location/severity/disposition) is never altered and
+// no provider field is suppressed. Fix receipts are written fire-and-forget.
+async function annotateAdvisoryRecurrence(
+	closure: ReviewLastEventClosureV1,
+	workspaceRoot: string,
+	changedPathManifestSha256?: string,
+): Promise<void> {
+	const findings = closure.advisoryFindings?.findings;
+	if (findings === undefined || findings.length === 0) return;
+	try {
+		const ledger = new ReviewAdvisoryLedgerStore(workspaceRoot);
+		const manifestSha = changedPathManifestSha256 ?? "";
+		const inputs = findings.map((finding) => ({
+			id: finding.id,
+			...(finding.lens === undefined ? {} : { lens: finding.lens }),
+			...(finding.location === undefined ? {} : { location: finding.location }),
+		}));
+		const { recurring } = await ledger.recordFindings(manifestSha, inputs);
+		// Fix receipts never delay the closure: fire-and-forget, swallowed.
+		void ledger.markFixedIfAbsent(manifestSha, inputs).catch(() => { });
+		if (recurring.length === 0) return;
+		const byIdentity = new Map(recurring.map((entry) => [`${entry.lens}|${entry.findingId}|${entry.location}`, entry] as const));
+		for (const finding of findings) {
+			const entry = byIdentity.get(`${finding.lens ?? ""}|${finding.id}|${finding.location ?? ""}`);
+			if (entry === undefined) continue;
+			// The decoder produces plain mutable objects; the additive optional
+			// field rides JSON serialization to the transcript untouched.
+			(finding as unknown as { id: string } & Record<string, unknown>).recurrence = {
+				occurrences: entry.occurrences,
+				firstSeenAt: entry.firstSeenAt,
+				status: entry.status,
+			};
+		}
+	} catch (error) {
+		console.warn(`[gentle-ai] advisory recurrence ledger skipped: ${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
 function decodeRelayLastEventClosure(submission: string): ReviewLastEventClosureV1 | undefined {
@@ -7197,7 +7248,7 @@ async function executeReviewHostRelayCapture(
 			};
 		})());
 		const closure = decodeRelayLastEventClosure(result.submission);
-		if (closure !== undefined) return mapAndClearLastEventClosure(closure, binding, selections, cwd, implicitWorkspaceRoot);
+		if (closure !== undefined) return await mapAndClearLastEventClosure(closure, binding, selections, cwd, implicitWorkspaceRoot);
 		return {
 			tool: "gentle_review_capture",
 			status: "captured",
@@ -7945,7 +7996,7 @@ async function executeReviewCaptureOperation(
 				cwd,
 				...(signal === undefined ? {} : { signal }),
 			});
-			return withCorrectionTarget(mapAndClearLastEventClosure(closure, selected.binding, retainedUntrackedSelections, cwd, implicitWorkspaceRoot));
+			return withCorrectionTarget(await mapAndClearLastEventClosure(closure, selected.binding, retainedUntrackedSelections, cwd, implicitWorkspaceRoot));
 		} catch (error) {
 			return await reconcileUnknownReviewCaptureFailure(error, nativeReviewCli, cwd, selected.binding, retainedUntrackedSelections, route);
 		}
@@ -8066,11 +8117,15 @@ async function executeReviewCaptureGroupOperation(
 	}
 	for (let index = 0; index < prepared.length; index += 1) {
 		let current: SelectedReviewCapture | Record<string, unknown>;
+		let frozenManifestSha: string | undefined;
 		try {
 			const negotiated = await freshStatus();
 			if (negotiated.transport !== undefined) return { ...hostTransportUnavailable("gentle_review_capture_group", negotiated.transport), ...reviewHostRelayGroupProgress(group.slots, prepared, index) };
 			if (!hasExactReviewCaptureSuffix(negotiated.status!, canonicalBindings.slice(index))) return { ...captureGroupAuthorityDrift(negotiated.status!), ...reviewHostRelayGroupProgress(group.slots, prepared, index) };
 			current = selectExactReviewCapture(negotiated.status!, parameters.lineageId, canonicalBindings[index]!);
+			// STATUS frozen metadata binds the reviewed tree; the ledger uses it
+			// as the cross-manifest recurrence identity.
+			frozenManifestSha = negotiated.status?.frozen?.changedPathManifestSha256;
 		} catch (error) {
 			return { ...captureGroupRejected(error instanceof Error ? error.message : String(error)), outcome: "native-status-failed", ...reviewHostRelayGroupProgress(group.slots, prepared, index) };
 		}
@@ -8079,7 +8134,14 @@ async function executeReviewCaptureGroupOperation(
 			const result = await activeReviewHostRelaySubmissionRunner(prepared[index]!);
 			const closure = decodeRelayLastEventClosure(result.submission);
 			if (closure !== undefined) {
-				const closed = mapAndClearLastEventClosure(closure, current.binding, retainedUntrackedSelections, cwd, implicitWorkspaceRoot);
+				const closed = await mapAndClearLastEventClosure(
+					closure,
+					current.binding,
+					retainedUntrackedSelections,
+					cwd,
+					implicitWorkspaceRoot,
+					frozenManifestSha,
+				);
 				return { ...closed, tool: "gentle_review_capture_group", ...reviewHostRelayGroupProgress(group.slots, prepared, index + 1) };
 			}
 		} catch (error) {
@@ -9240,6 +9302,9 @@ export const __testing = {
 	clearNativeReviewOutcomeMemoForTesting,
 	resetTelemetryTriggerGuardForTesting,
 	createGentleAiExtension: createGentleAiExtensionForTesting,
+	// S1 (U1): the existing __testing seam exposes pure production helpers;
+	// advisory recurrence annotation is one of them (no new test-only surface).
+	annotateAdvisoryRecurrence,
 	getPiModelOptions,
 	MODEL_CONTROL_OPTIONS,
 	switchLiveOrchestrator,

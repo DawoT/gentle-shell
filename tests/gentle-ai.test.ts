@@ -3447,3 +3447,76 @@ test("switchLiveOrchestrator returns note when setModel fails", async () => {
 	const result = await __testing.switchLiveOrchestrator(ctx, live, entry);
 	assert.equal(result, "\nno authentication is configured for openai; this session keeps its current model.");
 });
+
+// S1 (U1) facts-informed-review: advisory recurrence annotation on mapped
+// closures. Written after the hook implementation (triangulation pass on an
+// already-implemented behavior), not as observed RED — the ledger lib and its
+// own suite carry the RED→GREEN evidence for this sprint.
+test("mapped closure advisory findings gain additive recurrence metadata and persist to the ledger", async (t) => {
+	const { ReviewAdvisoryLedgerStore } = await import("../lib/review-advisory-ledger.ts");
+	const root = mkdtempSync(join(tmpdir(), "gentle-ai-advisory-ledger-"));
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	const sha = createHash("sha256").update("tree-1").digest("hex");
+	const findings = [
+		{ id: "A1", lens: "review-risk", location: "src/a.ts", severity: "medium", disposition: "advisory" },
+		{ id: "B2", lens: "review-security", location: "src/b.ts", severity: "low", disposition: "accepted" },
+	] as const;
+	const closure = {
+		schema: "gentle-ai.review-last-event-closure/v1",
+		operation: "review.capture-result",
+		lineageId: "lineage-1",
+		state: "approved",
+		storeRevision: "rev-1",
+		action: "done",
+		advisoryFindings: { statement: "s", findings },
+	} as unknown as Parameters<typeof __testing.annotateAdvisoryRecurrence>[0];
+
+	// First closure: recorded, nothing recurring, provider shape untouched.
+	await __testing.annotateAdvisoryRecurrence(closure, root, sha);
+	assert.equal((findings[0] as Record<string, unknown>).recurrence, undefined);
+	const stored = await new ReviewAdvisoryLedgerStore(root).getLedger();
+	assert.equal(stored.length, 2);
+
+	// Second closure, same finding under a different manifest: flagged.
+	const sha2 = createHash("sha256").update("tree-2").digest("hex");
+	const recurrenceFindings = [
+		{ id: "A1", lens: "review-risk", location: "src/a.ts", severity: "medium", disposition: "advisory" },
+	] as const;
+	const closure2 = {
+		schema: "gentle-ai.review-last-event-closure/v1",
+		operation: "review.capture-result",
+		lineageId: "lineage-2",
+		state: "approved",
+		storeRevision: "rev-2",
+		action: "done",
+		advisoryFindings: { statement: "s", findings: recurrenceFindings },
+	} as unknown as Parameters<typeof __testing.annotateAdvisoryRecurrence>[0];
+	await __testing.annotateAdvisoryRecurrence(closure2, root, sha2);
+	const recurrence = (recurrenceFindings[0] as Record<string, unknown>).recurrence as Record<string, unknown>;
+	assert.equal(recurrence.occurrences, 2);
+	assert.equal(recurrence.status, "open");
+	assert.equal(typeof recurrence.firstSeenAt, "number");
+	// Provider shape preserved additively: original fields untouched.
+	assert.equal(recurrenceFindings[0].id, "A1");
+	assert.equal(recurrenceFindings[0].severity, "medium");
+});
+
+test("advisory ledger failure never throws out of the closure annotation path", async (t) => {
+	const root = mkdtempSync(join(tmpdir(), "gentle-ai-advisory-ledger-fail-"));
+	const nested = join(root, "file-not-dir");
+	writeFileSync(nested, "not a directory");
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	const findings = [{ id: "A1", lens: "review-risk", location: "src/a.ts", severity: "medium", disposition: "advisory" }] as const;
+	const closure = {
+		schema: "gentle-ai.review-last-event-closure/v1",
+		operation: "review.capture-result",
+		lineageId: "lineage-1",
+		state: "approved",
+		storeRevision: "rev-1",
+		action: "done",
+		advisoryFindings: { statement: "s", findings },
+	} as unknown as Parameters<typeof __testing.annotateAdvisoryRecurrence>[0];
+	// Storage dir path collides with a file: the store fails closed.
+	await __testing.annotateAdvisoryRecurrence(closure, join(nested), undefined);
+	assert.equal((findings[0] as Record<string, unknown>).recurrence, undefined);
+});
