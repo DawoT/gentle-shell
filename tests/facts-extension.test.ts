@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import gentleFacts from "../extensions/gentle-facts.ts";
 
 test("facts_query refreshes external edits before returning signatures", async () => {
@@ -78,6 +78,7 @@ async function createFixture() {
   }));
   await writeFile(join(dir, "math.ts"), "/** Multiplies two numbers */\nexport function multiply(a: number, b: number): number { return a * b; }\n");
   await writeFile(join(dir, "main.ts"), "import { multiply } from './math.ts';\nexport const val = multiply(2, 3);\n");
+  await writeFile(join(dir, ".gitignore"), ".pi/\n");
 
   execFileSync("git", ["add", "."], { cwd: dir });
   execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
@@ -566,6 +567,101 @@ test("facts_commit labels pinned evidence and leaves current facts and transcrip
     const current = await pi.getTool("facts_query").execute("current", { name: "multiply" }, undefined, undefined, ctx);
     assert.match(current.content[0].text, /bigint/);
   } finally {
+    await cleanup();
+  }
+});
+
+test("facts_commit reports a synchronization match on a clean tree", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    await pi.emit("session_start", {}, ctx);
+    const result = await pi.getTool("facts_commit").execute("commit", { revision: commit }, undefined, undefined, ctx);
+    assert.equal(result.details.status, "committed");
+    assert.equal(result.details.synchronization.outcome, "match");
+    assert.equal(typeof result.details.synchronization.elapsedMs, "number");
+    assert.ok(Number.isFinite(result.details.synchronization.elapsedMs));
+    assert.ok(result.details.synchronization.elapsedMs >= 0);
+    assert.ok(!("reason" in result.details.synchronization));
+    assert.ok(result.content[0].text.includes("Committed facts match the current working tree (HEAD, clean)."));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("facts_commit reports synchronization differs when a tracked file is edited", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    await writeFile(join(dir, "math.ts"), "export function multiply(value: bigint): bigint { return value; }\n");
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    await pi.emit("session_start", {}, ctx);
+    const result = await pi.getTool("facts_commit").execute("commit", { revision: commit }, undefined, undefined, ctx);
+    assert.equal(result.details.synchronization.outcome, "differs");
+    assert.ok(result.content[0].text.includes(`Snapshot evidence from commit ${commit}; working-tree edits after indexing are not included.`));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("facts_commit reports synchronization differs for an untracked file in an otherwise clean tree", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    await writeFile(join(dir, "extra.ts"), "export const untracked = true;\n");
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, hasUI: false };
+    await pi.emit("session_start", {}, ctx);
+    const result = await pi.getTool("facts_commit").execute("commit", { revision: commit }, undefined, undefined, ctx);
+    assert.equal(result.details.synchronization.outcome, "differs");
+    assert.ok(result.content[0].text.includes("working-tree edits after indexing are not included."));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("facts_commit reports synchronization unavailable when the comparison git call fails", async () => {
+  const { dir, cleanup } = await createFixture();
+  const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  const shimDir = await mkdtemp(join(tmpdir(), "facts-git-shim-"));
+  try {
+    const shim = join(shimDir, "git");
+    await writeFile(shim, `#!/bin/sh
+if [ "$1 $2" = "rev-parse HEAD" ]; then
+  echo "shim: comparison refused" >&2
+  exit 1
+fi
+exec ${JSON.stringify(realGit)} "$@"
+`);
+    await chmod(shim, 0o755);
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${shimDir}${delimiter}${originalPath}`;
+    try {
+      const { pi } = createMockPi();
+      gentleFacts(pi as any);
+      const ctx = { cwd: dir, hasUI: false };
+      await pi.emit("session_start", {}, ctx);
+      const result = await pi.getTool("facts_commit").execute("commit", { revision: commit }, undefined, undefined, ctx);
+      assert.equal(result.details.status, "committed");
+      assert.equal(result.details.synchronization.outcome, "unavailable");
+      assert.equal(typeof result.details.synchronization.reason, "string");
+      assert.ok(result.details.synchronization.reason.length > 0);
+      const syncLine = result.content[0].text.split("\n").find((line: string) => line.includes("Committed facts could not be compared"));
+      assert.ok(syncLine, "unavailable synchronization line must be rendered");
+      assert.ok(syncLine.includes("Committed facts could not be compared to the working tree (git unavailable, timed out, or the operation was cancelled)."));
+      assert.doesNotMatch(syncLine, /edit/i);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  } finally {
+    await rm(shimDir, { recursive: true, force: true });
     await cleanup();
   }
 });

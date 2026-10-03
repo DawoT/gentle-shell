@@ -30,7 +30,7 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
         ? "Committed facts match the current working tree (HEAD, clean)."
         : comparison.outcome === "differs"
           ? `Snapshot evidence from commit ${result.commit}; working-tree edits after indexing are not included.`
-          : "Committed facts could not be compared to the working tree (git unavailable or timed out).";
+          : "Committed facts could not be compared to the working tree (git unavailable, timed out, or the operation was cancelled).";
       const entries = Object.entries(result.database.files).sort(([a], [b]) => a.localeCompare(b, "en"));
       const rows = params.name
         ? entries.flatMap(([file, facts]) => facts.symbols.filter((symbol) => symbol.name.toLowerCase() === params.name.toLowerCase())
