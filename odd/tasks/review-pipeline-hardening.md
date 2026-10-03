@@ -50,13 +50,19 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   `sha256:1d7e2bcdfe3e742c90280fb5f3b31ef0dfc63913de27409237e454fdad97dfa5`; 3
   informational advisories backlog: R3-crash-nonregdir WARNING,
   R3-flaky-deadpid, R3-missing-nonregdir-coverage).
-- [ ] S3 — Shared atomic marker test utility. tests/support/atomic-marker.mjs:
-  atomicWriteMarker(dir,name,content) (tmp+rename), waitForMarker (watcher +
-  non-empty validation + timeout), restore for env-stripping not in scope.
-  Migrate the fs-marker users: tests/facts-tree-pair.test.ts (none needed if no
-  markers), tests/facts-commit.test.ts (withProbe/waitForMarker + worker shim),
-  tests/support/facts-probe-worker.mjs (write side). No behavior change; tests
-  stay green.
+- [x] S3 — Atomic marker utility DONE: `07cefa0b` (utility 5 tests + migration).
+  tests/support/atomic-marker.mjs: atomicWriteMarker (tmp+renameSync) + waitForMarker
+  (fs.watch + initial check + non-empty validation + named 20s timeout, watcher/timer
+  cleaned on all paths). Migrated: probe worker's three writes + facts-commit's local
+  waitForMarker (formats unchanged; pid+starttime parse stays at call site). NOT
+  migrated (no fs markers): facts-tree-pair, facts-extension (IPC only), gentle-agents
+  env fixtures. Structural find: the probe fixture's bin copy needs the module copied
+  alongside (first GREEN run failed 5x on ENOENT — fixed). RED module-load; GREEN 5/5
+  + 27/27 + 22/22; typecheck no regressions. Migration labeled characterization.
+  Review `review-99f4a8773d7eb69e` medium/1-lens approved+acknowledged (consumed
+  `sha256:5cd22dcfc006e0f14cf9ca4e722706b164ceb5baa9ba7c3a496f13975b066628`; 4
+  informational advisories backlog: R3-fs-watch-throw WARNING, R3-helper-copy-coupling,
+  R3-vacuous-race, R3-validate-throws).
 - [ ] S4 — Reminder suppression for docs-only mutations. The RDD reminder
   generator skips (or shortens) when the pending mutation generation contains
   only non-executable paths (docs/*.md, odd/**). Keep full reminder for anything
