@@ -60,10 +60,22 @@ closed: keys are `changedPathManifestSha256` + pinned generations.
   parent-facing triage context (usable in assess/triage conversations); injecting
   into reviewer prompts requires an upstream gentle-ai (Go) feature — provider
   project, not this repo. Sprint closed with documentation only; no test debt.
-- [ ] S3 (U3) — Facts-informed tier PROPOSAL (display/advisory only) over digest +
-  ledger + decoded risk_reasons; never replaces Go tier.
-- [ ] S4 — Closure: focused suites, typecheck, full `pnpm test`, slice reviews per
-  delivery strategy (user may skip via consent UI; record dispositions).
+- [x] S3 (U3) — DONE: `f5773bab` (lib 129 + tests 173). proposeReviewTier: pure
+  display-layer evidence — 5 precedence rules (empty→low; tests/docs-only→low;
+  unchangedDependents>0 outside tests→high; boundaryEdges floor medium; default
+  medium), ledger open/fixed enrichment context-only, native tier always echoed
+  authoritative (proposal authoritative:false), TierProposalError typed guard.
+  RED module-load → GREEN 12/12 + tree-pair 5/5; typecheck baseline. Native review
+  `review-7ec33f8ef7df54c7` medium/1-lens approved+acknowledged (consumed
+  `sha256:ee108b67284c30a848ba410422edb16e335fd207468696053b68c6b54e0a5458`; 6
+  informational advisories backlog, incl. R3-locale-sort WARNING and
+  R3-native-reasons-ignored WARNING).
+- [x] S4 — Closure: full `pnpm test` 5062 tests / 5027 pass / 0 fail / 35 safe
+  skips (live opt-in + platform); typecheck 186 baseline, no regressions; no
+  generated-module changes (build/check parity untouched). Feature complete:
+  all sprints reviewed per slice; docs-only receipts auto-approved low tier.
+  Backlog across feature: 5 (S1) + 12 (S2a) + 6 (S3) informational advisories.
+  No push/PR/merge. Stale lineage 4c803bbb still awaits user disposition.
 
 ## TDD and constraints
 
