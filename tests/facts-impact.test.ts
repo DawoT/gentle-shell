@@ -50,6 +50,17 @@ test("impact records shortest import paths and honours direct-only mode", () => 
   assert.deepEqual(analyzeFactsImpact(before, before).consumers, []);
 });
 
+test("filesystem evidence with an indexed target counts as resolved coverage", () => {
+	const files = { "a.ts": "1", "b.ts": "1" };
+	const base = database(files, []);
+	base.moduleEdges = [{ importer: "a.ts", specifier: "./b.json", target: "b.ts", evidence: "filesystem" }];
+	const after = { ...base, files: { ...base.files, "b.ts": { ...base.files["b.ts"], sha: "2" } } };
+	const result = analyzeFactsImpact(base, after);
+	assert.equal(result.coverage.base.resolvedImports, 1);
+	assert.equal(result.coverage.base.unresolvedImports, 0);
+	assert.ok(result.consumers.some((entry) => entry.file === "a.ts" && entry.side === "base" && entry.depth === 1));
+});
+
 test("missing graph coverage and renames do not silently become semantic equivalence", () => {
   const before = database({ "old.ts": "same" }, []);
   delete before.moduleEdges;

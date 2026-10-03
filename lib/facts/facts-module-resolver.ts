@@ -8,7 +8,7 @@ export interface FactsModuleEdge {
   importer: string;
   specifier: string;
   target?: string;
-  evidence: "typescript" | "unresolved";
+  evidence: "typescript" | "filesystem" | "unresolved";
   reason?: string;
 }
 
@@ -35,7 +35,7 @@ export function classifyUnresolvedSpecifier(specifier: string): UnresolvedCatego
  * the actionable "relative" category, sorted by importer then specifier.
  */
 export function formatResolutionSummary(edges: FactsModuleEdge[]): string {
-  const resolved = edges.filter((edge) => edge.evidence === "typescript").length;
+  const resolved = edges.filter((edge) => edge.evidence === "typescript" || edge.evidence === "filesystem").length;
   const unresolved = edges.filter((edge) => edge.evidence === "unresolved");
   const counts: Record<UnresolvedCategory, number> = { builtin: 0, external: 0, relative: 0 };
   for (const edge of unresolved) {
@@ -189,6 +189,28 @@ export function validateFactsModuleSnapshot(snapshot: FactsModuleSnapshot): bool
   return true;
 }
 
+/**
+ * Filesystem fallback for relative specifiers the index cannot confirm through
+ * TypeScript: when the unresolved push happens for a "./"- or "../"-prefixed
+ * specifier, confirm the exact sibling path exists and return it as a
+ * workspace-relative target so the edge can carry evidence "filesystem" — such
+ * imports are real, not actionable breakage. This covers both JSON modules
+ * TypeScript resolves outside the facts index ("outside-index", the live
+ * false-positive case: JSON files are not indexed as source facts) and modules
+ * TS cannot resolve at all ("module-not-found"). The probe runs through the
+ * resolution host (confined trees never probe outside the workspace, and probes
+ * join the snapshot read-set), checks exact-path file existence only — no
+ * extension guessing, no directory/index resolution — and never fires for bare
+ * (external stays external), absolute, or "invalid-tsconfig" edges where TS
+ * never ran. Under confinement an out-of-workspace path fails the probe and
+ * stays unresolved.
+ */
+function filesystemFallbackTarget(workspace: string, importerAbsolute: string, specifier: string, host: ts.ModuleResolutionHost): string | undefined {
+  const path = resolve(dirname(importerAbsolute), specifier);
+  if (!host.fileExists?.(path)) return undefined;
+  return relative(workspace, path).split(sep).join("/");
+}
+
 /** Resolve literal module specifiers, not symbol identity or runtime imports. */
 export function resolveFactsModules(root: string, files: Record<string, FileFacts>, options: { confined?: boolean } = {}): FactsModuleEdge[] {
   const snapshot = resolveFactsModuleSnapshot(root, files, options);
@@ -284,6 +306,13 @@ function resolveWithHost(root: string, files: Record<string, FileFacts>, host: R
       const target = resolved ? relative(workspace, resolved.resolvedFileName).split(sep).join("/") : undefined;
       if (target && !isAbsolute(target) && !target.startsWith("../") && Object.hasOwn(files, target)) {
         edges.push({ importer, specifier, target, evidence: "typescript", ...(config.usesDefaults ? { reason: "default-compiler-options" } : {}) });
+        continue;
+      }
+      const filesystemTarget = specifier.startsWith(".")
+        ? filesystemFallbackTarget(workspace, absolute, specifier, host)
+        : undefined;
+      if (filesystemTarget !== undefined) {
+        edges.push({ importer, specifier, target: filesystemTarget, evidence: "filesystem" });
       } else {
         edges.push({
           importer,

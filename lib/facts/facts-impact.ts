@@ -39,7 +39,7 @@ function inventory(database: FactsDatabase) {
 }
 
 function isLocalEdge(database: FactsDatabase, edge: FactsModuleEdge): boolean {
-  return edge.evidence === "typescript" && edge.target !== undefined &&
+  return (edge.evidence === "typescript" || edge.evidence === "filesystem") && edge.target !== undefined &&
     Object.hasOwn(database.files, edge.importer) && Object.hasOwn(database.files, edge.target);
 }
 

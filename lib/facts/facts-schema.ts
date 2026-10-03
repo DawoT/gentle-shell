@@ -65,7 +65,7 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
   }
   if (value.moduleEdges !== undefined && (!Array.isArray(value.moduleEdges) ||
     !value.moduleEdges.every((edge) => isRecord(edge) && typeof edge.importer === "string" &&
-      typeof edge.specifier === "string" && ["typescript", "unresolved"].includes(edge.evidence as string) &&
+      typeof edge.specifier === "string" && ["typescript", "filesystem", "unresolved"].includes(edge.evidence as string) &&
       (edge.target === undefined || typeof edge.target === "string") &&
       (edge.reason === undefined || typeof edge.reason === "string")))) return false;
   return true;

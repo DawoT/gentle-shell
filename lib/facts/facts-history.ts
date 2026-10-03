@@ -83,7 +83,7 @@ export class FactsHistory {
     if (snapshot.version !== 1 || !isFactsDatabase(snapshot.database) || snapshot.database.root !== root ||
       snapshot.database.updatedAt !== receipt.observedAt || !Array.isArray(snapshot.edges) ||
       !snapshot.edges.every((edge: FactsModuleEdge) => edge && typeof edge.importer === "string" && typeof edge.specifier === "string" &&
-        ["typescript", "unresolved"].includes(edge.evidence) && (edge.target === undefined || typeof edge.target === "string"))) {
+        ["typescript", "filesystem", "unresolved"].includes(edge.evidence) && (edge.target === undefined || typeof edge.target === "string"))) {
       throw new Error("Invalid Facts history snapshot");
     }
     return snapshot;
