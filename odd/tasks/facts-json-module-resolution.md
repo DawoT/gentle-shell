@@ -73,6 +73,15 @@ real signal — and the signal exposed a resolver gap: JSON module imports count
 - T2 live acceptance: the running MCP server picks this up on the next session start;
   expected `facts_status` line then: `relative 0` for this repo (the 9 JSON false
   positives move to resolved).
+- Native review (lineage `review-6f3bdfd1de76eb60`, tier high, 4 lenses on
+  `zai/glm-5.3-flash`): **approved**, authority burned (`gentle-ai.review-acknowledged/v1`,
+  consumed `f867dda4…`). 9 non-blocking advisory findings (7 SUGGESTION, 2 WARNING:
+  `R3-git-status-failure-conflation` and `R4-maxbuffer-silent-false` in
+  `lib/facts/facts-commit.ts`) — separate later work.
+- Dogfooding milestone: the grouped capture (`gentle_review_capture_group`) ran
+  end-to-end for the first time — 4/4 concurrent relays admitted — using the wrapper
+  shape that T1 of dogfooding-review-ux enabled. Before that fix the group path always
+  rejected the facade's own STATUS projection.
 - Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
 
 ## Non-goals
