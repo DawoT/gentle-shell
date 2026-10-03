@@ -161,6 +161,7 @@ export function parseModelRef(value: unknown): ModelRef | undefined {
 function parseThinking(value: unknown): ThinkingLevel | undefined | string {
 	if (value === undefined) return undefined;
 	const normalized = String(value).trim().toLowerCase();
+	if (normalized === "instant" || normalized === "none") return "off";
 	return THINKING_LEVELS.includes(normalized) ? (normalized as ThinkingLevel) : `thinking "${value}" is not one of ${THINKING_LEVELS.join(", ")}`;
 }
 

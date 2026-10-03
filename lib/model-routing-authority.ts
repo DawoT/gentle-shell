@@ -56,6 +56,13 @@ export function normalizeModelId(value: unknown): string | undefined {
 	return model;
 }
 
+export function normalizeThinkingLevel(value: unknown): ThinkingLevel | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "instant" || normalized === "none") return "off";
+	return (THINKING_LEVELS as readonly string[]).includes(normalized) ? (normalized as ThinkingLevel) : undefined;
+}
+
 export function normalizeRoutingEntry(value: unknown): AgentRoutingEntry | undefined {
 	if (typeof value === "string") {
 		const model = normalizeModelId(value);
@@ -63,11 +70,7 @@ export function normalizeRoutingEntry(value: unknown): AgentRoutingEntry | undef
 	}
 	if (!isRecord(value)) return undefined;
 	const model = normalizeModelId(value.model);
-	const thinking = isThinkingLevel(value.thinking)
-		? value.thinking
-		: isThinkingLevel(value.effort)
-			? value.effort
-			: undefined;
+	const thinking = normalizeThinkingLevel(value.thinking) ?? normalizeThinkingLevel(value.effort);
 	if (!model && !thinking) {
 		return Object.keys(value).length === 0 ? {} : undefined;
 	}

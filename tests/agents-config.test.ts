@@ -93,6 +93,16 @@ test("parseAgentDefinition accepts max through every thinking alias", () => {
 	}
 });
 
+test("parseAgentDefinition and parseAgentsConfig accept instant and none, normalizing to off", () => {
+	const agent = parseAgentDefinition("---\nname: worker\neffort: instant\n---\nbody", "/worker.md", "global");
+	assert.ok(!("error" in agent));
+	assert.equal(agent.thinking, "off");
+
+	const config = parseAgentsConfig({ default_effort: "instant", model_profiles: { worker: { effort: "none" } } }, undefined);
+	assert.equal(config.defaultThinking, "off");
+	assert.equal(config.modelProfiles.worker?.thinking, "off");
+});
+
 test("discoverAgents retains max definitions instead of falling back to medium", () => {
 	const home = join(root, "max-home");
 	const cwd = join(root, "max-project");
