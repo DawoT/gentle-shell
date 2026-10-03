@@ -51,7 +51,7 @@ export function registerFactsHistory(pi: ExtensionAPI): void {
         : entries.map(([file, facts]) => `${file}: ${facts.symbols.length} symbols (${facts.language ?? "typescript"})`);
       const page = pageFacts(rows, params, (row) => row);
       return {
-        content: [{ type: "text", text: `Historical Facts — observed ${new Date(receipt.observedAt).toISOString()}\nRoot: ${receipt.root}\nSnapshot: ${receipt.digest}\nNot synchronized with the current working tree.\n\n${page.text || "No matching facts."}` }],
+        content: [{ type: "text", text: `Historical Facts — observed ${new Date(receipt.observedAt).toISOString()}\nRoot: ${receipt.root}\nSnapshot: ${receipt.digest}\nSnapshot evidence as of ${new Date(receipt.observedAt).toISOString()}; not live working-tree truth.\n\n${page.text || "No matching facts."}` }],
         details: { status: "historical", digest: receipt.digest, observedAt: receipt.observedAt, ...page.details },
       };
     },

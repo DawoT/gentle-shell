@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { indexFactsCommit } from "./facts-commit.ts";
+import { commitMatchesWorkingTree, indexFactsCommit } from "./facts-commit.ts";
 import { pageFacts, paginationProperties } from "./facts-response.ts";
 
 export function registerFactsCommit(pi: ExtensionAPI): void {
@@ -24,6 +24,9 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
       }
       pageFacts([], params, (row: string) => row);
       const result = await indexFactsCommit(ctx.cwd, params.revision, signal);
+      const synchronization = await commitMatchesWorkingTree(ctx.cwd, result.commit, signal)
+        ? "Committed facts match the current working tree (HEAD, clean)."
+        : `Snapshot evidence from commit ${result.commit}; working-tree edits after indexing are not included.`;
       const entries = Object.entries(result.database.files).sort(([a], [b]) => a.localeCompare(b, "en"));
       const rows = params.name
         ? entries.flatMap(([file, facts]) => facts.symbols.filter((symbol) => symbol.name.toLowerCase() === params.name.toLowerCase())
@@ -33,7 +36,7 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
       const receipts = result.database.receipts;
       const commands = [receipts?.testCommand, receipts?.buildCommand, receipts?.lintCommand].filter(Boolean).join(", ") || "none declared";
       return {
-        content: [{ type: "text", text: `Committed Facts — ${result.commit}\nGeneration: ${result.generation}\nCommit timestamp: ${new Date(result.database.updatedAt).toISOString()}\nNot synchronized with the current working tree.\nDeclared package commands (${receipts?.commandCwd ?? "."}): ${commands}\nScope: supported sources and JSON metadata; external configuration/dependencies excluded.\nOmitted symlinks/submodules: ${result.omitted.length}\n\n${page.text || "No matching facts."}` }],
+        content: [{ type: "text", text: `Committed Facts — ${result.commit}\nGeneration: ${result.generation}\nCommit timestamp: ${new Date(result.database.updatedAt).toISOString()}\n${synchronization}\nDeclared package commands (${receipts?.commandCwd ?? "."}): ${commands}\nScope: supported sources and JSON metadata; external configuration/dependencies excluded.\nOmitted symlinks/submodules: ${result.omitted.length}\n\n${page.text || "No matching facts."}` }],
         details: {
           status: "committed",
           commit: result.commit,

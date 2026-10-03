@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { indexFactsCommit } from "../lib/facts/facts-commit.ts";
+import { commitMatchesWorkingTree, indexFactsCommit } from "../lib/facts/facts-commit.ts";
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "facts-commit-test-"));
@@ -170,6 +170,47 @@ test("committed package scope and submodule omissions are explicit", async () =>
     assert.equal(result.database.receipts!.buildCommand, "npm run build");
     assert.ok(result.omitted.some((entry) => entry.path === "vendor/module" && entry.reason === "submodule"));
   } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("commit working-tree match is true exactly for a clean checkout of HEAD", async () => {
+  const { directory, commit } = await fixture();
+  try {
+    assert.equal(await commitMatchesWorkingTree(directory, commit), true);
+    await writeFile(join(directory, "source.ts"), "export const dirtyValue = 2;\n");
+    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("commit working-tree match is false for a non-HEAD commit", async () => {
+  const { directory, git, commit } = await fixture();
+  try {
+    await writeFile(join(directory, "source.ts"), "export const nextValue = 3;\n");
+    git("add", ".");
+    git("commit", "-m", "second");
+    assert.notEqual(git("rev-parse", "HEAD"), commit);
+    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("commit working-tree match is false when Git is unavailable", { skip: process.platform === "win32" }, async () => {
+  const { directory, commit } = await fixture();
+  const priorPath = process.env.PATH;
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    const { delimiter } = await import("node:path");
+    const emptyBin = join(directory, "empty-bin");
+    await mkdir(emptyBin);
+    process.env.PATH = `${emptyBin}${delimiter}`;
+    assert.equal(await commitMatchesWorkingTree(directory, commit), false);
+  } finally {
+    if (priorPath === undefined) delete process.env.PATH;
+    else process.env.PATH = priorPath;
     await rm(directory, { recursive: true, force: true });
   }
 });
