@@ -30,6 +30,7 @@ test.before(async () => {
   await writeTree("src/deleted.ts", "export function gone(): void {}\n");
   await writeTree("src/stable.ts", "export function stable(): void {}\n");
   await writeTree("src/importer-stable.ts", 'import { kept } from "./modified.ts";\nexport function useStable(): number {\n  return kept();\n}\n');
+  await writeTree("src/importer-stable2.ts", 'import { fresh } from "./added.ts";\nexport function useAdded(): string {\n  return fresh();\n}\n');
   await writeTree("src/importer-changed.ts", 'import { stable } from "./stable.ts";\nexport function useChanged(): void {}\n');
   await git("add", "-A");
   await git("commit", "-qm", "base");
@@ -77,14 +78,30 @@ test("boundary edges only when an edge crosses the changed/unchanged boundary", 
   const candidateTree = await git("rev-parse", "HEAD^{tree}");
   const digest = await computeTreePairDigest(workspace, baseTree, candidateTree, ["src/added.ts", "src/deleted.ts", "src/modified.ts"]);
   // src/importer-stable.ts (unchanged) -> src/modified.ts (changed): cross-boundary.
-  assert.deepEqual(digest.boundaryEdges.map((e) => [e.importer, e.target]), [["src/importer-stable.ts", "src/modified.ts"]]);
+  // src/importer-stable2.ts (unchanged, imports ./added.ts which only exists in the
+  // candidate) -> src/added.ts (changed): second cross-boundary edge.
+  assert.deepEqual(digest.boundaryEdges.map((e) => [e.importer, e.target]), [
+    ["src/importer-stable.ts", "src/modified.ts"],
+    ["src/importer-stable2.ts", "src/added.ts"],
+  ]);
   // src/importer-changed.ts is itself in changedPaths? No — it was never mutated, but its
   // target src/stable.ts is also unchanged, so no edge from it qualifies.
   // unchangedDependents: edges from unchanged files INTO changed files.
-  assert.equal(digest.unchangedDependents, 1);
+  assert.equal(digest.unchangedDependents, 2);
   // Unchanged files never appear in digest.files.
   assert.ok(!digest.files.some((f) => f.path === "src/stable.ts"));
   assert.ok(!digest.files.some((f) => f.path === "src/importer-stable.ts"));
+});
+
+test("multi-edge boundary ordering is deterministic and sorted by importer", async () => {
+  // Verifier gap (S2a review receipt): single-edge fixtures cannot detect a dropped
+  // boundaryEdges.sort. Two crossing edges must appear in sorted-importer order.
+  const baseTree = await git("rev-parse", "HEAD~1^{tree}");
+  const candidateTree = await git("rev-parse", "HEAD^{tree}");
+  const digest = await computeTreePairDigest(workspace, baseTree, candidateTree, ["src/added.ts", "src/deleted.ts", "src/modified.ts"]);
+  assert.ok(digest.boundaryEdges.length >= 2, "fixture must produce at least two boundary edges");
+  const importers = digest.boundaryEdges.map((e) => e.importer);
+  assert.deepEqual(importers, [...importers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 });
 
 test("digest is deterministic across repeated calls", async () => {

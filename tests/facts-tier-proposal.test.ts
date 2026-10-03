@@ -132,4 +132,23 @@ describe("proposeReviewTier", () => {
       );
     }
   });
+
+  it("sorts rationale by code units, not locale (R3-locale-sort)", () => {
+    // Characterization: the production comparator is deliberately code-unit based
+    // (localeCompare is ICU/locale dependent). This test pins byte-stable order
+    // for a multi-line rationale so CI in any locale observes the same array.
+    const input = {
+      digest: digest({
+        files: [{ path: "src/a.ts", classification: "modified" as const, exportedSymbols: { base: [], candidate: [] } }],
+        boundaryEdges: [{ importer: "src/x.ts", specifier: "./a.ts", target: "src/a.ts", importerChanged: false, targetChanged: true }],
+        unchangedDependents: 3,
+      }),
+      nativeTier: "medium" as const,
+      ledger: { open: 2, fixed: 1 },
+    };
+    const p = proposeReviewTier(input);
+    const sortedByCodeUnits = [...p.rationale].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    assert.deepEqual(p.rationale, sortedByCodeUnits);
+    assert.ok(p.rationale.length >= 3, "fixture must produce at least three rationale lines");
+  });
 });

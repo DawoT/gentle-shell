@@ -125,6 +125,9 @@ export function proposeReviewTier(input: TierProposalInput): TierProposal {
     rationale.push(`${ledger.fixed} prior advisories fixed in ledger`);
   }
 
-  rationale.sort((a, b) => a.localeCompare(b));
+  // R3-locale-sort: localeCompare is ICU/locale dependent and made the
+  // rationale ordering vary across environments. Rationales are ASCII
+  // identifiers/sentences — sort by code units for byte-stable determinism.
+  rationale.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return { proposal, rationale, nativeTier, authoritative: false };
 }
