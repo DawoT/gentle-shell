@@ -50,6 +50,15 @@ Delivery: `auto-chain`, `feature-branch-chain` — one slice per sprint.
   `sha256:1d7e2bcdfe3e742c90280fb5f3b31ef0dfc63913de27409237e454fdad97dfa5`; 3
   informational advisories backlog: R3-crash-nonregdir WARNING,
   R3-flaky-deadpid, R3-missing-nonregdir-coverage).
+- [x] S2.1 — DONE: `d9751571` — recovery removes file-shaped corrupt locks. Found
+  LIVE dogfooding the doctor itself: facts.lock as a regular FILE classified
+  corrupt-unknown correctly, but recovery's opendir threw uncaught ENOTDIR. Fix:
+  ENOTDIR during entry iteration → unlink the file directly (same safety rules).
+  RED reproduced the exact live crash; GREEN 73/73 doctor+lock+store; live CLI:
+  classify → --recovery removed=true → lock gone. Review `review-6f359f05e1ce047f`
+  medium/1-lens approved+acknowledged (consumed
+  `sha256:9702795020f98f04370cf70441eaf4d9feb78f528db9c8c204d1365c2e195fb1`; 1
+  informational advisory backlog).
 - [x] S3 — Atomic marker utility DONE: `07cefa0b` (utility 5 tests + migration).
   tests/support/atomic-marker.mjs: atomicWriteMarker (tmp+renameSync) + waitForMarker
   (fs.watch + initial check + non-empty validation + named 20s timeout, watcher/timer
