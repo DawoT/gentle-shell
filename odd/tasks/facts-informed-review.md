@@ -51,9 +51,15 @@ closed: keys are `changedPathManifestSha256` + pinned generations.
   R4-swallowed-git-errors, R4-unbounded-subprocess, R2-dead-classification-ternary —
   backlog). One group capture was rejected (my transcription dropped `value` fields);
   nothing mutated; fresh STATUS + exact resubmit succeeded.
-- [ ] S2b (U2 inject) — Feasibility gate FIRST: verify whether the relay contract
-  permits host framing around frozen prompt bytes (`lib/review-host-relay.ts:9,100`).
-  If prohibited: digest stays parent-facing triage context; document the limit.
+- [x] S2b (U2 inject) — DONE (decision, no code): injection PROHIBITED by relay
+  contract. lib/review-host-relay.ts:1-27 rules are explicit — stdout is opaque
+  prompt BYTES verbatim, completed "as a single user message", "the host never
+  synthesizes or filters the completing form", and the relay "never parses or
+  rebuilds binding, evidence, prompt, schema, budgets, or admission". No manifest
+  field exists for host-supplied context. Consequence: computeTreePairDigest stays
+  parent-facing triage context (usable in assess/triage conversations); injecting
+  into reviewer prompts requires an upstream gentle-ai (Go) feature — provider
+  project, not this repo. Sprint closed with documentation only; no test debt.
 - [ ] S3 (U3) — Facts-informed tier PROPOSAL (display/advisory only) over digest +
   ledger + decoded risk_reasons; never replaces Go tier.
 - [ ] S4 — Closure: focused suites, typecheck, full `pnpm test`, slice reviews per
