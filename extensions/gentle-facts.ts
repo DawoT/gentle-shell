@@ -9,6 +9,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
 import { paginationProperties } from "../lib/facts/facts-response.ts";
 import { FactsService } from "../lib/facts/facts-service.ts";
+import { formatResolutionSummary } from "../lib/facts/facts-module-resolver.ts";
 import { sidebarPart } from "../lib/shell-sidebar.ts";
 
 export const FACTS_TOOL_QUERY = "facts_query";
@@ -325,7 +326,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{
           type: "text",
-          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n- Module resolution: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved (literal imports only)${historyReceipt ? `\n- Snapshot digest: ${historyReceipt.digest}` : ""}${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
+          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n${formatResolutionSummary(edges)}${historyReceipt ? `\n- Snapshot digest: ${historyReceipt.digest}` : ""}${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
         }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyReceipt, historyError: historyFailures.get(ctx.cwd) },
       };
