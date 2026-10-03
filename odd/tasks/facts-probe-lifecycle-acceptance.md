@@ -76,14 +76,30 @@ review covers a work unit/PR slice, never an accumulated feature branch or check
   suggestions, test-coverage suggestions). A first START attempt failed closed
   on an expired consent binding (`consent-binding-expired`, no lineage); the
   retry minted a fresh envelope and completed.
-- [ ] T2 — PENDING: synchronization match/differs/unavailable messages and metadata
-  through mock Pi registration with real Git; clean/untracked-only fixtures. Surfaces:
-  `tests/facts-extension.test.ts`, `tests/facts-commit.test.ts`,
-  `lib/facts/facts-commit-extension.ts`. Correct unavailable wording for cancellation.
-- [ ] T3 — PENDING: cross-process commit-cache wait/release/cancellation and owner
-  preservation. Surfaces: `tests/facts-lock.test.ts`, `tests/facts-process.test.ts`,
-  `tests/support/facts-commit-worker.mjs` if needed. No lock production write unless a
-  reproduced defect is separately scoped. Include deterministic contention checks.
+- [x] T2 — DONE (`8439152c`): four real-Git integration tests pin the facts_commit
+  synchronization contract (match/differs/unavailable messages, details.synchronization
+  with outcome/elapsedMs/reason, untracked-only differs, comparison-only shim failure
+  after successful indexing). Fixture now ignores .pi/ before its initial commit.
+  Unavailable wording made cancellation-honest. RED 34/33/1 on old wording, then GREEN
+  34/34 + 27/27; typecheck baseline unchanged.
+- [x] T3 — DONE (`ff8ba749`): five cross-process characterizations of the commit-cache
+  writer lock with IPC handshakes (no marker races): serialization, mid-wait
+  cancellation (AbortError, foreign record untouched), SIGKILL recovery via valid
+  identity, 0-byte corrupt record fails closed (15s then FactsBusyError, matching the
+  restart incident), lock dir fully removed after release. Characterization only — no
+  production change, no defect found. Lock 12/12, process 5/5, crash-recovery skips
+  non-linux.
+- [x] Review disposition T2+T3 slice: consent for this candidate was DECLINED by the
+  human in the host UI (`consent-declined-this-candidate`; medium, 5 files/365 lines,
+  target `sha256:628da831de45874a8100d5d5fe670ae58eeadf7c6d7b87719197565ced3fa711`,
+  no lineage created). Candidate-scoped skip; delivery follows ordinary repository
+  policy; future candidates still ask. Recorded, not re-run.
+- [x] Restart incident: Facts unavailable after restart — `.pi/facts.lock` held a
+  0-byte owner record (unknown owner, fail-closed by design). Manual recovery:
+  unlink record AND rmdir the lock directory (an empty dir is never self-reclaimed).
+  Facts reindexed 551 files / 7188 symbols; procedure recorded in memory and below.
+  Full suite after T2+T3: 5033 tests / 4998 pass / 0 fail / 35 safe skips; typecheck
+  186 baseline, no regressions.
 - [x] S2 — DONE: full-branch closure verified. First full `pnpm test` runs
   exposed three fixture defects (not production regressions): the probe worker's
   ready marker could be read empty between create and write (pid 0 → kill(0,0)
