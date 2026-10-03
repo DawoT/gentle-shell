@@ -210,6 +210,27 @@ test("recovery removes corrupt-unknown (0-byte incident shape)", async () => {
   }
 });
 
+test("recovery removes a facts.lock that exists as a regular file (live incident)", async () => {
+  // Live dogfooding found this shape: facts.lock created as a FILE (not a
+  // directory) must classify corrupt-unknown and recover by unlinking the
+  // file — recovery's opendir used to crash with ENOTDIR instead.
+  const { directory, storageDir } = await fixture();
+  const lock = join(storageDir, "facts.lock");
+  try {
+    await rm(lock, { recursive: true, force: true });
+    await writeFile(lock, "");
+    const report = await classifyFactsLockDir(storageDir);
+    assert.equal(report.classification, "corrupt-unknown");
+    const result = await recoverFactsLockDir(storageDir);
+    assert.equal(result.removed, true);
+    await assert.rejects(async () => {
+      await (await import("node:fs/promises")).stat(lock);
+    }, { code: "ENOENT" });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("recovery removes empty-dir", async () => {
   const { directory, storageDir, lock } = await fixture();
   try {

@@ -99,8 +99,16 @@ export async function recoverFactsLockDir(storageDir: string, context?: ProcessC
   }
   if (report.classification !== "empty-dir") {
     // Same unlink-then-rmdir sequence as removeOwnedLock in facts-lock.ts.
-    const entries: string[] = [];
-    for await (const entry of await opendir(lockPath)) entries.push(entry.name);
+    // A corrupt lock can also exist as a regular FILE (live incident): its
+    // entries cannot be iterated (ENOTDIR) — remove the file directly.
+    let entries: string[] = [];
+    try {
+      for await (const entry of await opendir(lockPath)) entries.push(entry.name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOTDIR") throw error;
+      await unlink(lockPath);
+      return { storageDir, lockPath, classification: report.classification, removed: true };
+    }
     for (const entry of entries) {
       try {
         await unlink(join(lockPath, entry));
