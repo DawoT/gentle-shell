@@ -91,3 +91,19 @@ through the live native review (consent relay, capture group, reviewer routing).
 - No work on the 13 advisory review findings (recorded separately on
   odd/tasks/facts-gap-fixes.md).
 - No delivery (push/PR/merge) — user decision.
+
+## Outcome (2026-10-03)
+
+- Status: COMPLETE + REVIEWED. Commits: `7281025e` (T1), `33b46114` (T2), `6696a511`
+  (docs/T3). The branch also carries the user's own `ed0dd38d` (interactive facts_status
+  wired to the classified summary), inherited at branch point.
+- Independent verification (gentle-ai-verify): focused suites 91/91; broader
+  native-review suites 123/123; typecheck no regressions; diff scope exact per commit.
+- Native review (lineage `review-72f3ef1383703846`, tier high, 4 lenses on
+  `zai/glm-5.3-flash`): **approved**, authority burned (`gentle-ai.review-acknowledged/v1`,
+  consumed `276b793e…`). 10 non-blocking advisory findings (9 SUGGESTION, 1 WARNING
+  `R3-gitstatus-maxbuffer` in `lib/facts/facts-commit.ts:34-36`) — separate later work.
+- Live note: the session's running extension predates T1, so live captures used the
+  unwrapped shape; the wrapper parity fix benefits sessions started after `7281025e`
+  (covered by the new routing tests).
+- Next (user-owned): delivery (push/PR/merge) under ordinary repository policy.
