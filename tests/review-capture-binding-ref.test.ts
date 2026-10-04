@@ -65,6 +65,40 @@ test("bindingRef fails closed when no retained bindings exist", () => {
 	assert.match(outcome.reason, /retained bound STATUS with collect bindings/);
 });
 
+test("serialized compact refs are equivalent to object refs and retain exact bytes", () => {
+	for (const slot of [0, 1, 2]) {
+		const objectSlot = parseCollectBindingRefSlot({ bindingRef: slot });
+		const stringSlot = parseCollectBindingRefSlot(` { "bindingRef": ${slot} } `);
+		assert.equal(stringSlot, slot);
+		assert.equal(stringSlot, objectSlot);
+		assert.deepEqual(resolveBindingRef(RETAINED, LINEAGE, LINEAGE, stringSlot!), resolveBindingRef(RETAINED, LINEAGE, LINEAGE, objectSlot!));
+		assert.equal(expectOk(resolveBindingRef(RETAINED, LINEAGE, LINEAGE, stringSlot!)).binding, RETAINED[slot]);
+	}
+});
+
+test("serialized malformed refs fail closed just like object refs", () => {
+	for (const value of [{ bindingRef: -1 }, { bindingRef: 1.5 }, { bindingRef: "0" }, { bindingRef: null }, { bindingRef: true }, { bindingRef: Number.MAX_SAFE_INTEGER + 1 }, { bindingRef: 0, extra: true }]) {
+		assert.throws(() => parseCollectBindingRefSlot(JSON.stringify(value)), {
+			message: Object.keys(value).length === 1 ? "bindingRef must be a non-negative integer" : "bindingRef must be an object with exactly one bindingRef key",
+		});
+	}
+});
+
+test("non-ref strings keep the original full-binding path without nested extraction", () => {
+	for (const input of ["full binding", '{"bindingRef":', '{ "name": "risk", "schema": "s" }', '{"collectBinding":{"bindingRef":0}}', '[{"bindingRef":0}]', 'null', '0', '"bindingRef"']) {
+		const original = input;
+		assert.equal(parseCollectBindingRefSlot(input), undefined);
+		assert.equal(input, original);
+	}
+});
+
+test("serialized refs do not bypass retained STATUS or lineage and range checks", () => {
+	const slot = parseCollectBindingRefSlot('{"bindingRef":0}')!;
+	assert.match(expectFail(resolveBindingRef([], LINEAGE, LINEAGE, slot)).reason, /retained bound STATUS/);
+	assert.match(expectFail(resolveBindingRef(RETAINED, "lineage-b", LINEAGE, slot)).reason, /lineage/);
+	assert.match(expectFail(resolveBindingRef(RETAINED, LINEAGE, LINEAGE, parseCollectBindingRefSlot('{"bindingRef":3}')!)).reason, /out of range/);
+});
+
 test("parseCollectBindingRefSlot accepts only the compact ref object", () => {
 	assert.equal(parseCollectBindingRefSlot({ bindingRef: 2 }), 2);
 	assert.equal(parseCollectBindingRefSlot({ bindingRef: 0 }), 0);

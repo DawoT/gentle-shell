@@ -56,12 +56,21 @@ export function resolveBindingRef(
 
 /**
  * Classifies one capture input slot. Returns the 0-based slot for the compact
- * {"bindingRef": N} object form, or undefined when the value is a full
+ * {"bindingRef": N} object or serialized object form, or undefined when the value is a full
  * collectBinding (string or object) that keeps the unchanged existing path.
  * A malformed ref object fails closed with a parse-time error rather than
  * falling through to the full-binding path.
  */
 export function parseCollectBindingRefSlot(value: unknown): number | undefined {
+	// Decode only for classification; full opaque strings remain on their
+	// original path, including canonical error handling for malformed JSON.
+	if (typeof value === "string") {
+		try {
+			value = JSON.parse(value);
+		} catch {
+			return undefined;
+		}
+	}
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const record = value as Record<string, unknown>;
 	if (!Object.prototype.hasOwnProperty.call(record, "bindingRef")) return undefined;
