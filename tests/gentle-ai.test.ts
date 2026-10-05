@@ -3576,15 +3576,16 @@ const refCaptureNative = (status: ReviewStatusV3) => ({ targetStatus: async () =
 // review-host-relay-routing.test.ts): a fully valid four-lens materialize
 // reviewer group, decoded from the provider fixture so group bindingRef
 // resolution exercises the exact complete-distinct-group validation.
-function capturedGroupedStatus(lineageId: string): ReviewStatusV3 {
+function capturedGroupedStatus(lineageId: string, manifestSha?: string, inputCount = 4): ReviewStatusV3 {
 	const raw = JSON.parse(readFileSync(new URL("./fixtures/devbinary/status-v5-capture-result-submission.captured.json", import.meta.url), "utf8")) as Record<string, unknown>;
 	raw.action = "stop";
+	if (manifestSha !== undefined) (raw.frozen as Record<string, unknown>).changed_path_manifest_sha256 = manifestSha;
 	const authority = raw.authority as Record<string, unknown>, repositoryContext = raw.repository_context as Record<string, unknown>;
 	authority.lineage_id = lineageId;
 	const phaseRevision = String(repositoryContext.revision), targetIdentity = String(raw.target_identity);
 	const source = ((((raw.next_transition as Record<string, unknown>).collect as Record<string, unknown>).inputs as Array<Record<string, unknown>>)[0]!);
 	const lenses = ["review-risk", "review-resilience", "review-readability", "review-reliability"];
-	((raw.next_transition as Record<string, unknown>).collect as Record<string, unknown>).inputs = lenses.map((lens, order) => {
+	((raw.next_transition as Record<string, unknown>).collect as Record<string, unknown>).inputs = lenses.slice(0, inputCount).map((lens, order) => {
 		const input = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
 		const subjectHash = `sha256:${String(order + 1).repeat(64)}`;
 		const arguments_ = input.arguments as Array<Record<string, unknown>>;
@@ -3684,7 +3685,7 @@ test("gentle_review_capture_group refuses an out-of-range bindingRef", async (t)
 // manifest sha (same tree identity as the group path), so recurrence detection
 // and fix receipts work. Flipped from the previously documented ""-recording
 // limitation.
-test("single-capture closure records ledger entries under the negotiated STATUS frozen manifest sha", async (t) => {
+for (const grouped of [false, true]) test(`${grouped ? "group" : "single"}-capture closure records the fresh native STATUS manifest as canonical ledger sha`, async (t) => {
 	const { ReviewAdvisoryLedgerStore } = await import("../lib/review-advisory-ledger.ts");
 	const root = mkdtempSync(join(tmpdir(), "gentle-ai-single-capture-ledger-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -3694,7 +3695,9 @@ test("single-capture closure records ledger entries under the negotiated STATUS 
 	execFileSync("git", ["add", "app.ts"], { cwd: root, stdio: "ignore" });
 	execFileSync("git", ["-c", "user.name=Review Test", "-c", "user.email=review@example.invalid", "commit", "-q", "-m", "base"], { cwd: root, stdio: "ignore" });
 	const manifestSha = createHash("sha256").update("single-capture-tree").digest("hex");
-	const status = refCaptureStatus(1, { frozen: { tier: "low", originalChangedLines: 1, correctionBudget: 1, changedPathManifestSha256: manifestSha } });
+	const status = capturedGroupedStatus(refCaptureLineage, `sha256:${manifestSha}`, grouped ? 4 : 1);
+	const initialStatus = capturedGroupedStatus(refCaptureLineage, `sha256:${"a".repeat(64)}`, grouped ? 4 : 1);
+	assert.equal(status.frozen?.changedPathManifestSha256, `sha256:${manifestSha}`);
 	const findings = [{ id: "A1", lens: "review-risk", location: "src/a.ts", severity: "WARNING", disposition: "informational" }] as const;
 	const closure = {
 		schema: "gentle-ai.review-last-event-closure/v1",
@@ -3705,17 +3708,32 @@ test("single-capture closure records ledger entries under the negotiated STATUS 
 		action: "done",
 		advisory_findings: { statement: "s", findings },
 	};
-	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
-	__testing.setReviewHostRelayRunnerForTesting(async () => ({ promptByteLength: 1, resultByteLength: 1, submission: JSON.stringify(closure) }));
-	const captured = await __testing.executeReviewCaptureOperation({
-		lineageId: refCaptureLineage,
-		collectBinding: { bindingRef: 0 },
-		reviewerRunAcknowledged: true,
-	}, root, refCaptureNative(status));
+	t.after(() => {
+		__testing.setReviewHostRelayRunnerForTesting();
+		__testing.setReviewHostRelayGroupRunnersForTesting();
+	});
+	const relayResult = { promptByteLength: 1, resultByteLength: 1, submission: JSON.stringify(closure) };
+	__testing.setReviewHostRelayRunnerForTesting(async () => relayResult);
+	__testing.setReviewHostRelayGroupRunnersForTesting(async (requests) => requests.map((request) => ({ request, promptByteLength: 1, resultByteLength: 1 })), async () => relayResult);
+	let statusReads = 0;
+	const native = { targetStatus: async () => ++statusReads === 1 && grouped ? initialStatus : status } as unknown as NativeReviewCli;
+	const captured = grouped
+		? await __testing.executeReviewCaptureGroupOperation({
+			lineageId: refCaptureLineage,
+			collectBindings: [0, 1, 2, 3].map((bindingRef) => ({ bindingRef })),
+			reviewerRunAcknowledged: true,
+		}, root, native)
+		: await __testing.executeReviewCaptureOperation({
+			lineageId: refCaptureLineage,
+			collectBinding: { bindingRef: 0 },
+			reviewerRunAcknowledged: true,
+		}, root, native);
+	if (grouped) assert.ok(statusReads >= 2, "group closure must use fresh STATUS, not the initial ref resolution snapshot");
 	assert.equal(captured.status, "closed");
 	const stored = await new ReviewAdvisoryLedgerStore(root).getLedger();
 	assert.equal(stored.length, 1);
-	// The recorded entry carries the exact negotiated frozen sha, not "".
+	// Inspect persisted closure evidence, not prompt bytes: native prefix is
+	// canonicalized only for this presentation ledger's tree identity.
 	assert.equal(stored[0]!.changedPathManifestSha256, manifestSha);
 });
 

@@ -32,6 +32,45 @@ test("dedup key is stable across lens, finding id, location and manifest sha", (
 	assert.equal(store.entryKey(finding("A1", "src/a.ts"), shaOf("b")) !== key, true);
 });
 
+test("native and bare manifest digests share keys, occurrences and fix identity", async (t) => {
+	const store = new ReviewAdvisoryLedgerStore(fixture(t));
+	const a = shaOf("native-a");
+	const b = shaOf("native-b");
+	const item = finding("A1", "src/a.ts");
+	assert.equal(store.entryKey(item, `sha256:${a}`), store.entryKey(item, a));
+	const first = await store.recordFindings(`sha256:${a}`, [item]);
+	assert.equal(first.recorded[0]?.changedPathManifestSha256, a);
+	const same = await store.recordFindings(a, [item]);
+	assert.equal(same.recorded[0]?.occurrences, 1);
+	assert.equal(same.recurring.length, 0);
+	assert.deepEqual(await store.markFixedIfAbsent(`sha256:${a}`, [finding("B1", "src/a.ts")]), []);
+	const next = await store.recordFindings(`sha256:${b}`, [item]);
+	assert.equal(next.recurring[0]?.occurrences, 2);
+	assert.equal(next.recorded[0]?.changedPathManifestSha256, b);
+	const receipts = await store.markFixedIfAbsent(`sha256:${a}`, [finding("B1", "src/a.ts")]);
+	assert.equal(receipts[0]?.priorChangedPathManifestSha256, b);
+	assert.equal(receipts[0]?.fixedManifestSha256, a);
+	assert.equal((await store.getLedger())[0]?.status, "fixed");
+});
+
+test("malformed and unknown manifests cannot prove recurrence or fixes", async (t) => {
+	const store = new ReviewAdvisoryLedgerStore(fixture(t));
+	const sha = shaOf("valid");
+	const item = finding("A1", "src/a.ts");
+	for (const invalid of ["", `SHA256:${sha}`, `sha256:${sha.toUpperCase()}`, ` sha256:${sha}`, `sha256:${sha}\n`, `sha256:${sha.slice(1)}`, `${sha}x`]) {
+		assert.equal(store.entryKey(item, invalid), "review-risk|A1|src/a.ts|");
+		await store.recordFindings(invalid, [item]);
+		assert.deepEqual(await store.markFixedIfAbsent(invalid, [finding("B1", "src/a.ts")]), []);
+	}
+	const valid = await store.recordFindings(`sha256:${sha}`, [item]);
+	assert.equal(valid.recurring.length, 0);
+	assert.equal(valid.recorded[0]?.occurrences, 1);
+	const snapshot = await store.getLedger();
+	assert.equal(snapshot.length, 2);
+	assert.equal(snapshot.find((entry) => entry.changedPathManifestSha256 === "")?.occurrences, 1);
+	assert.deepEqual(await store.markFixedIfAbsent(shaOf("later"), [finding("B1", "src/a.ts")]).then((receipts) => receipts.map((receipt) => receipt.priorChangedPathManifestSha256)), [sha]);
+});
+
 test("records findings and flags recurrence across two manifests", async (t) => {
 	const root = fixture(t);
 	const store = new ReviewAdvisoryLedgerStore(root);

@@ -88,8 +88,12 @@ function findingPrefix(lens: string, findingId: string, location: string): strin
 	return `${lens}|${findingId}|${location}|`;
 }
 
+/** Presentation identity only: accept native sha256: or legacy bare lowercase
+ * digests and return canonical bare hex. This does not validate authority tokens.
+ */
 function manifestShaOrEmpty(value: string): string {
-	return GENERATION_DIGEST.test(value) ? value : "";
+	const sha = value.startsWith("sha256:") ? value.slice(7) : value;
+	return sha.length === 64 && GENERATION_DIGEST.test(sha) ? sha : "";
 }
 
 /**
@@ -151,7 +155,7 @@ export class ReviewAdvisoryLedgerStore {
 					}
 					const prefix = findingPrefix(lens, finding.id, location);
 					const prior = [...entries.values()]
-						.filter((entry) => entry.key.startsWith(prefix) && entry.changedPathManifestSha256 !== sha)
+						.filter((entry) => entry.key.startsWith(prefix) && manifestShaOrEmpty(entry.changedPathManifestSha256) !== "" && entry.changedPathManifestSha256 !== sha)
 						.sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
 					if (prior !== undefined && sha !== "") {
 						// Same finding re-sighted under a new tree: migrate the entry
@@ -212,7 +216,7 @@ export class ReviewAdvisoryLedgerStore {
 				const currentLocations = new Set(findings.map((finding) => finding.location ?? ""));
 				for (const entry of entries.values()) {
 					if (entry.status !== "open") continue;
-					if (entry.changedPathManifestSha256 === "" || entry.changedPathManifestSha256 === sha) continue;
+					if (manifestShaOrEmpty(entry.changedPathManifestSha256) === "" || entry.changedPathManifestSha256 === sha) continue;
 					if (entry.location === "" || !currentLocations.has(entry.location)) continue;
 					// Path persisted but the exact finding is gone: a fix receipt.
 					if (currentIdentities.has(findingPrefix(entry.lens, entry.findingId, entry.location))) continue;
