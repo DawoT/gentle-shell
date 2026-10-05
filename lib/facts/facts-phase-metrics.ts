@@ -8,6 +8,7 @@ export type FactsMetricPhase =
   | "snapshot_validation"
   | "cache_save"
   | "queue_wait"
+  | "fast_path"
   | "query_lookup"
   | "history_save";
 

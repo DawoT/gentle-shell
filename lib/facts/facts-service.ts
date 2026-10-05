@@ -8,11 +8,25 @@ import { extractSourceFacts, factsLanguage } from "./facts-languages.ts";
 import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact } from "./facts-types.ts";
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
 import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapshot } from "./facts-phase-metrics.ts";
+import { WorkspaceEpoch, type WorkspaceDirtyReason } from "./facts-workspace-epoch.ts";
 
 import type { FactsModuleEdge } from "./facts-module-resolver.ts";
 
+export interface SyncOptions {
+  /** "auto" may serve the validated in-memory generation or join an equivalent in-flight refresh; "full" always rescans. */
+  mode?: "auto" | "full";
+}
+
 export interface FactsServiceOptions {
   metrics?: FactsPhaseMetrics;
+  /** Enables the fast path for auto-mode syncs. Off by default; callers opt in. */
+  fastPath?: boolean;
+  /** Starts a workspace watcher for the fast path; false models watcher-unavailable environments. */
+  fastPathWatch?: boolean;
+  /** Full reconciliation is forced after this many fast-path refreshes. */
+  reconcileEvery?: number;
+  /** Full reconciliation is forced after this long without a full sync. */
+  reconcileIntervalMs?: number;
 }
 
 export interface DependencyEvidence {
@@ -29,6 +43,7 @@ export interface SyncResult {
   indexedCount: number;
   cachedCount: number;
   deletedCount: number;
+  path?: "fast" | "full";
 }
 
 export interface SymbolQueryResult {
@@ -61,22 +76,43 @@ export class FactsService {
   private diagnostics: FactsDiagnostics = { status: "idle" };
   private phase: FactsPhase = "cache_lock";
   private readonly metrics: FactsPhaseMetrics;
+  private readonly fastPathEnabled: boolean;
+  private readonly reconcileEvery: number;
+  private readonly reconcileIntervalMs: number;
+  private readonly epoch?: WorkspaceEpoch;
+  private inFlight?: { revision: number; promise: Promise<SyncResult> };
+  private pointerIdentity?: { mtimeMs: number; size: number } | null;
+  private autoRefreshesSinceFullSync = 0;
+  private lastFullSyncAt = 0;
+  private validationRevision?: number;
 
   constructor(workspaceRoot: string, customDirName?: string, options?: FactsServiceOptions) {
     this.workspaceRoot = workspaceRoot;
     this.store = new FactsStore(workspaceRoot, customDirName);
     this.metrics = options?.metrics ?? new FactsPhaseMetrics();
+    this.fastPathEnabled = options?.fastPath ?? false;
+    this.reconcileEvery = options?.reconcileEvery ?? 16;
+    this.reconcileIntervalMs = options?.reconcileIntervalMs ?? 60_000;
+    if (this.fastPathEnabled) {
+      this.epoch = new WorkspaceEpoch(workspaceRoot, { watch: options?.fastPathWatch ?? true });
+      this.epoch.start();
+    }
   }
 
-  sync(signal?: AbortSignal): Promise<SyncResult> {
-    const enqueuedAt = performance.now();
-    const result = this.pending.then(() => {
-      this.metrics.record("queue_wait", performance.now() - enqueuedAt);
-      this.metrics.recordRefresh();
-      return this.syncWithDiagnostics(signal);
-    });
-    this.pending = result.then(() => undefined, () => undefined);
-    return result;
+  sync(signal?: AbortSignal, options?: SyncOptions): Promise<SyncResult> {
+    const mode = options?.mode ?? "full";
+    if (mode === "auto") {
+      const flight = this.inFlight;
+      // Join only with an epoch tracking changes, and only when nothing has
+      // been observed since the flight started; otherwise the flight cannot
+      // speak for this caller's state. A failed flight is never inherited:
+      // the joiner falls back to its own conservative refresh.
+      if (this.epoch && flight && this.epoch.revision === flight.revision) {
+        return flight.promise.then((result) => result, () => this.enqueueSync(signal, mode));
+      }
+      if (this.fastPathEligible()) return this.serveFastPath(signal);
+    }
+    return this.enqueueSync(signal, mode);
   }
 
   getPhaseMetrics(): FactsPhaseMetricsSnapshot {
@@ -85,6 +121,59 @@ export class FactsService {
 
   recordPhaseMetric(phase: FactsMetricPhase, durationMs: number): void {
     this.metrics.record(phase, durationMs);
+  }
+
+  markWorkspaceDirty(reason: WorkspaceDirtyReason = "manual"): void {
+    this.epoch?.markDirty(reason);
+  }
+
+  /** Releases fast-path resources; the service stays usable via full syncs. */
+  close(): void {
+    this.epoch?.close();
+  }
+
+  private fastPathEligible(): boolean {
+    return this.fastPathEnabled && this.db !== null && this.diagnostics.status === "ready" &&
+      this.epoch !== undefined && this.epoch.isClean() &&
+      this.autoRefreshesSinceFullSync < this.reconcileEvery &&
+      Date.now() - this.lastFullSyncAt < this.reconcileIntervalMs;
+  }
+
+  private async serveFastPath(signal?: AbortSignal): Promise<SyncResult> {
+    signal?.throwIfAborted();
+    const started = performance.now();
+    const identity = await this.store.pointerIdentity(signal);
+    if (!identity || !this.pointerIdentity ||
+      identity.mtimeMs !== this.pointerIdentity.mtimeMs || identity.size !== this.pointerIdentity.size) {
+      // The pointer moved (or vanished): another writer published; fall back.
+      return this.enqueueSync(signal, "auto");
+    }
+    this.metrics.record("fast_path", performance.now() - started);
+    this.metrics.recordRefresh();
+    this.autoRefreshesSinceFullSync++;
+    return {
+      indexedCount: 0,
+      cachedCount: Object.keys(this.db!.files).length,
+      deletedCount: 0,
+      path: "fast",
+    };
+  }
+
+  private enqueueSync(signal: AbortSignal | undefined, mode: "auto" | "full"): Promise<SyncResult> {
+    const enqueuedAt = performance.now();
+    const revision = this.epoch?.revision;
+    const run = this.pending.then(() => {
+      this.metrics.record("queue_wait", performance.now() - enqueuedAt);
+      this.metrics.recordRefresh();
+      return this.syncWithDiagnostics(signal, mode);
+    });
+    this.pending = run.then(() => undefined, () => undefined);
+    const flight = { revision, promise: run };
+    this.inFlight = flight;
+    void run.then(() => undefined, () => undefined).then(() => {
+      if (this.inFlight === flight) this.inFlight = undefined;
+    });
+    return run;
   }
 
   getDiagnostics(): FactsDiagnostics {
@@ -107,7 +196,7 @@ export class FactsService {
     }
   }
 
-  private async syncWithDiagnostics(signal?: AbortSignal): Promise<SyncResult> {
+  private async syncWithDiagnostics(signal: AbortSignal | undefined, mode: "auto" | "full"): Promise<SyncResult> {
     const started = performance.now();
     this.diagnostics = { ...this.diagnostics, status: "refreshing", failure: undefined };
     this.phase = "cache_lock";
@@ -116,7 +205,23 @@ export class FactsService {
         this.store.withWriterLock(async () => {
           for (let attempt = 0; attempt < 3; attempt++) {
             const snapshot = await this.syncSnapshot(signal);
-            if (snapshot) return snapshot;
+            if (snapshot) {
+              // Still holding the writer lock, so no other publisher can
+              // interleave before the pointer identity is captured. markClean
+              // only cleans when nothing was observed since validation
+              // started; otherwise the epoch stays dirty.
+              this.epoch?.markClean(this.validationRevision);
+              try {
+                this.pointerIdentity = await this.store.pointerIdentity(signal);
+              } catch {
+                // Unreadable pointer: disable the fast path until a later
+                // successful sync captures it again.
+                this.pointerIdentity = null;
+              }
+              this.autoRefreshesSinceFullSync = 0;
+              this.lastFullSyncAt = Date.now();
+              return snapshot;
+            }
           }
           throw new Error("Facts workspace changed during analysis; retry when edits settle.");
         }, signal));
@@ -134,7 +239,7 @@ export class FactsService {
     }
   }
 
-  private async syncSnapshot(signal?: AbortSignal): Promise<SyncResult | null> {
+  private async syncSnapshot(signal: AbortSignal | undefined): Promise<SyncResult | null> {
     signal?.throwIfAborted();
     this.phase = "git_scan";
     const scan = await this.timePhase("git_scan", () =>
@@ -220,6 +325,7 @@ export class FactsService {
     }
     db.moduleEdges = resolutionEdges;
     this.phase = "snapshot_validation";
+    this.validationRevision = this.epoch?.revision;
     const validated = await this.timePhase("snapshot_validation", async (): Promise<boolean> => {
       const observed = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
       const candidateHashes = new Map(Object.entries(db.files).map(([path, facts]) => [path, facts.sha]));
@@ -265,6 +371,7 @@ export class FactsService {
       indexedCount,
       cachedCount: delta.untouched.length,
       deletedCount: delta.deleted.length,
+      path: "full",
     };
   }
 
