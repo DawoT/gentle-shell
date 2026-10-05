@@ -7,8 +7,13 @@ import { FactsStore } from "./facts-store.ts";
 import { extractSourceFacts, factsLanguage } from "./facts-languages.ts";
 import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact } from "./facts-types.ts";
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
+import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapshot } from "./facts-phase-metrics.ts";
 
 import type { FactsModuleEdge } from "./facts-module-resolver.ts";
+
+export interface FactsServiceOptions {
+  metrics?: FactsPhaseMetrics;
+}
 
 export interface DependencyEvidence {
   resolutionNote?: string;
@@ -55,20 +60,51 @@ export class FactsService {
   private pending: Promise<void> = Promise.resolve();
   private diagnostics: FactsDiagnostics = { status: "idle" };
   private phase: FactsPhase = "cache_lock";
+  private readonly metrics: FactsPhaseMetrics;
 
-  constructor(workspaceRoot: string, customDirName?: string) {
+  constructor(workspaceRoot: string, customDirName?: string, options?: FactsServiceOptions) {
     this.workspaceRoot = workspaceRoot;
     this.store = new FactsStore(workspaceRoot, customDirName);
+    this.metrics = options?.metrics ?? new FactsPhaseMetrics();
   }
 
   sync(signal?: AbortSignal): Promise<SyncResult> {
-    const result = this.pending.then(() => this.syncWithDiagnostics(signal));
+    const enqueuedAt = performance.now();
+    const result = this.pending.then(() => {
+      this.metrics.record("queue_wait", performance.now() - enqueuedAt);
+      this.metrics.recordRefresh();
+      return this.syncWithDiagnostics(signal);
+    });
     this.pending = result.then(() => undefined, () => undefined);
     return result;
   }
 
+  getPhaseMetrics(): FactsPhaseMetricsSnapshot {
+    return this.metrics.snapshot();
+  }
+
+  recordPhaseMetric(phase: FactsMetricPhase, durationMs: number): void {
+    this.metrics.record(phase, durationMs);
+  }
+
   getDiagnostics(): FactsDiagnostics {
     return { ...structuredClone(this.diagnostics), diskCacheLoad: this.store.getLoadState() };
+  }
+
+  private timePhase<T>(phase: FactsMetricPhase, work: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    return work().finally(() => {
+      this.metrics.record(phase, performance.now() - started);
+    });
+  }
+
+  private timeSyncPhase<T>(phase: FactsMetricPhase, work: () => T): T {
+    const started = performance.now();
+    try {
+      return work();
+    } finally {
+      this.metrics.record(phase, performance.now() - started);
+    }
   }
 
   private async syncWithDiagnostics(signal?: AbortSignal): Promise<SyncResult> {
@@ -76,13 +112,14 @@ export class FactsService {
     this.diagnostics = { ...this.diagnostics, status: "refreshing", failure: undefined };
     this.phase = "cache_lock";
     try {
-      const result = await this.store.withWriterLock(async () => {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const snapshot = await this.syncSnapshot(signal);
-          if (snapshot) return snapshot;
-        }
-        throw new Error("Facts workspace changed during analysis; retry when edits settle.");
-      }, signal);
+      const result = await this.timePhase("cache_lock", () =>
+        this.store.withWriterLock(async () => {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const snapshot = await this.syncSnapshot(signal);
+            if (snapshot) return snapshot;
+          }
+          throw new Error("Facts workspace changed during analysis; retry when edits settle.");
+        }, signal));
       this.diagnostics = { status: "ready", lastSuccessfulSyncAt: Date.now() };
       return result;
     } catch (error) {
@@ -100,11 +137,12 @@ export class FactsService {
   private async syncSnapshot(signal?: AbortSignal): Promise<SyncResult | null> {
     signal?.throwIfAborted();
     this.phase = "git_scan";
-    const scan = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
+    const scan = await this.timePhase("git_scan", () =>
+      scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined));
 
     this.phase = "cache_load";
     // The lock serializes writers; reload their last publication before diffing.
-    const loaded = await this.store.load(signal);
+    const loaded = await this.timePhase("cache_load", () => this.store.load(signal));
     const previous = loaded?.root === scan.root ? loaded : null;
     const db: FactsDatabase = previous
       ? { ...previous, files: { ...previous.files } }
@@ -137,37 +175,41 @@ export class FactsService {
     let indexedBytes = 0;
     this.phase = "source_index";
 
-    for (const relPath of toIndex) {
-      if (!factsLanguage(relPath)) continue;
+    await this.timePhase("source_index", async () => {
+      for (const relPath of toIndex) {
+        if (!factsLanguage(relPath)) continue;
 
-      const entry = scan.files.get(relPath);
-      if (!entry || entry.status === "deleted") continue;
+        const entry = scan.files.get(relPath);
+        if (!entry || entry.status === "deleted") continue;
 
-      try {
-        const fullPath = join(scan.root, relPath);
-        const content = await readFactsFile(fullPath, MAX_SOURCE_BYTES, signal);
-        indexedBytes += content.length;
-        if (indexedBytes > MAX_INDEX_BYTES) {
-          throw new FactsLimitError(`Facts workspace byte limit (${MAX_INDEX_BYTES}) exceeded`);
+        try {
+          const fullPath = join(scan.root, relPath);
+          const content = await readFactsFile(fullPath, MAX_SOURCE_BYTES, signal);
+          indexedBytes += content.length;
+          if (indexedBytes > MAX_INDEX_BYTES) {
+            throw new FactsLimitError(`Facts workspace byte limit (${MAX_INDEX_BYTES}) exceeded`);
+          }
+          const facts = await extractSourceFacts(relPath, content.toString("utf8"), computeGitBlobSha(content), signal);
+          db.files[relPath] = facts;
+          indexedCount++;
+        } catch (cause) {
+          signal?.throwIfAborted();
+          if (cause instanceof FactsLimitError || (cause instanceof Error && cause.name === "FactsParserError")) throw cause;
+          throw new Error(`Cannot index source file: ${relPath}`, { cause });
         }
-        const facts = await extractSourceFacts(relPath, content.toString("utf8"), computeGitBlobSha(content), signal);
-        db.files[relPath] = facts;
-        indexedCount++;
-      } catch (cause) {
-        signal?.throwIfAborted();
-        if (cause instanceof FactsLimitError || (cause instanceof Error && cause.name === "FactsParserError")) throw cause;
-        throw new Error(`Cannot index source file: ${relPath}`, { cause });
       }
-    }
+    });
 
     // 3. Extract execution receipts
     this.phase = "manifest";
-    db.receipts = await extractExecutionReceipts(scan.root, this.workspaceRoot, { signal });
+    db.receipts = await this.timePhase("manifest", () =>
+      extractExecutionReceipts(scan.root, this.workspaceRoot, { signal }));
     db.lastHeadCommit = scan.headCommitSha;
     this.phase = "module_resolution";
     const typedFiles = Object.fromEntries(Object.entries(db.files).filter(([path]) => factsLanguage(path) === "typescript"));
     const moduleSnapshot = Object.keys(typedFiles).length
-      ? await (await import("./facts-worker.ts")).resolveModuleSnapshotInWorker(scan.root, typedFiles, signal)
+      ? await this.timePhase("module_resolution", async () =>
+        await (await import("./facts-worker.ts")).resolveModuleSnapshotInWorker(scan.root, typedFiles, signal))
       : undefined;
     const resolutionEdges: FactsModuleEdge[] = moduleSnapshot?.edges ?? [];
     for (const [path, facts] of Object.entries(db.files)) {
@@ -178,38 +220,42 @@ export class FactsService {
     }
     db.moduleEdges = resolutionEdges;
     this.phase = "snapshot_validation";
-    const observed = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
-    const candidateHashes = new Map(Object.entries(db.files).map(([path, facts]) => [path, facts.sha]));
-    const drift = calculateFactsDelta(candidateHashes, observed.files);
-    let validationBytes = 0;
-    let sourceChanged = false;
-    for (const path of drift.modified) {
-      // Git's index can contain normalized bytes (CRLF or clean filters).
-      // Facts hashes the raw bytes parsed, so confirm mismatches on disk.
-      const content = await readFactsFile(join(observed.root, path), MAX_SOURCE_BYTES, signal);
-      validationBytes += content.length;
-      if (validationBytes > MAX_INDEX_BYTES) {
-        throw new FactsLimitError(`Facts validation byte limit (${MAX_INDEX_BYTES}) exceeded`);
+    const validated = await this.timePhase("snapshot_validation", async (): Promise<boolean> => {
+      const observed = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
+      const candidateHashes = new Map(Object.entries(db.files).map(([path, facts]) => [path, facts.sha]));
+      const drift = calculateFactsDelta(candidateHashes, observed.files);
+      let validationBytes = 0;
+      let sourceChanged = false;
+      for (const path of drift.modified) {
+        // Git's index can contain normalized bytes (CRLF or clean filters).
+        // Facts hashes the raw bytes parsed, so confirm mismatches on disk.
+        const content = await readFactsFile(join(observed.root, path), MAX_SOURCE_BYTES, signal);
+        validationBytes += content.length;
+        if (validationBytes > MAX_INDEX_BYTES) {
+          throw new FactsLimitError(`Facts validation byte limit (${MAX_INDEX_BYTES}) exceeded`);
+        }
+        if (computeGitBlobSha(content) !== candidateHashes.get(path)) {
+          sourceChanged = true;
+          break;
+        }
       }
-      if (computeGitBlobSha(content) !== candidateHashes.get(path)) {
-        sourceChanged = true;
-        break;
+      const receipts = await extractExecutionReceipts(observed.root, this.workspaceRoot, { signal });
+      if (observed.root !== db.root || observed.headCommitSha !== db.lastHeadCommit ||
+        drift.added.length || sourceChanged || drift.deleted.some((path) => candidateHashes.has(path)) ||
+        encodeFacts(receipts) !== encodeFacts(db.receipts)) {
+        return false;
       }
-    }
-    const receipts = await extractExecutionReceipts(observed.root, this.workspaceRoot, { signal });
-    if (observed.root !== db.root || observed.headCommitSha !== db.lastHeadCommit ||
-      drift.added.length || sourceChanged || drift.deleted.some((path) => candidateHashes.has(path)) ||
-      encodeFacts(receipts) !== encodeFacts(db.receipts)) {
-      return null;
-    }
-    if (moduleSnapshot && !await (await import("./facts-worker.ts")).validateModuleSnapshotInWorker(moduleSnapshot, signal)) {
-      return null;
-    }
+      if (moduleSnapshot && !await (await import("./facts-worker.ts")).validateModuleSnapshotInWorker(moduleSnapshot, signal)) {
+        return false;
+      }
+      return true;
+    });
+    if (!validated) return null;
     signal?.throwIfAborted();
     if (!previous || !samePublication(previous, db)) {
       db.updatedAt = Date.now();
       this.phase = "cache_save";
-      await this.store.save(db, signal);
+      await this.timePhase("cache_save", () => this.store.save(db, signal));
     }
     this.db = db;
     this.generation = this.store.getGeneration();
@@ -227,19 +273,21 @@ export class FactsService {
   }
 
   querySymbols(query: { name?: string; file?: string }): SymbolQueryResult[] {
-    if (!this.db) return [];
-    const results: SymbolQueryResult[] = [];
+    return this.timeSyncPhase("query_lookup", () => {
+      if (!this.db) return [];
+      const results: SymbolQueryResult[] = [];
 
-    for (const [file, facts] of Object.entries(this.db.files)) {
-      if (query.file !== undefined && file !== query.file) continue;
-      for (const symbol of facts.symbols) {
-        if (query.name === undefined || symbol.name.toLowerCase() === query.name.toLowerCase()) {
-          results.push({ file, symbol });
+      for (const [file, facts] of Object.entries(this.db.files)) {
+        if (query.file !== undefined && file !== query.file) continue;
+        for (const symbol of facts.symbols) {
+          if (query.name === undefined || symbol.name.toLowerCase() === query.name.toLowerCase()) {
+            results.push({ file, symbol });
+          }
         }
       }
-    }
 
-    return results;
+      return results;
+    });
   }
 
   getGeneration(): string | undefined {
@@ -255,6 +303,10 @@ export class FactsService {
   }
 
   queryDependencyEvidence(symbolOrFile: string, options: { transitive?: boolean } = {}): DependencyEvidence[] {
+    return this.timeSyncPhase("query_lookup", () => this.queryDependencyEvidenceUntimed(symbolOrFile, options));
+  }
+
+  private queryDependencyEvidenceUntimed(symbolOrFile: string, options: { transitive?: boolean }): DependencyEvidence[] {
     if (!this.db) return [];
     const files = this.db.files;
     const targetPath = posix.normalize(symbolOrFile.replaceAll("\\", "/").replace(/^\.\//, ""));

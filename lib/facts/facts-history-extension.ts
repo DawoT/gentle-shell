@@ -19,9 +19,14 @@ export async function recordFactsHistory(pi: ExtensionAPI, ctx: ExtensionContext
   const sessionFile = ctx.sessionManager?.getSessionFile();
   const database = service.getDatabase();
   if (!sessionFile || !database) return undefined;
-  const receipt = await new FactsHistory(sessionFile).save(database, service.getResolutionEdges(), signal);
-  if (latestReceipt(ctx)?.digest !== receipt.digest) pi.appendEntry(ENTRY_TYPE, receipt);
-  return receipt;
+  const started = performance.now();
+  try {
+    const receipt = await new FactsHistory(sessionFile).save(database, service.getResolutionEdges(), signal);
+    if (latestReceipt(ctx)?.digest !== receipt.digest) pi.appendEntry(ENTRY_TYPE, receipt);
+    return receipt;
+  } finally {
+    service.recordPhaseMetric("history_save", performance.now() - started);
+  }
 }
 
 export function registerFactsHistory(pi: ExtensionAPI): void {
