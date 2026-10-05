@@ -55,6 +55,7 @@
 		"test:facts": "node --experimental-strip-types --test tests/facts-*.test.ts",
 		"test:facts:packed": "node scripts/test-facts-packed.mjs",
 		"benchmark:facts": "node --expose-gc --experimental-strip-types scripts/benchmark-facts.mjs",
+		"benchmark:facts:real": "node --expose-gc --experimental-strip-types scripts/benchmark-facts-real.mjs",
 		"prepack": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs",
 		"prepublishOnly": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs && pnpm run test:packed-package && pnpm run test:facts:packed",
 		"typecheck": "node scripts/check-types.mjs"
