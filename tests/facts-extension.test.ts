@@ -308,6 +308,10 @@ test("session lifecycle mounts and refreshes the facts card in the UI", async ()
 
     await writeFile(join(dir, "new.ts"), "export const added = true;\n");
     await pi.emit("tool_execution_end", { toolName: "write", isError: false }, ctx);
+    // Write hooks invalidate lazily (gaps GF-P0-006): the card refreshes on
+    // the next consumer that needs facts, not on the edit itself.
+    assert.match(render(), /2 files/);
+    await pi.emit("before_agent_start", { systemPrompt: "" }, ctx);
     assert.match(render(), /3 files/);
 
     await pi.emit("session_shutdown", {}, ctx);

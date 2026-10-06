@@ -75,7 +75,7 @@ test("a failed watcher keeps the epoch dirty forever", async () => {
   }
 });
 
-test("auto sync serves a clean workspace without rescanning", async () => {
+test("auto sync serves a clean workspace without re-resolving or re-validating", async () => {
   const { dir, cleanup } = await createFixture();
   try {
     await writeFile(join(dir, "source.ts"), "export const value = 1;\n");
@@ -92,7 +92,12 @@ test("auto sync serves a clean workspace without rescanning", async () => {
 
     const metrics = service.getPhaseMetrics();
     assert.equal(metrics.refreshTotal, 2);
-    assert.equal(metrics.phases.git_scan?.count, 1, "fast path must not rescan");
+    // The fast serve still runs the cheap verifying scan, but resolution,
+    // validation and publication are all skipped.
+    assert.equal(metrics.phases.git_scan?.count, 2);
+    assert.equal(metrics.phases.module_resolution?.count, 1);
+    assert.equal(metrics.phases.snapshot_validation?.count, 1);
+    assert.equal(metrics.phases.cache_save?.count, 1);
     assert.ok((metrics.phases.fast_path?.count ?? 0) >= 1);
   } finally {
     await cleanup();
@@ -144,7 +149,7 @@ test("a marked-dirty workspace forces the next auto refresh to rescan", async ()
     const third = await service.sync(undefined, { mode: "auto" });
     assert.equal(third.path, "full");
     assert.equal(third.indexedCount, 1);
-    assert.equal(service.getPhaseMetrics().phases.git_scan?.count, 2);
+    assert.equal(service.getPhaseMetrics().phases.git_scan?.count, 3);
 
     const fourth = await service.sync(undefined, { mode: "auto" });
     assert.equal(fourth.path, "fast");
@@ -186,7 +191,7 @@ test("periodic reconciliation forces a full sync after the configured budget", a
     assert.equal((await service.sync(undefined, { mode: "auto" })).path, "fast");
     const fourth = await service.sync(undefined, { mode: "auto" });
     assert.equal(fourth.path, "full", "budget exhausted: reconcile");
-    assert.equal(service.getPhaseMetrics().phases.git_scan?.count, 2);
+    assert.equal(service.getPhaseMetrics().phases.git_scan?.count, 4);
   } finally {
     await cleanup();
   }

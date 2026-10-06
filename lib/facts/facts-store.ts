@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
-import { stat } from "node:fs/promises";
 import { withFactsWriterLock } from "./facts-lock.ts";
 export { FactsBusyError } from "./facts-lock.ts";
 import { FACTS_DATABASE_VERSION, type FactsDatabase } from "./facts-types.ts";
@@ -84,18 +83,6 @@ export class FactsStore {
 
   getGeneration(): string | undefined {
     return this.generation;
-  }
-
-  /** Cheap identity of the replaceable generation pointer; null when absent. */
-  async pointerIdentity(signal?: AbortSignal): Promise<{ mtimeMs: number; size: number } | null> {
-    signal?.throwIfAborted();
-    try {
-      const info = await stat(this.filePath);
-      return { mtimeMs: info.mtimeMs, size: info.size };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    }
   }
 
   async loadGeneration(generation: string, signal?: AbortSignal): Promise<FactsDatabase> {

@@ -38,6 +38,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   registerFactsHistory(pi);
   registerFactsCommit(pi);
   registerFactsImpact(pi);
+  const fastPathEnabled = env.GENTLE_FACTS_DISABLE_FAST_PATH === undefined;
   const historyFailures = new Map<string, string>();
   const historyReceipts = new Map<string, FactsHistoryReceipt>();
   const cursors = new Map<string, FactsCursors>();
@@ -98,7 +99,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   function getService(cwd: string): FactsService {
     let service = services.get(cwd);
     if (!service) {
-      service = new FactsService(cwd);
+      service = new FactsService(cwd, undefined, { fastPath: fastPathEnabled });
       services.set(cwd, service);
     }
     return service;
@@ -110,20 +111,24 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     const lifetime = lifetimes.get(ctx.cwd)!.signal;
     signal = signal ? AbortSignal.any([signal, lifetime]) : lifetime;
     try {
-      const sync = service.sync(signal);
+      const sync = service.sync(signal, { mode: "auto" });
       showCard(ctx, service, usage);
-      await sync;
+      const result = await sync;
       signal.throwIfAborted();
-      try {
-        const receipt = await recordFactsHistory(pi, ctx, service, signal);
-        signal.throwIfAborted();
-        if (receipt) historyReceipts.set(ctx.cwd, receipt);
-        else historyReceipts.delete(ctx.cwd);
-        historyFailures.delete(ctx.cwd);
-      } catch (error) {
-        historyReceipts.delete(ctx.cwd);
-        signal?.throwIfAborted();
-        historyFailures.set(ctx.cwd, error instanceof Error ? error.message : "Snapshot persistence failed");
+      if (result.path !== "fast") {
+        // Fast-path reads serve an unchanged generation; the digest cannot
+        // differ from the recorded one, so history work would be redundant.
+        try {
+          const receipt = await recordFactsHistory(pi, ctx, service, signal);
+          signal.throwIfAborted();
+          if (receipt) historyReceipts.set(ctx.cwd, receipt);
+          else historyReceipts.delete(ctx.cwd);
+          historyFailures.delete(ctx.cwd);
+        } catch (error) {
+          historyReceipts.delete(ctx.cwd);
+          signal?.throwIfAborted();
+          historyFailures.set(ctx.cwd, error instanceof Error ? error.message : "Snapshot persistence failed");
+        }
       }
       signal.throwIfAborted();
       showCard(ctx, service, usage);
@@ -360,12 +365,15 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   pi.on("tool_execution_end", async (event: { toolName: string; isError?: boolean }, ctx: ExtensionContext) => {
     if (event.isError) return;
     if (event.toolName === "write" || event.toolName === "edit" || event.toolName === "apply_diff") {
-      await refreshService(ctx);
+      // Lazy invalidation: mark the epoch dirty and let the next consumer pay
+      // for the refresh instead of forcing duplicate full scans per edit.
+      getService(ctx.cwd).markWorkspaceDirty("manual");
     }
   });
 
   pi.on("session_shutdown", (_event: unknown, ctx: ExtensionContext) => {
     if (ctx.hasUI) ctx.ui.setWidget(FACTS_WIDGET_KEY, undefined);
+    services.get(ctx.cwd)?.close();
     services.delete(ctx.cwd);
     cursors.delete(ctx.cwd);
     lifetimes.get(ctx.cwd)?.abort(new Error("Facts session replaced or closed"));

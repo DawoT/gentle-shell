@@ -81,7 +81,6 @@ export class FactsService {
   private readonly reconcileIntervalMs: number;
   private readonly epoch?: WorkspaceEpoch;
   private inFlight?: { revision: number; promise: Promise<SyncResult> };
-  private pointerIdentity?: { mtimeMs: number; size: number } | null;
   private autoRefreshesSinceFullSync = 0;
   private lastFullSyncAt = 0;
   private validationRevision?: number;
@@ -142,10 +141,9 @@ export class FactsService {
   private async serveFastPath(signal?: AbortSignal): Promise<SyncResult> {
     signal?.throwIfAborted();
     const started = performance.now();
-    const identity = await this.store.pointerIdentity(signal);
-    if (!identity || !this.pointerIdentity ||
-      identity.mtimeMs !== this.pointerIdentity.mtimeMs || identity.size !== this.pointerIdentity.size) {
-      // The pointer moved (or vanished): another writer published; fall back.
+    if (!await this.verifyUnchanged(signal)) {
+      // The cheap scan observed a change (or the Git boundary broke): take
+      // the conservative path.
       return this.enqueueSync(signal, "auto");
     }
     this.metrics.record("fast_path", performance.now() - started);
@@ -157,6 +155,29 @@ export class FactsService {
       deletedCount: 0,
       path: "fast",
     };
+  }
+
+  /**
+   * Deterministic freshness proof for the fast path: re-run the cheap
+   * workspace scan and require the exact indexed state to still hold. This
+   * closes the fs.watch delivery race — an external edit followed by an
+   * immediate read can never be served stale, because the scan is
+   * authoritative. Only resolution, validation and publication are skipped.
+   */
+  private async verifyUnchanged(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const started = performance.now();
+      const scan = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
+      this.metrics.record("git_scan", performance.now() - started);
+      if (scan.root !== this.db!.root || scan.headCommitSha !== this.db!.lastHeadCommit) return false;
+      const hashes = new Map(Object.entries(this.db!.files).map(([path, facts]) => [path, facts.sha]));
+      const delta = calculateFactsDelta(hashes, scan.files);
+      return delta.added.length === 0 && delta.modified.length === 0 && delta.deleted.length === 0;
+    } catch {
+      // Not a repository, scan failure or abort: the conservative path
+      // re-raises aborts and reports real failures with full diagnostics.
+      return false;
+    }
   }
 
   private enqueueSync(signal: AbortSignal | undefined, mode: "auto" | "full"): Promise<SyncResult> {
@@ -206,18 +227,9 @@ export class FactsService {
           for (let attempt = 0; attempt < 3; attempt++) {
             const snapshot = await this.syncSnapshot(signal);
             if (snapshot) {
-              // Still holding the writer lock, so no other publisher can
-              // interleave before the pointer identity is captured. markClean
-              // only cleans when nothing was observed since validation
-              // started; otherwise the epoch stays dirty.
+              // markClean only cleans when nothing was observed since
+              // validation started; otherwise the epoch stays dirty.
               this.epoch?.markClean(this.validationRevision);
-              try {
-                this.pointerIdentity = await this.store.pointerIdentity(signal);
-              } catch {
-                // Unreadable pointer: disable the fast path until a later
-                // successful sync captures it again.
-                this.pointerIdentity = null;
-              }
               this.autoRefreshesSinceFullSync = 0;
               this.lastFullSyncAt = Date.now();
               return snapshot;
