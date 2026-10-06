@@ -9,6 +9,14 @@ import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, typ
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
 import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapshot } from "./facts-phase-metrics.ts";
 import { WorkspaceEpoch, type WorkspaceDirtyReason } from "./facts-workspace-epoch.ts";
+import {
+  buildFactsQueryIndex,
+  queryDependencyEvidenceWithIndex,
+  querySymbolsWithIndex,
+  type DependencyEvidence,
+  type FactsQueryIndex,
+  type SymbolQueryResult,
+} from "./facts-query-index.ts";
 
 import type { FactsModuleEdge } from "./facts-module-resolver.ts";
 
@@ -29,13 +37,7 @@ export interface FactsServiceOptions {
   reconcileIntervalMs?: number;
 }
 
-export interface DependencyEvidence {
-  resolutionNote?: string;
-  file: string;
-  depth: number;
-  via: string;
-  evidence: "typescript" | "syntactic";
-}
+
 
 
 
@@ -46,10 +48,7 @@ export interface SyncResult {
   path?: "fast" | "full";
 }
 
-export interface SymbolQueryResult {
-  file: string;
-  symbol: SymbolFact;
-}
+export type { SymbolQueryResult, DependencyEvidence };
 
 function samePublication(previous: FactsDatabase, candidate: FactsDatabase): boolean {
   const { files: previousFiles, ...previousMetadata } = previous;
@@ -84,6 +83,7 @@ export class FactsService {
   private autoRefreshesSinceFullSync = 0;
   private lastFullSyncAt = 0;
   private validationRevision?: number;
+  private queryIndex?: FactsQueryIndex;
 
   constructor(workspaceRoot: string, customDirName?: string, options?: FactsServiceOptions) {
     this.workspaceRoot = workspaceRoot;
@@ -395,19 +395,17 @@ export class FactsService {
   querySymbols(query: { name?: string; file?: string }): SymbolQueryResult[] {
     return this.timeSyncPhase("query_lookup", () => {
       if (!this.db) return [];
-      const results: SymbolQueryResult[] = [];
-
-      for (const [file, facts] of Object.entries(this.db.files)) {
-        if (query.file !== undefined && file !== query.file) continue;
-        for (const symbol of facts.symbols) {
-          if (query.name === undefined || symbol.name.toLowerCase() === query.name.toLowerCase()) {
-            results.push({ file, symbol });
-          }
-        }
-      }
-
-      return results;
+      return querySymbolsWithIndex(this.queryIndexFor(), query);
     });
+  }
+
+  /** Rebuilds lazily whenever the (db, generation, edges) trio changes. */
+  private queryIndexFor(): FactsQueryIndex {
+    if (!this.queryIndex || this.queryIndex.generation !== this.generation ||
+      this.queryIndex.dbRef !== this.db || this.queryIndex.edgesRef !== this.resolutionEdges) {
+      this.queryIndex = buildFactsQueryIndex(this.db!, this.resolutionEdges, this.generation);
+    }
+    return this.queryIndex;
   }
 
   getGeneration(): string | undefined {
@@ -423,53 +421,12 @@ export class FactsService {
   }
 
   queryDependencyEvidence(symbolOrFile: string, options: { transitive?: boolean } = {}): DependencyEvidence[] {
-    return this.timeSyncPhase("query_lookup", () => this.queryDependencyEvidenceUntimed(symbolOrFile, options));
+    return this.timeSyncPhase("query_lookup", () => {
+      if (!this.db) return [];
+      return queryDependencyEvidenceWithIndex(this.queryIndexFor(), symbolOrFile, options);
+    });
   }
 
-  private queryDependencyEvidenceUntimed(symbolOrFile: string, options: { transitive?: boolean }): DependencyEvidence[] {
-    if (!this.db) return [];
-    const files = this.db.files;
-    const targetPath = posix.normalize(symbolOrFile.replaceAll("\\", "/").replace(/^\.\//, ""));
-    const targets = new Set<string>();
-    if (Object.hasOwn(files, targetPath)) {
-      targets.add(targetPath);
-    } else {
-      if (!targetPath.includes("/") && extname(targetPath)) {
-        const basenameMatches = Object.keys(files).filter((path) => path.endsWith(`/${targetPath}`));
-        if (basenameMatches.length === 1) targets.add(basenameMatches[0]);
-      }
-      for (const [path, facts] of Object.entries(files)) {
-        if (facts.symbols.some((symbol) => symbol.isExported && symbol.name === symbolOrFile)) {
-          targets.add(path);
-        }
-      }
-    }
-
-    const found = new Map<string, DependencyEvidence>();
-    const visited = new Set(targets);
-    let frontier = new Set(targets);
-    let depth = 1;
-    do {
-      const next = new Set<string>();
-      for (const edge of this.resolutionEdges) {
-        const resolved = edge.target !== undefined && frontier.has(edge.target);
-        const literal = depth === 1 && targets.size === 0 && !edge.specifier.startsWith(".") && edge.specifier === symbolOrFile;
-        if ((!resolved && !literal) || visited.has(edge.importer)) continue;
-        found.set(edge.importer, {
-          file: edge.importer,
-          depth,
-          via: edge.target ?? edge.specifier,
-          evidence: resolved ? "typescript" : "syntactic",
-          resolutionNote: edge.reason,
-        });
-        next.add(edge.importer);
-      }
-      for (const file of next) visited.add(file);
-      frontier = next;
-      depth++;
-    } while (options.transitive && frontier.size > 0);
-    return [...found.values()].sort((a, b) => a.file.localeCompare(b.file, "en"));
-  }
 
   getReceipts(): ExecutionReceipts | undefined {
     return this.db?.receipts;
