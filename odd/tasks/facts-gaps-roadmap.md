@@ -370,8 +370,24 @@ directly on main.
   crash), stage independence, force-run/no-cache modes, conservative
   fallback, green composed only from accounted constituents. A
   policy-rejected proof surfaces its explanation in the executed entry.
-  REMAINING for production: wire into scripts/run-test-suite.mjs (its own
-  unit with the real harness) and record reused-vs-executed in suite output.
+- S4.3 production integration (post-verifier commit): createStageProofLayer
+  + runTestSuite proofs option in scripts/run-test-suite.mjs. Opt-in only
+  (GENTLE_PROOFS=1 direct-run; default path byte-identical to the previous
+  behavior, verified differentially against HEAD including exit codes).
+  Stage fingerprints cover the exact command + repository tree digest (HEAD
+  + status) + toolchain; unchanged trees reuse published passed proofs with
+  REUSED [stage] lines and a REUSED summary; failed stages always
+  re-execute; any dirty file moves the digest and re-executes everything.
+  Ledger under .pi/proofs (gitignored). Integration verifier: PASS, with an
+  end-to-end empirical demo (run 1 PASS both stages, run 2 REUSED both,
+  untracked probe re-executes; graceful degradation verified by removing
+  the ledger module). Known environment gap surfaced by the full unit stage:
+  2 pre-existing failures in tests/gentle-ai-binary.test.ts
+  (package-local-binary-missing: Gentle AI v4.0.0 absent from the tests'
+  isolated HOME fixtures; standalone reproduction 9 pass / 2 fail with the
+  proofs import graph absent from that test) - unrelated to the proofs
+  subsystem; requires the dev binary present for the binary-resolution
+  fixtures, tracked here so it is not misread as a proofs regression.
 - Independent verifier verdict: PASS — strict layer order, conservative
   invariant, runner mode semantics, single-flight, and two-direction
   subsystem isolation all verified with line citations; no flakes on
