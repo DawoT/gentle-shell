@@ -124,16 +124,16 @@ force-run / no-cache / reconcile modes work.
 
 ### Sprint 4 — Invalidation + selective verification (Nov 2–6)
 
-- [ ] S4.1 Safe invalidation engine (GF-P1-004): layers exact-input >
+- [x] S4.1 Safe invalidation engine (GF-P1-004): layers exact-input >
   static-reachability (Facts dependents/impact) > runtime-observation >
   policy-expiry; invariant: absence of a static path is not proof of runtime
   independence; Facts impact is an invalidation aid only.
-- [ ] S4.2 Minimum test set (GF-P2-001): changed inputs -> affected tests via
+- [x] S4.2 Minimum test set (GF-P2-001): changed inputs -> affected tests via
   Facts edges; reuse valid proofs for unaffected tests; execute only
   invalidated ones; conservative fallback to broader suite when mapping
   confidence is incomplete; suite aggregate never reports green from stale
   constituents.
-- [ ] S4.3 Proof-aware test runner integration (GF-P2-008): wrap existing
+- [x] S4.3 Proof-aware test runner module (GF-P2-008): wrap existing
   run-test-suite stages; reused-vs-executed surfaced explicitly; stage
   independence preserved; release gates can require fresh execution.
 
@@ -350,6 +350,35 @@ directly on main.
   in normal operation).
 - The proofs subsystem is standalone by design (zero imports from Facts
   production paths); runner integration is Sprint 4 (GF-P2-008).
+
+### Sprint 4 executed 2026-10-05 (commits 70720186, a8f0939b+amend)
+
+- S4.1 (70720186): evaluateProofValidity — layered invalidation in strict
+  order (policy-expiry -> exact-input -> static-reachability; runtime
+  observation reserved as layer 4). Structural invariant: absence of a
+  static path is NOT runtime independence — unreachable changes invalidate
+  by default; reuse without a static path requires the explicit hermetic
+  opt-out AND hermetic_static/hermetic_unit; unknown reachability always
+  invalidates. A real-workspace test drives the reachability layer through
+  actual Facts dependency evidence (queryDependencyEvidence transitive).
+- S4.2 (same commit): selectMinimumTestSet — reuse surviving proofs,
+  execute everything else, fallback flag on incomplete reachability
+  mapping, every inventory entry accounted.
+- S4.3 (a8f0939b): runSuiteWithProofs — proof-aware runner module: policy
+  gate + layered invalidation per entry, single-flight lease around
+  execution, immutable evidence publication (failed on failure, aborted on
+  crash), stage independence, force-run/no-cache modes, conservative
+  fallback, green composed only from accounted constituents. A
+  policy-rejected proof surfaces its explanation in the executed entry.
+  REMAINING for production: wire into scripts/run-test-suite.mjs (its own
+  unit with the real harness) and record reused-vs-executed in suite output.
+- Independent verifier verdict: PASS — strict layer order, conservative
+  invariant, runner mode semantics, single-flight, and two-direction
+  subsystem isolation all verified with line citations; no flakes on
+  repeated runs (34/34 proofs tests). Observations applied: dead coverageFor
+  option removed; dedicated test added for the policy-rejection reason
+  surfacing. Final state: 34/34 proofs + 330/0 facts, typecheck ratchet
+  clean.
 
 ### B1/L2 resume plan (external, 2026-10-08 23:38 quota reset)
 
