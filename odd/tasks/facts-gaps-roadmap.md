@@ -137,13 +137,103 @@ force-run / no-cache / reconcile modes work.
   run-test-suite stages; reused-vs-executed surfaced explicitly; stage
   independence preserved; release gates can require fresh execution.
 
-### Sprint 5+ — Optional expansion (Nov 9+)
+### Sprint 5 — Query at scale (GF-P2-005 + GF-P2-004) — ~1 week
 
-Each independently approved, never bundled: EntityFact/Contract Facts
-(GF-P2-003), per-generation query indexes (GF-P2-005), lexical/conceptual
-discovery (GF-P2-004), dynamic test-to-input learning (GF-P2-002),
-explainable proof query tools (GF-P3-001), proof composition (GF-P3-002),
-optional shared storage (GF-P3-003, only after local correctness metrics).
+Order rationale: per-generation indexes are the natural prerequisite for
+Contract Facts queries (Sprint 6) to scale, and both live on the measured
+read path.
+
+- [ ] S5.1 Per-generation indexes (GF-P2-005): built at publication time and
+  invalidated with the generation — lowercase(symbol) -> results,
+  path -> file facts, reverse-dependency adjacency once per generation,
+  exported symbol -> owning files. Construction cost amortized inside
+  cache_save; kill switch to fall back to the linear scan. RED: repeated
+  queries today scale with repository size; indexes must scale with result
+  size.
+- [ ] S5.2 Lexical discovery (GF-P2-004): per-generation index over symbol
+  names, paths and docstrings with prefix, token, trigram and ranked fuzzy
+  search; every match carries its exact evidence. Semantic/embedding search
+  is explicitly out of scope.
+- [ ] S5.3 Integration: querySymbols/queryDependents consume the indexes;
+  kill-switch flag; benchmark delta on the real corpus (p50 lookup vs
+  repository size, against the recorded harness baseline).
+
+Gate: repeated lookups proportional to result size, not repository size;
+full suite green; measured deltas against the baseline.
+
+### Sprint 6 — Contract/Entity Facts (GF-P2-003) — ~1-2 weeks (largest)
+
+- [ ] S6.1 EntityFact abstraction: entity types (symbol exists; add route,
+  schema, api_operation, graphql_type, protobuf_message, database_table,
+  migration, test, command, config, contract, generated_artifact) and
+  relation types (declares/implements/consumes/tests/generates/dependsOn/
+  migrates/serves/validates), versioned and stored in the Facts db WITHOUT
+  touching provider contract 1.2.0 identities (byte-identical invariant).
+- [ ] S6.2 Bounded parsers: OpenAPI and JSON Schema first (highest value,
+  hermetically testable), then GraphQL SDL, protobuf, SQL migrations and
+  package/workspace scripts/route manifests. Each parser is its own unit
+  with real fixtures and the existing byte limits.
+- [ ] S6.3 Contract impact queries: consumes/serves/validates over the new
+  entities, integrated with the Sprint 4 layered invalidation.
+- [ ] S6.4 Fixtures and property tests: hermetic real-contract corpus +
+  parse-idempotence property tests.
+
+Gate: contract discovery works on the real corpus; provider contract
+byte-identical; no protocol schema changes.
+
+### Sprint 7 — Learning + runtime observation (GF-P2-002 + layer 4) — ~1-2 weeks
+
+- [ ] S7.1 Coverage capture: proof-aware runner runs record V8/node --test
+  coverage -> test-to-file edges stored as runtime observation attached to
+  the proof (never a substitute for the exact fingerprint).
+- [ ] S7.2 Layer-4 activation: runtime observation REFINES the conservative
+  fallback (today: any unreachable change invalidates) only with recorded
+  runtime evidence; hard invariant: never overrides exact-input rules.
+- [ ] S7.3 Per-test granularity in the real harness: enumerate the stage's
+  test files, per-test coverage via Facts + recorded coverage, live minimum
+  set selection in pnpm test (harness proofs are stage-level today; this
+  activates the real saving: 980 of 1000 tests reused, 20 executed).
+- [ ] S7.4 Conservatism tuning: compare predicted vs actual invalidation on
+  repeated runs; measure mapping precision/recall and tune the confidence
+  threshold. Target: false-reuse rate = 0.
+
+Gate: minimum set live in pnpm test with per-test reused-vs-executed;
+false-reuse 0 measured on the corpus; conservative fallback intact when
+coverage is absent.
+
+### Sprint 8 — Proofs for agents + composition (GF-P3-001 + GF-P3-002; GF-P3-003 optional) — ~1 week
+
+- [ ] S8.1 Agent proof tools: proof_status, proof_query, proof_why_valid,
+  proof_why_stale, proof_minimum_verification, proof_invalidate as Pi/MCP
+  tools — every response must state the exact fingerprint, age, confidence
+  class, inputs and the exact validity/staleness reason, with the smallest
+  re-verification command when stale.
+- [ ] S8.2 Suite proof composition: suite proof as a Merkle-like aggregate
+  of per-test/shard proofs; cheap rebuild on subset change; provenance from
+  the aggregate down to each constituent. Precondition: Sprint 7 per-test
+  granularity.
+- [ ] S8.3 (optional, gated) Shared storage: only if local correctness
+  metrics (false-reuse 0, fallback rate) are mature; namespaced by repo
+  identity/platform/trust domain; secrets never.
+
+Gate: every reuse explainable through the tools; suite aggregate never
+green with stale constituents; aggregate-to-constituent provenance
+verifiable.
+
+### Transversal backlog (not sprints, tracked with triggers)
+
+- B1/L2 external: after the 2026-10-08 23:38 quota reset — human /reload,
+  then resume review-786a02b33e841875 from exact fresh STATUS.
+- W4-W6: v4 publication + Shell pin + npm — deferred by user decision; the
+  notes draft is ready at gentle-ai docs/releases/v4.0.0-notes-draft.md
+  (re-derive numbers against the actual publication tag).
+- Binary fixtures (gentle-ai): give the isolated HOME fixtures of
+  tests/gentle-ai-binary.test.ts a dev binary (2 pre-existing environmental
+  failures, documented in the tracker).
+- Cross-process lease (file-lock variant) — after Sprint 8 if real
+  multi-agent demand appears.
+- S2.1 (receipt fingerprint) — reactivate only if manifest cost exceeds 5%
+  of sync on any real corpus.
 
 ## Per-unit workflow (every unit, no exceptions)
 
