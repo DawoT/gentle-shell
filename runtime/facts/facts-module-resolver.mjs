@@ -78,6 +78,8 @@ export function formatResolutionSummary(edges                   )         {
 
 
 
+
+
 function createResolutionHost(root        , confined         ) {
   const workspace = resolve(root);
   const permitted = (path        ) => {
@@ -156,10 +158,38 @@ function probeValue(operation       , value         )         {
 }
 
 export function resolveFactsModuleSnapshot(root        , files                           , options                         = {})                      {
+  return buildSnapshot(root, files, options);
+}
+
+
+
+
+
+
+
+/** Per-importer resolution cache, keyed by importer path within one workspace root. */
+
+
+/**
+ * Incremental variant of resolveFactsModuleSnapshot: an importer whose content
+ * SHA is unchanged reuses its cached edges after replaying exactly the probes
+ * that justified them against the live filesystem; anything that fails the
+ * replay (changed imports, config, node metadata or probe disappearance)
+ * re-resolves fresh. Replayed probes join the returned snapshot's read-set,
+ * so downstream snapshot validation keeps its full semantics.
+ */
+export function resolveFactsModuleSnapshotIncremental(root        , files                           , cache                      , options                         = {})                      {
+  return buildSnapshot(root, files, options, cache);
+}
+
+function buildSnapshot(root        , files                           , options                        , cache                       )                      {
   const host = createResolutionHost(root, Boolean(options.confined));
   const inputs = new Map                         ();
   let consistent = true;
-  for (const operation of ["fileExists", "directoryExists", "readFile", "realpath", "getDirectories"]         ) {
+  // Probes fired while resolving one importer are attributed to it, so a
+  // cached importer can re-verify exactly its own justification later.
+  let collector                     = null;
+  for (const operation of ["fileExists", "directoryExists", "readFile", "realpath", "getDirectories", "readDirectory"]         ) {
     const original = host[operation]?.bind(host);
     if (!original) continue;
     Object.assign(host, {
@@ -172,12 +202,73 @@ export function resolveFactsModuleSnapshot(root        , files                  
           consistent = false;
         }
         inputs.set(key, input);
+        collector?.add(key);
         return value;
       },
     });
   }
-  const edges = resolveWithHost(root, files, host);
-  return { root, confined: Boolean(options.confined), edges, inputs: [...inputs.values()], consistent };
+  const { configFor, readConfig } = createConfigFor(root, host, () => collector);
+  const edges                    = [];
+  let freshImporters = cache ? 0 : undefined;
+  for (const importer of Object.keys(files).sort()) {
+    let reused = false;
+    if (cache) {
+      const cached = cache.get(importer);
+      if (cached && cached.sha === files[importer].sha) {
+        collector = new Set        ();
+        let valid = true;
+        for (const input of cached.probes) {
+          const probe = host[input.operation];
+          const value = probe ? probeValue(input.operation, probe.call(host, input.path)) : undefined;
+          const key = JSON.stringify([input.operation, input.path]);
+          const previous = inputs.get(key);
+          if (previous && previous.value !== value) {
+            consistent = false;
+          }
+          inputs.set(key, { operation: input.operation, path: input.path, value });
+          if (value !== input.value) {
+            valid = false;
+            break;
+          }
+        }
+        collector = null;
+        if (valid) {
+          for (const edge of cached.edges) edges.push({ ...edge });
+          reused = true;
+        }
+      }
+      if (!reused) {
+        freshImporters = (freshImporters ?? 0) + 1;
+      }
+    }
+    if (!reused) {
+      collector = new Set        ();
+      const importerEdges = resolveOneImporter(root, files, importer, host, configFor, readConfig);
+      for (const edge of importerEdges) edges.push(edge);
+      if (cache) {
+        const probes                    = [];
+        for (const key of collector) {
+          const input = inputs.get(key);
+          if (input) probes.push(input);
+        }
+        cache.set(importer, { sha: files[importer].sha, probes, edges: importerEdges });
+      }
+      collector = null;
+    }
+  }
+  if (cache) {
+    for (const importer of cache.keys()) {
+      if (!Object.hasOwn(files, importer)) cache.delete(importer);
+    }
+  }
+  return {
+    root,
+    confined: Boolean(options.confined),
+    edges,
+    inputs: [...inputs.values()],
+    consistent,
+    ...(cache ? { freshImporters } : {}),
+  };
 }
 
 export function validateFactsModuleSnapshot(snapshot                     )          {
@@ -219,7 +310,21 @@ export function resolveFactsModules(root        , files                         
   return snapshot.edges;
 }
 
-function resolveWithHost(root        , files                           , host                                         )                    {
+
+
+
+
+
+/**
+ * Per-snapshot tsconfig lookup with probe attribution: importers that hit the
+ * config cache inherit the probe keys of the config they reused, so a later
+ * tsconfig change invalidates every importer that walked through it, not just
+ * the first one that read it.
+ */
+function createConfigFor(root        , host                                         , currentCollector                          )
+
+
+  {
   const workspace = resolve(root);
   const configs = new Map                          ();
   const defaults                     = {
@@ -231,8 +336,12 @@ function resolveWithHost(root        , files                           , host   
   function readConfig(path        )                   {
     const cached = configs.get(path);
     if (cached) {
-      return cached;
+      const collector = currentCollector();
+      if (collector) for (const key of cached.keys) collector.add(key);
+      return cached.config;
     }
+    const collector = currentCollector();
+    const before = collector ? new Set(collector) : undefined;
     // Read outside readConfigFile: TypeScript otherwise converts IO failures to diagnostics.
     const source = host.readFile(path);
     const loaded = ts.readConfigFile(path, () => source);
@@ -248,7 +357,13 @@ function resolveWithHost(root        , files                           , host   
       // 18002/18003 only indicate our deliberately empty source inventory.
       invalid: Boolean(loaded.error) || parsed.errors.some((error) => ![18002, 18003].includes(error.code)),
     };
-    configs.set(path, config);
+    const keys = new Set        ();
+    if (collector && before) {
+      for (const key of collector) {
+        if (!before.has(key)) keys.add(key);
+      }
+    }
+    configs.set(path, { config, keys });
     return config;
   }
 
@@ -257,12 +372,20 @@ function resolveWithHost(root        , files                           , host   
     while (true) {
       const cached = configs.get(directory);
       if (cached) {
-        return cached;
+        const collector = currentCollector();
+        if (collector) for (const key of cached.keys) collector.add(key);
+        return cached.config;
       }
       const configPath = resolve(directory, "tsconfig.json");
       if (host.fileExists(configPath)) {
         const config = readConfig(configPath);
-        configs.set(directory, config);
+        // Alias the directory to the loaded config, attributing this
+        // directory's existence probe too: a tsconfig deletion must
+        // invalidate importers that only hit the config cache.
+        const entry = configs.get(configPath) ?? { config, keys: new Set        () };
+        const keys = new Set(entry.keys);
+        keys.add(JSON.stringify(["fileExists", configPath]));
+        configs.set(directory, { config: entry.config, keys });
         return config;
       }
       if (directory === workspace || dirname(directory) === directory) {
@@ -272,56 +395,59 @@ function resolveWithHost(root        , files                           , host   
     }
   }
 
-  const edges                    = [];
-  for (const importer of Object.keys(files).sort()) {
-    const absolute = resolve(workspace, importer);
-    let config = configFor(absolute);
-    const visited = new Set        ();
-    while (config.references?.length && !config.invalid) {
-      const candidates = config.references.map((reference) => {
-        const path = ts.resolveProjectReferencePath(reference);
-        return { path, directory: dirname(path) };
-      }).filter(({ path, directory }) => {
-        const within = relative(workspace, path);
-        const source = relative(directory, absolute);
-        return !visited.has(path) && !within.startsWith("..") && !isAbsolute(within)
-          && !source.startsWith("..") && !isAbsolute(source);
-      }).sort((left, right) => right.directory.length - left.directory.length);
-      if (!candidates.length) {
-        break;
-      }
-      if (candidates.length > 1 && candidates[0].directory === candidates[1].directory) {
-        config = { options: {}, invalid: true };
-        break;
-      }
-      const { path } = candidates[0];
-      visited.add(path);
-      config = readConfig(path);
+  return { configFor, readConfig };
+}
+
+function resolveOneImporter(root        , files                           , importer        , host                                         , configFor                                    , readConfig                                    )                    {
+  const workspace = resolve(root);
+  const absolute = resolve(workspace, importer);
+  let config = configFor(absolute);
+  const visited = new Set        ();
+  while (config.references?.length && !config.invalid) {
+    const candidates = config.references.map((reference) => {
+      const path = ts.resolveProjectReferencePath(reference);
+      return { path, directory: dirname(path) };
+    }).filter(({ path, directory }) => {
+      const within = relative(workspace, path);
+      const source = relative(directory, absolute);
+      return !visited.has(path) && !within.startsWith("..") && !isAbsolute(within)
+        && !source.startsWith("..") && !isAbsolute(source);
+    }).sort((left, right) => right.directory.length - left.directory.length);
+    if (!candidates.length) {
+      break;
     }
-    for (const specifier of [...new Set(files[importer].imports)].sort()) {
-      if (config.invalid) {
-        edges.push({ importer, specifier, evidence: "unresolved", reason: "invalid-tsconfig" });
-        continue;
-      }
-      const resolved = ts.resolveModuleName(specifier, absolute, config.options, host).resolvedModule;
-      const target = resolved ? relative(workspace, resolved.resolvedFileName).split(sep).join("/") : undefined;
-      if (target && !isAbsolute(target) && !target.startsWith("../") && Object.hasOwn(files, target)) {
-        edges.push({ importer, specifier, target, evidence: "typescript", ...(config.usesDefaults ? { reason: "default-compiler-options" } : {}) });
-        continue;
-      }
-      const filesystemTarget = specifier.startsWith(".")
-        ? filesystemFallbackTarget(workspace, absolute, specifier, host)
-        : undefined;
-      if (filesystemTarget !== undefined) {
-        edges.push({ importer, specifier, target: filesystemTarget, evidence: "filesystem" });
-      } else {
-        edges.push({
-          importer,
-          specifier,
-          evidence: "unresolved",
-          reason: resolved ? "outside-index" : "module-not-found",
-        });
-      }
+    if (candidates.length > 1 && candidates[0].directory === candidates[1].directory) {
+      config = { options: {}, invalid: true };
+      break;
+    }
+    const { path } = candidates[0];
+    visited.add(path);
+    config = readConfig(path);
+  }
+  const edges                    = [];
+  for (const specifier of [...new Set(files[importer].imports)].sort()) {
+    if (config.invalid) {
+      edges.push({ importer, specifier, evidence: "unresolved", reason: "invalid-tsconfig" });
+      continue;
+    }
+    const resolved = ts.resolveModuleName(specifier, absolute, config.options, host).resolvedModule;
+    const target = resolved ? relative(workspace, resolved.resolvedFileName).split(sep).join("/") : undefined;
+    if (target && !isAbsolute(target) && !target.startsWith("../") && Object.hasOwn(files, target)) {
+      edges.push({ importer, specifier, target, evidence: "typescript", ...(config.usesDefaults ? { reason: "default-compiler-options" } : {}) });
+      continue;
+    }
+    const filesystemTarget = specifier.startsWith(".")
+      ? filesystemFallbackTarget(workspace, absolute, specifier, host)
+      : undefined;
+    if (filesystemTarget !== undefined) {
+      edges.push({ importer, specifier, target: filesystemTarget, evidence: "filesystem" });
+    } else {
+      edges.push({
+        importer,
+        specifier,
+        evidence: "unresolved",
+        reason: resolved ? "outside-index" : "module-not-found",
+      });
     }
   }
   return edges;
