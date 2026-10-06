@@ -12,6 +12,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { computeTreeDigest } from "../lib/proofs/proof-harness.ts";
 
 export const DEFAULT_STAGES = Object.freeze([
 	{ name: "unit-tests", command: "node --experimental-strip-types --test tests/*.test.ts" },
@@ -30,14 +31,41 @@ export async function runStage(stage) {
 	});
 }
 
-export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = runStage, write = (line) => console.log(line) } = {}) {
+export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = runStage, write = (line) => console.log(line), proofs } = {}) {
 	const results = [];
+	let layer;
+	if (proofs) {
+		// Opt-in proof-aware mode (GENTLE_PROOFS): reuse per-stage proofs while
+		// the tree digest is unchanged. Any failure to load the layer degrades
+		// to the plain sequential runner.
+		try {
+			const [{ createStageProofLayer }, { ProofLedger }] = await Promise.all([
+				import("../lib/proofs/proof-harness.ts"),
+				import("../lib/proofs/proof-ledger.ts"),
+			]);
+			layer = createStageProofLayer({ ledger: new ProofLedger(proofs.ledgerRoot), treeDigest: proofs.treeDigest, agent: proofs.agent });
+		} catch (error) {
+			write(`[proofs] layer unavailable (${error instanceof Error ? error.message : error}); running all stages`);
+		}
+	}
 	for (const stage of stages) {
+		if (layer) {
+			const decision = await layer.shouldExecute(stage);
+			if (!decision.execute) {
+				write(`REUSED [${stage.name}] ${decision.reason}`);
+				results.push({ name: stage.name, code: 0, reused: true });
+				continue;
+			}
+		}
 		write(`\n=== [${stage.name}] ${stage.command} ===`);
-		results.push(await runStageImpl(stage));
+		const result = await runStageImpl(stage);
+		if (layer) {
+			await layer.recordResult(stage, result.code).catch((error) => write(`[proofs] could not record proof for ${stage.name}: ${error.message}`));
+		}
+		results.push(result);
 	}
 	write("\n=== test suite summary ===");
-	for (const result of results) write(`${result.code === 0 ? "PASS" : "FAIL"}  ${result.name}`);
+	for (const result of results) write(`${result.reused ? "REUSED" : result.code === 0 ? "PASS" : "FAIL"}  ${result.name}`);
 	const failures = results.filter((result) => result.code !== 0);
 	write(failures.length === 0 ? "all stages passed" : `${failures.length} stage(s) failed: ${failures.map((f) => f.name).join(", ")}`);
 	return results;
@@ -67,7 +95,12 @@ function isDirectRun(argv1) {
 if (isDirectRun(process.argv[1])) {
 	try {
 		const stages = process.argv[2] ? readStagesFromJsonPath(process.argv[2]) : DEFAULT_STAGES;
-		const results = await runTestSuite(stages);
+		// Proof-aware reuse is strictly opt-in (GENTLE_PROOFS=1): release and
+		// CI gates keep running every stage unless the operator asks for reuse.
+		const proofs = process.env.GENTLE_PROOFS === "1"
+			? { ledgerRoot: ".pi/proofs", treeDigest: await computeTreeDigest(process.cwd()) }
+			: undefined;
+		const results = await runTestSuite(stages, { proofs });
 		process.exitCode = results.some((result) => result.code !== 0) ? 1 : 0;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
