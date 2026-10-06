@@ -101,19 +101,19 @@ corruption and invalidation-cause tests green.
 
 ### Sprint 3 — Execution Proof Ledger MVP (Oct 26–30)
 
-- [ ] S3.1 Proof schema + content-addressed local store (GF-P1-001, GF-P1-006):
+- [x] S3.1 Proof schema + content-addressed local store (GF-P1-001, GF-P1-006):
   lifecycle states running/passed/failed/stale/expired/invalidated/aborted;
   digests and bounded references only, never raw stdout as proof.
-- [ ] S3.2 Canonical execution fingerprint (GF-P1-002): canonical argv, cwd,
+- [x] S3.2 Canonical execution fingerprint (GF-P1-002): canonical argv, cwd,
   test selection, runner identity; repo tree + dirty-worktree digest + Facts
   generation; toolchain/package-manager versions; declared env dependency set
   with HMAC for value-sensitive variables (never plaintext secrets); runtime
   state fingerprints. RED: any missing input dimension must block reuse.
-- [ ] S3.3 Single-flight execution lease (GF-P1-003): proof lease keyed by
+- [x] S3.3 Single-flight execution lease (GF-P1-003): proof lease keyed by
   fingerprint, heartbeat/expiry, takeover after proven owner loss, provenance
   for owner/waiters/publication. RED: concurrent identical requests execute
   once.
-- [ ] S3.4 Confidence classes hermetic_static + hermetic_unit (GF-P1-005
+- [x] S3.4 Confidence classes hermetic_static + hermetic_unit (GF-P1-005
   subset); side-effect classification pure_validation / reproducible_build /
   local_mutation / external_side_effect (GF-P1-007); failure and flake policy
   (GF-P1-008): short failure retention, flaky classification, rerun/quorum.
@@ -319,6 +319,37 @@ directly on main.
   warm full sync p50 152.45ms vs 182.51ms baseline; autoRead (fast path)
   p50 39.47ms vs 50.66ms in the Sprint 1 run. Equivalence test
   (incremental edges == fresh resolution edges) green.
+
+### Sprint 3 executed 2026-10-05 (commits 4c0e1db6, 1ef1eef1)
+
+- S3.1+S3.2 (4c0e1db6): lib/proofs/proof-ledger.ts (immutable numbered
+  artifacts per fingerprint + replaceable current.json pointer; enforced
+  forward-only lifecycle; raw stdout/stderr/output/logs rejected as proof
+  material; output digests must be sha256 hex; atomic 0600 tmp+rename
+  writes) and lib/proofs/proof-fingerprint.ts (canonical order-independent
+  digest over command/repository/toolchain/environment; every required
+  dimension validated BEFORE any digest exists; sensitive values only ever
+  stored as HMAC digests - secrets and the key never reach storage).
+- S3.3+S3.4 (1ef1eef1): lib/proofs/proof-lease.ts (in-process single-flight
+  leases, injectable clock, heartbeat, TTL expiry, recorded takeover after
+  proven owner loss; stale handles are no-ops; cross-process leasing
+  deliberately deferred - local-first) and lib/proofs/proof-policy.ts
+  (explainable reuse/execute/no_reuse verdicts with fingerprint, proof age
+  and reason; failed proof is evidence and never blocks; mutating commands
+  never transparently replaced; reuse only for hermetic_static/hermetic_unit
+  + pure_validation/reproducible_build; absent/in-flight/mismatch always
+  execute). Gate test: same inputs reuse the proof without executing the
+  runner (executions stays 1); any input change executes.
+- Independent verifier verdict: PASS (16/16 proofs tests, facts suite
+  unaffected 330/0, typecheck ratchet, secrets/ledger/lease/policy audits
+  with empirical probes). Two minor deviations: (1) raw-output smuggling via
+  extra keys inside outputDigests - FIXED by picking only stdout/stderr keys
+  and hardened with a smuggling test; (2) theoretical crash window between
+  artifact and pointer renames - accepted and documented (pointer staleness
+  self-heals on the next finish; single-flight keeps the window unreachable
+  in normal operation).
+- The proofs subsystem is standalone by design (zero imports from Facts
+  production paths); runner integration is Sprint 4 (GF-P2-008).
 
 ### B1/L2 resume plan (external, 2026-10-08 23:38 quota reset)
 
