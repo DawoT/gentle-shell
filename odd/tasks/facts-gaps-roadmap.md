@@ -143,13 +143,22 @@ Order rationale: per-generation indexes are the natural prerequisite for
 Contract Facts queries (Sprint 6) to scale, and both live on the measured
 read path.
 
-- [ ] S5.1 Per-generation indexes (GF-P2-005): built at publication time and
+- [x] S5.1 Per-generation indexes (GF-P2-005): built lazily per (db, generation,
+  edges) trio rather than at publication time — same invalidation semantics
+  with zero cost on syncs nobody queries after. Originally described as built
   invalidated with the generation — lowercase(symbol) -> results,
   path -> file facts, reverse-dependency adjacency once per generation,
   exported symbol -> owning files. Construction cost amortized inside
   cache_save; kill switch to fall back to the linear scan. RED: repeated
   queries today scale with repository size; indexes must scale with result
-  size.
+  size. Executed 2026-10-05, commit 4a901e77: linear reference bodies kept
+  exported as the differential oracle; 30-seed randomized equivalence suite
+  plus BFS last-edge-order pins (both array orderings), literal syntactic
+  fallback, db/edges immutability during build, fast-path index reuse and
+  query_lookup metering. Gate measured on the 586-file corpus: symbol query
+  p50 0.794ms -> 0.002ms (~400x); evidence p50 unchanged within noise
+  (0.084 -> 0.095ms). Independent differential verifier: PASS with extra
+  probes (cycles, duplicate edges, normalization, __proto__ preservation).
 - [ ] S5.2 Lexical discovery (GF-P2-004): per-generation index over symbol
   names, paths and docstrings with prefix, token, trigram and ranked fuzzy
   search; every match carries its exact evidence. Semantic/embedding search
