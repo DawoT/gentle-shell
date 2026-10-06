@@ -14,8 +14,8 @@ import { FactsService } from "../lib/facts/facts-service.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const samples = Math.max(1, Number(process.env.FACTS_BENCH_SAMPLES ?? 7));
 const burstCallers = Math.max(2, Number(process.env.FACTS_BENCH_BURST ?? 3));
-const scenarios = { cold: [], warm: [], postEdit: [], burstWall: [], burstPerCall: [] };
-const phaseScenarios = { cold: [], warm: [], postEdit: [], burst: [] };
+const scenarios = { cold: [], warm: [], postEdit: [], burstWall: [], burstPerCall: [], autoRead: [] };
+const phaseScenarios = { cold: [], warm: [], postEdit: [], burst: [], autoRead: [] };
 
 const report = {
   generatedAt: new Date().toISOString(),
@@ -51,9 +51,9 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
-async function timedSync(service) {
+async function timedSync(service, options) {
   const started = performance.now();
-  const result = await service.sync();
+  const result = await service.sync(undefined, options);
   return { elapsedMs: performance.now() - started, result };
 }
 
@@ -134,6 +134,16 @@ try {
     })));
     // Restore the corpus so the next cold repetition indexes identical bytes.
     await writeFile(editTarget, originalCodec);
+
+    // Sprint 1 gate: fast-path reads on the unchanged, freshly primed tree.
+    const autoService = new FactsService(cwd, undefined, { fastPath: true });
+    const primed = await autoService.sync(undefined, { mode: "auto" });
+    assert.equal(primed.path, "full");
+    scenarios.autoRead.push(round(await measureScenario(autoService, "autoRead", async () => {
+      const read = await timedSync(autoService, { mode: "auto" });
+      assert.equal(read.result.path, "fast");
+      return read.elapsedMs;
+    })));
 
     console.error(`facts-bench-real: repetition ${repetition + 1}/${samples} done`);
   }

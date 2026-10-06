@@ -55,7 +55,7 @@ Sprint gate: baseline recorded; zero optimization commits landed.
 
 ### Sprint 1 — Make Facts cheap I: epoch + single-flight (Oct 12–16)
 
-- [ ] S1.1 Workspace epoch + dirty set (GF-P0-001). RED first: unchanged
+- [x] S1.1 Workspace epoch + dirty set (GF-P0-001). RED first: unchanged
   repeat query still pays full Git scan (phase timers prove it); then watcher
   event marks epoch dirty; fast path returns the already-validated in-memory
   generation while clean; periodic reconciliation converges to the
@@ -63,11 +63,11 @@ Sprint gate: baseline recorded; zero optimization commits landed.
   cancellation, concurrent-writer and external-writer-generation tests stay
   green. Dirty reasons tracked: source, manifest, lockfile, tsconfig,
   generated metadata, external-writer generation.
-- [ ] S1.2 Single-flight sync (GF-P0-002). RED: N concurrent callers produce N
+- [x] S1.2 Single-flight sync (GF-P0-002). RED: N concurrent callers produce N
   equivalent scans; GREEN: one in-flight refresh keyed by root+dirty epoch,
   promise shared, individual waiter cancellation does not kill the shared
   refresh; new refresh only after epoch change or irrecoverable failure.
-- [ ] S1.3 Lifecycle scheduling (GF-P0-006). Mark dirty on
+- [x] S1.3 Lifecycle scheduling (GF-P0-006). Mark dirty on
   write/edit/apply_diff instead of forcing duplicate full refreshes; lazy
   refresh on first consumer needing fresh facts; expose refresh reason and
   path used (fast-path / incremental / full reconciliation). RED: duplicate
@@ -234,14 +234,54 @@ optional shared storage (GF-P3-003, only after local correctness metrics).
 - No optimization commits: Sprint 0 gate satisfied (baseline exists, zero
   optimization changes landed).
 
-### Branch anomaly (surfaced, unresolved)
+### Branch anomaly (resolved 2026-10-05)
 
-At 2026-10-05 17:42:57 the working tree was switched from main to
-fix/web-terminal-cleanup (both at 7e15e98c) by an actor outside this session
-(user or parallel agent). Commit 8c4c4d48 therefore landed on
-fix/web-terminal-cleanup instead of main. Content is valid either way; when
-branch placement is decided, cherry-pick 8c4c4d48 (and the S0.2 commit) onto
-main if needed. Branch re-verified immediately before each commit.
+The 17:42:57 branch switch to fix/web-terminal-cleanup was resolved after user
+direction: Sprint 0 commits were fast-forwarded onto main (main at 84bf9d61),
+all other local branches deleted (all were fully merged into main; zero
+unmerged work), detached .pi worktrees untouched. Sprint 1 commits land
+directly on main.
+
+### Sprint 1 executed 2026-10-05 (ahead of the Oct 12 slot)
+
+- Unit A commit 755cafaa "feat(facts): workspace epoch fast path and
+  single-flight sync": auto/full sync modes (default unchanged = full),
+  WorkspaceEpoch, single-flight join by epoch revision, reconcile budget
+  (16 fast refreshes / 60s), kill switch options. RED observed
+  (ERR_MODULE_NOT_FOUND), 11 tests, suite 316/316.
+- Independent verifier verdict on Unit A: FAIL with 3 findings, all fixed
+  before commit: (1) typecheck ratchet — invalid dirty-reason literal; (2)
+  watcher failure did NOT keep the epoch permanently dirty (empirically
+  disproven) — markClean now refuses while the watcher is failed, so no fast
+  path without a live watcher; (3) microtask window could join a FAILED
+  settled flight — joiners now fall back to their own conservative sync when
+  the joined flight rejects.
+- Unit B verifier verdict: FAIL with the decisive finding: with auto-mode
+  reads, an external edit followed by an immediate query could be served
+  stale (fs.watch delivery race) — the pre-existing guarantee test
+  "facts_query refreshes external edits before returning signatures" went
+  flaky. DESIGN CORRECTION: the fast path no longer trusts the watcher.
+  serveFastPath now proves freshness deterministically by re-running the
+  cheap workspace scan (~35ms) and serving in-memory only when the delta is
+  empty and the HEAD commit matches; any change, boundary break or scan
+  failure falls back to the full conservative sync. The watcher/epoch remain
+  as belt-and-braces (dirty => full), single-flight keeps the epoch revision
+  as its join key. The pointer-identity check was removed as redundant
+  (the scan is strictly stronger). Also fixed: samePublication formatting
+  corruption flagged by the verifier.
+- Legacy test "session lifecycle mounts and refreshes the facts card" was
+  updated to the new GF-P0-006 contract, strictly stronger: asserts the card
+  still shows the pre-edit state right after a write hook (lazy) AND shows
+  fresh state after the next consuming refresh.
+- Final state: 321/321 facts tests across two consecutive runs (flake gone
+  by construction), typecheck ratchet clean, runtime modules match.
+- Sprint 1 gate (scripts/benchmark-facts-real.mjs autoRead scenario, 7
+  samples, 915-file corpus): unchanged auto-read p50 50.66ms / p95 53.62ms
+  versus full sync in the same run p50 249.22ms / p95 291.04ms = 4.9x faster;
+  phase breakdown shows only the verifying git_scan, zero resolution,
+  validation, cache load or publication. The 2026-10 baseline doc records
+  the full-sync reference numbers for cold/postEdit/burst.
+- B1/L2 external plan unchanged (see below).
 
 ### B1/L2 resume plan (external, 2026-10-08 23:38 quota reset)
 
