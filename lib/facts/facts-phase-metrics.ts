@@ -10,6 +10,7 @@ export type FactsMetricPhase =
   | "queue_wait"
   | "fast_path"
   | "query_lookup"
+  | "lexical_search"
   | "history_save";
 
 export interface FactsPhaseMetricAggregate {

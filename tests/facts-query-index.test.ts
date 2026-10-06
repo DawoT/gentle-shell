@@ -229,3 +229,51 @@ test("the real harness keeps its stage proofs green with indexed queries", async
     await cleanup();
   }
 });
+
+test("the query index kill switch falls back to the linear reference", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "facts-query-index-kill-"));
+  execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "T"], { cwd: dir });
+  execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+  try {
+    process.env.GENTLE_FACTS_DISABLE_QUERY_INDEX = "1";
+    try {
+      await writeFile(join(dir, "source.ts"), "export const value = 1;\nexport const other = 2;\n");
+      const service = new FactsService(dir, undefined, { fastPath: true, fastPathWatch: false });
+      await service.sync(undefined, { mode: "auto" });
+      assert.deepEqual(service.querySymbol("value").map((r) => r.file), ["source.ts"]);
+      assert.deepEqual(service.querySymbols({ file: "source.ts" }).length, 2);
+      assert.deepEqual(service.queryDependencyEvidence("source.ts", { transitive: true }), []);
+      // Lexical discovery keeps working alongside the disabled index.
+      assert.ok(service.searchSymbols("value").some((m) => m.kind === "symbol"));
+    } finally {
+      delete process.env.GENTLE_FACTS_DISABLE_QUERY_INDEX;
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("searchSymbols is metered and rebuilds with the generation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "facts-lexical-service-"));
+  execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "T"], { cwd: dir });
+  execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+  try {
+    await writeFile(join(dir, "billing.ts"), "export const invoiceTotal = 1;\n");
+    const service = new FactsService(dir, undefined, { fastPath: true, fastPathWatch: false });
+    await service.sync(undefined, { mode: "auto" });
+    const matches = service.searchSymbols("invoice", { limit: 5 });
+    assert.ok(matches.some((m) => m.kind === "symbol" && m.name === "invoiceTotal"));
+    assert.equal(service.getPhaseMetrics().phases.lexical_search?.count, 1);
+
+    await writeFile(join(dir, "billing.ts"), "export const invoiceNet = 1;\n");
+    service.markWorkspaceDirty("manual");
+    await service.sync(undefined, { mode: "auto" });
+    const next = service.searchSymbols("invoice", { limit: 5 });
+    assert.ok(next.some((m) => m.kind === "symbol" && m.name === "invoiceNet"));
+    assert.equal(service.getPhaseMetrics().phases.lexical_search?.count, 2, "the lexical index rebuilds with the generation");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

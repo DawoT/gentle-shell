@@ -14,8 +14,8 @@ import { FactsService } from "../lib/facts/facts-service.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const samples = Math.max(1, Number(process.env.FACTS_BENCH_SAMPLES ?? 7));
 const burstCallers = Math.max(2, Number(process.env.FACTS_BENCH_BURST ?? 3));
-const scenarios = { cold: [], warm: [], postEdit: [], burstWall: [], burstPerCall: [], autoRead: [] };
-const phaseScenarios = { cold: [], warm: [], postEdit: [], burst: [], autoRead: [] };
+const scenarios = { cold: [], warm: [], postEdit: [], burstWall: [], burstPerCall: [], autoRead: [], nameQuery: [], evidenceQuery: [], lexicalQuery: [] };
+const phaseScenarios = { cold: [], warm: [], postEdit: [], burst: [], autoRead: [], nameQuery: [], evidenceQuery: [], lexicalQuery: [] };
 
 const report = {
   generatedAt: new Date().toISOString(),
@@ -143,6 +143,27 @@ try {
       const read = await timedSync(autoService, { mode: "auto" });
       assert.equal(read.result.path, "fast");
       return read.elapsedMs;
+    })));
+
+    // S5 gate: indexed query, dependency-evidence and lexical search latency
+    // on the unchanged tree (batch of queries, total batch time).
+    const queryDb = autoService.getDatabase();
+    const sampleNames = [...new Set(Object.values(queryDb.files).flatMap((f) => f.symbols.map((s) => s.name)))].slice(0, 40);
+    const evidenceTargets = Object.keys(queryDb.files).filter((f) => f.endsWith(".ts")).slice(0, 20);
+    scenarios.nameQuery.push(round(await measureScenario(autoService, "nameQuery", async () => {
+      const started = performance.now();
+      for (const name of sampleNames) assert.ok(Array.isArray(autoService.querySymbols({ name })));
+      return performance.now() - started;
+    })));
+    scenarios.evidenceQuery.push(round(await measureScenario(autoService, "evidenceQuery", async () => {
+      const started = performance.now();
+      for (const target of evidenceTargets) assert.ok(Array.isArray(autoService.queryDependencyEvidence(target, { transitive: true })));
+      return performance.now() - started;
+    })));
+    scenarios.lexicalQuery.push(round(await measureScenario(autoService, "lexicalQuery", async () => {
+      const started = performance.now();
+      for (let i = 0; i < 10; i++) assert.ok(Array.isArray(autoService.searchSymbols(`mod${i}`)));
+      return performance.now() - started;
     })));
 
     console.error(`facts-bench-real: repetition ${repetition + 1}/${samples} done`);

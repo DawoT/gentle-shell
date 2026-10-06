@@ -11,12 +11,15 @@ import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapsho
 import { WorkspaceEpoch, type WorkspaceDirtyReason } from "./facts-workspace-epoch.ts";
 import {
   buildFactsQueryIndex,
+  queryDependencyEvidenceLinear,
   queryDependencyEvidenceWithIndex,
+  querySymbolsLinear,
   querySymbolsWithIndex,
   type DependencyEvidence,
   type FactsQueryIndex,
   type SymbolQueryResult,
 } from "./facts-query-index.ts";
+import { buildLexicalIndex, lexicalSearch, type LexicalIndex, type LexicalMatch } from "./facts-lexical-index.ts";
 
 import type { FactsModuleEdge } from "./facts-module-resolver.ts";
 
@@ -84,6 +87,8 @@ export class FactsService {
   private lastFullSyncAt = 0;
   private validationRevision?: number;
   private queryIndex?: FactsQueryIndex;
+  private readonly queryIndexDisabled = process.env.GENTLE_FACTS_DISABLE_QUERY_INDEX === "1";
+  private lexicalIndex?: LexicalIndex;
 
   constructor(workspaceRoot: string, customDirName?: string, options?: FactsServiceOptions) {
     this.workspaceRoot = workspaceRoot;
@@ -395,7 +400,19 @@ export class FactsService {
   querySymbols(query: { name?: string; file?: string }): SymbolQueryResult[] {
     return this.timeSyncPhase("query_lookup", () => {
       if (!this.db) return [];
+      if (this.queryIndexDisabled) return querySymbolsLinear(this.db, query);
       return querySymbolsWithIndex(this.queryIndexFor(), query);
+    });
+  }
+
+  /** Lexical discovery over symbol names, paths and docstrings (gaps GF-P2-004). */
+  searchSymbols(query: string, options: { limit?: number } = {}): LexicalMatch[] {
+    return this.timeSyncPhase("lexical_search", () => {
+      if (!this.db) return [];
+      if (!this.lexicalIndex || this.lexicalIndex.dbRef !== this.db) {
+        this.lexicalIndex = buildLexicalIndex(this.db);
+      }
+      return lexicalSearch(this.lexicalIndex, query, options);
     });
   }
 
@@ -423,6 +440,7 @@ export class FactsService {
   queryDependencyEvidence(symbolOrFile: string, options: { transitive?: boolean } = {}): DependencyEvidence[] {
     return this.timeSyncPhase("query_lookup", () => {
       if (!this.db) return [];
+      if (this.queryIndexDisabled) return queryDependencyEvidenceLinear(this.db, this.resolutionEdges, symbolOrFile, options);
       return queryDependencyEvidenceWithIndex(this.queryIndexFor(), symbolOrFile, options);
     });
   }
