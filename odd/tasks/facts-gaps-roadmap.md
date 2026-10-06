@@ -78,19 +78,22 @@ equivalence property (fast path result == conservative result on same tree).
 
 ### Sprint 2 — Make Facts cheap II: caches (Oct 19–23)
 
-- [ ] S2.1 Receipt/config fingerprint cache (GF-P0-004): fingerprint
-  package.json, lockfiles and nearest-package traversal inputs once per epoch;
-  reuse parsed receipt during snapshot validation while inputs unchanged;
-  explicit invalidation: package-manager, scripts, dependency changes.
-- [ ] S2.2 History write fast path (GF-P0-005): bind last successful history
+- [x] S2.2 History write fast path (GF-P0-005): bind last successful history
   receipt to the Facts generation ID; skip canonical serialize/hash when
   generation unchanged; content-address verification preserved on first
   write/load.
-- [ ] S2.3 Incremental module-resolution cache (GF-P0-003, largest, do last):
+- [x] S2.3 Incremental module-resolution cache (GF-P0-003, largest, do last):
   persist importer->resolved edges plus the exact justifying metadata probes,
   keyed by importer SHA, import list and effective tsconfig digest; reverse
   map tsconfig/project-reference -> importers for targeted invalidation; full
   resolution on reconciliation or when completeness cannot be proven.
+- [ ] S2.1 Receipt/config fingerprint cache (GF-P0-004): DEFERRED WITH
+  MEASUREMENT. The manifest phase costs 0.37-0.5ms per full sync on the
+  915-file corpus (phase metrics, baseline and post-S2 runs) — under 0.3% of
+  warm sync. Any fingerprint cheap enough to matter (mtime-based) would
+  weaken the content-equality drift guarantee; a content-digest fingerprint
+  saves only the JSON parse. Revisit only if a real corpus shows manifest
+  cost above 5% of sync.
 
 Gate: warm sync dominated by in-memory lookup and cheap coherence checks;
 resolver-cache equivalence test (cached == full resolution) passes;
@@ -282,6 +285,40 @@ directly on main.
   validation, cache load or publication. The 2026-10 baseline doc records
   the full-sync reference numbers for cold/postEdit/burst.
 - B1/L2 external plan unchanged (see below).
+
+### Sprint 2 executed 2026-10-05 (commits 79e06b10, 4e47e2ca)
+
+- S2.2 history receipt memo (WeakMap per service, keyed by immutable
+  generation ID): unchanged generations skip canonical serialize/hash of the
+  whole database; content-address verification stays on first write and
+  every load; save failure leaves the memo unset (verifier-proven).
+  facts diagnostics gained lastSyncPath (fast|full) — the GF-P0-006
+  observability, added because the kill-switch test's save-count proxy was
+  invalidated by the memo.
+- S2.3 incremental module-resolution cache: per-importer edges + probe
+  read-sets cached in the long-lived worker per root/confined (max 8 roots);
+  reuse requires sha match AND full probe replay against the live fs;
+  config-cache hits attribute their probe keys (incl. the tsconfig existence
+  probe) to later importers, so tsconfig change AND deletion invalidate
+  everything that walks through it; readDirectory joined the recorded probe
+  set for paths-wildcard resolution; replayed probes enter the snapshot
+  read-set so drift validation keeps its semantics; worker restart falls
+  back to fresh resolution. Resolver refactor differential-verified against
+  the previous algorithm (edges, inputs and consistent flag identical).
+- Verifier verdict on the combined unit: FAIL with one defect — test
+  hygiene: session files derived from the shared /tmp root accumulated
+  facts-snapshots residue until the 128-entry retention limit flaked the
+  suite (327/3 on a repeated run). Fixed with per-run cleaned session
+  directories in both affected test files; 330/330 twice consecutively
+  afterwards. All other guarantees verified PASS, including an empirical
+  differential of the refactor vs HEAD and empirical tsconfig
+  change/deletion/addition invalidation.
+- S2.1 deferred with measurement (see task list above).
+- Sprint 2 gate (same harness, 7 samples, 918-file corpus at 4e47e2ca):
+  module_resolution per full sync 26.7ms vs 62.5ms baseline (-57%);
+  warm full sync p50 152.45ms vs 182.51ms baseline; autoRead (fast path)
+  p50 39.47ms vs 50.66ms in the Sprint 1 run. Equivalence test
+  (incremental edges == fresh resolution edges) green.
 
 ### B1/L2 resume plan (external, 2026-10-08 23:38 quota reset)
 

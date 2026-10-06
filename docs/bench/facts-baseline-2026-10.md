@@ -83,6 +83,26 @@ workspace scan and falls back to the full sync on any observed change, Git
 boundary break or scan failure (fs.watch races cannot serve stale data).
 Reproduce with `pnpm benchmark:facts:real`.
 
+## Sprint 2 gate (2026-10-05, history memo + incremental resolution cache)
+
+Same harness, 7 samples, 918-file corpus at `4e47e2ca`. The incremental
+resolver cache serves unchanged importers from a per-root worker cache after
+replaying their exact probe read-sets; full syncs therefore skip most of
+TypeScript resolution while keeping the deterministic scan/validation path:
+
+| Metric | Baseline (2026-10-05) | Sprint 1 run | Sprint 2 run |
+|---|---|---|---|
+| module_resolution per full sync | 62.5ms | 62.5ms | **26.7ms (-57%)** |
+| warm full sync p50 | 182.51ms | 249.22ms | **152.45ms** |
+| autoRead (fast path) p50 | — | 50.66ms | **39.47ms** |
+| manifest per full sync | 0.5ms | — | 0.37ms (S2.1 deferred: <0.3% of sync) |
+
+Cross-run wall-clock numbers carry machine variance; the phase-level
+module_resolution delta is the within-harness measurement. The resolver-cache
+equivalence test (incremental edges identical to a fresh resolution) is part
+of the suite, and unchanged reads remain scan-verified for determinism.
+Reproduce with `pnpm benchmark:facts:real`.
+
 ## Reproduce
 
 ```
