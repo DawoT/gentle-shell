@@ -175,12 +175,15 @@ export class ProofLedger {
 }
 
 function validateOutputDigests(digests: { stdout?: string; stderr?: string }): { stdout: string; stderr: string } {
+  const picked = { stdout: digests.stdout, stderr: digests.stderr };
   for (const part of ["stdout", "stderr"] as const) {
-    if (digests[part] === undefined || !OUTPUT_DIGEST.test(digests[part])) {
+    if (picked[part] === undefined || !OUTPUT_DIGEST.test(picked[part])) {
       throw new Error(`Proof output digest for ${part} must be a sha256 hex digest`);
     }
   }
-  return digests as { stdout: string; stderr: string };
+  // Return only the picked keys: extra properties on the caller's object
+  // must not reach storage, or raw output could smuggle in beside digests.
+  return picked;
 }
 
 async function publishArtifact(root: string, fingerprint: string, seq: number, text: string): Promise<void> {
