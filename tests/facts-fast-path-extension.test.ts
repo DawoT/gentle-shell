@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { mkdtempSync } from "node:fs";
+import test, { after } from "node:test";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -58,10 +59,18 @@ async function createFixture() {
   };
 }
 
+const sessionDirs: string[] = [];
+after(async () => {
+  for (const d of sessionDirs) await rm(d, { recursive: true, force: true });
+});
+
 function sessionContext(dir: string) {
   // Production transcripts live outside the indexed workspace; keep it that
-  // way here so transcript writes never dirty the watched epoch.
-  const sessionFile = join(tmpdir(), `facts-fastpath-session-${process.pid}.jsonl`);
+  // way here so transcript writes never dirty the watched epoch. Per-run temp
+  // directories keep snapshot residue out of shared paths.
+  const sessionDir = mkdtempSync(join(tmpdir(), "facts-fastpath-session-"));
+  sessionDirs.push(sessionDir);
+  const sessionFile = join(sessionDir, "session.jsonl");
   return {
     cwd: dir,
     hasUI: false,
@@ -114,6 +123,7 @@ test("history is recorded on full refreshes but skipped on fast-path reads", asy
 
     const status = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
     assert.equal(status.details.status, "ready");
+    assert.equal(status.details.diagnostics.lastSyncPath, "fast", "the unchanged read is served by the fast path");
     assert.equal(save.mock.callCount(), 1, "fast-path read does not rewrite history");
   } finally {
     await cleanup();
@@ -122,18 +132,14 @@ test("history is recorded on full refreshes but skipped on fast-path reads", asy
 
 test("the kill switch env disables the fast path for the extension", async (t) => {
   const { dir, cleanup } = await createFixture();
-  const saveOrig = FactsHistory.prototype.save;
   try {
     const { pi } = createMockPi();
-    const save = t.mock.method(FactsHistory.prototype, "save", async function (database, edges, signal) {
-      return saveOrig.call(this, database, edges, signal);
-    });
     gentleFacts(pi as any, { GENTLE_FACTS_DISABLE_FAST_PATH: "1" });
     const ctx = sessionContext(dir);
 
     await pi.emit("session_start", {}, ctx);
-    await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
-    assert.equal(save.mock.callCount(), 2, "every read is a conservative full refresh");
+    const status = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    assert.equal(status.details.diagnostics.lastSyncPath, "full", "every read is a conservative full refresh");
   } finally {
     await cleanup();
   }

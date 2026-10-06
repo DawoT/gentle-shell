@@ -149,6 +149,7 @@ export class FactsService {
     this.metrics.record("fast_path", performance.now() - started);
     this.metrics.recordRefresh();
     this.autoRefreshesSinceFullSync++;
+    this.diagnostics = { ...this.diagnostics, lastSyncPath: "fast" };
     return {
       indexedCount: 0,
       cachedCount: Object.keys(this.db!.files).length,
@@ -237,7 +238,7 @@ export class FactsService {
           }
           throw new Error("Facts workspace changed during analysis; retry when edits settle.");
         }, signal));
-      this.diagnostics = { status: "ready", lastSuccessfulSyncAt: Date.now() };
+      this.diagnostics = { status: "ready", lastSuccessfulSyncAt: Date.now(), lastSyncPath: "full" };
       return result;
     } catch (error) {
       this.diagnostics = {

@@ -4,6 +4,7 @@ export interface FactsDiagnostics {
   status: "idle" | "refreshing" | "ready" | "unavailable";
   lastSuccessfulSyncAt?: number;
   lastDurationMs?: number;
+  lastSyncPath?: "fast" | "full";
   diskCacheLoad?: FactsCacheLoadState;
   failure?: { code: string; message: string };
 }

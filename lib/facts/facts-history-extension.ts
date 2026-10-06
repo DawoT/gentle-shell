@@ -6,6 +6,13 @@ import type { FactsService } from "./facts-service.ts";
 
 const ENTRY_TYPE = "gentle-facts-snapshot-v1";
 
+// Content-addressed shortcut: the receipt digest is a pure function of the
+// database and resolution edges, and an immutable generation ID identifies
+// exactly that content. While the generation is unchanged the receipt can be
+// reused without canonicalizing and hashing the whole database again; the
+// content-address verification stays on the first write and on every load.
+const receiptMemo = new WeakMap<FactsService, { generation: string; receipt: FactsHistoryReceipt }>();
+
 function latestReceipt(ctx: ExtensionContext): FactsHistoryReceipt | undefined {
   const branch = ctx.sessionManager?.getBranch() ?? [];
   for (let index = branch.length - 1; index >= 0; index--) {
@@ -19,10 +26,17 @@ export async function recordFactsHistory(pi: ExtensionAPI, ctx: ExtensionContext
   const sessionFile = ctx.sessionManager?.getSessionFile();
   const database = service.getDatabase();
   if (!sessionFile || !database) return undefined;
+  const generation = service.getGeneration();
+  const memo = generation ? receiptMemo.get(service) : undefined;
+  if (memo && memo.generation === generation) {
+    if (latestReceipt(ctx)?.digest !== memo.receipt.digest) pi.appendEntry(ENTRY_TYPE, memo.receipt);
+    return memo.receipt;
+  }
   const started = performance.now();
   try {
     const receipt = await new FactsHistory(sessionFile).save(database, service.getResolutionEdges(), signal);
     if (latestReceipt(ctx)?.digest !== receipt.digest) pi.appendEntry(ENTRY_TYPE, receipt);
+    if (generation) receiptMemo.set(service, { generation, receipt });
     return receipt;
   } finally {
     service.recordPhaseMetric("history_save", performance.now() - started);
