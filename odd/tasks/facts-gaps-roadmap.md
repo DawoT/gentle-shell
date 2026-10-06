@@ -159,13 +159,22 @@ read path.
   p50 0.794ms -> 0.002ms (~400x); evidence p50 unchanged within noise
   (0.084 -> 0.095ms). Independent differential verifier: PASS with extra
   probes (cycles, duplicate edges, normalization, __proto__ preservation).
-- [ ] S5.2 Lexical discovery (GF-P2-004): per-generation index over symbol
+- [x] S5.2 Lexical discovery (GF-P2-004): per-generation index over symbol
   names, paths and docstrings with prefix, token, trigram and ranked fuzzy
   search; every match carries its exact evidence. Semantic/embedding search
   is explicitly out of scope.
-- [ ] S5.3 Integration: querySymbols/queryDependents consume the indexes;
+- [x] S5.3 Integration: querySymbols/queryDependents consume the indexes;
   kill-switch flag; benchmark delta on the real corpus (p50 lookup vs
-  repository size, against the recorded harness baseline).
+  repository size, against the recorded harness baseline). Executed
+  2026-10-05: GENTLE_FACTS_DISABLE_QUERY_INDEX=1 routes queries to the
+  linear reference implementations; harness scenarios nameQuery/evidenceQuery/
+  lexicalQuery measured on the 933-file corpus (gate: 40 name queries p50
+  2.86ms batch = ~0.07ms each vs 0.794ms linear baseline; 20 evidence
+  queries p50 0.24ms; 10 lexical searches p50 93.7ms over ~6k entries -
+  discovery ranking is O(candidates), documented). Independent verifier:
+  PASS (deterministic total ranking order, exact evidence, threshold cannot
+  shadow exact/prefix, no flakes). Sprint 5 gate CLOSED: lookups scale with
+  result size, deltas measured against recorded baselines.
 
 Gate: repeated lookups proportional to result size, not repository size;
 full suite green; measured deltas against the baseline.
