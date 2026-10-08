@@ -25,6 +25,8 @@ auth.json
 coverage/
 
 # Local subagent scratch/output artifacts
+.agents/
+.playwright-cli/
 context.md
 plan.md
 research.md
