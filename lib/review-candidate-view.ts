@@ -77,7 +77,7 @@ const CANDIDATE_CONTEXT_MODE = {
 	DELETED: "deleted",
 } as const;
 export type CandidateContextMode = (typeof CANDIDATE_CONTEXT_MODE)[keyof typeof CANDIDATE_CONTEXT_MODE];
-const SUBAGENT_RUN_KEYS = new Set(["agent", "agents", "task", "context", "mode"]);
+const SUBAGENT_RUN_KEYS = new Set(["agent", "agents", "task", "context", "mode", "label"]);
 
 interface CandidateTreeEntry {
 	path: string;
@@ -1740,6 +1740,7 @@ interface MutableSubagentRunInput {
 	task?: unknown;
 	context?: unknown;
 	mode?: unknown;
+  label?: unknown;
 	[key: string]: unknown;
 }
 
@@ -1974,6 +1975,9 @@ export function injectReviewCandidateView(input: unknown, candidateViews: Candid
 		|| (Array.isArray(rawAgents) && rawAgents.some((value) => typeof value === "string" && isReviewLens(value)));
 	if (!hasReviewActor) return;
 	if (Object.keys(mutable).some((key) => !SUBAGENT_RUN_KEYS.has(key))) throw new CandidateViewError("review subagent dispatch contains an unsupported input field");
+  if (mutable.label !== undefined && typeof mutable.label !== "string") {
+    throw new CandidateViewError("review subagent dispatch label is malformed");
+  }
 	if ((agent === undefined) === (agents === undefined) || requested.length === 0 || new Set(requested).size !== requested.length) throw new CandidateViewError("review subagent dispatch must use exactly one non-duplicate agent shape");
 	if (!requested.every(isReviewLens)) throw new CandidateViewError("review subagent dispatch cannot mix review and non-review agents");
 	if (typeof mutable.task !== "string" || mutable.task.length === 0 || mutable.task.length > MAX_SUBAGENT_TASK_LENGTH) throw new CandidateViewError("review subagent dispatch task is malformed or exceeds the bounded contract");
