@@ -1,0 +1,321 @@
+// Archived during MCP-GPT migration. Not loaded by Pi extension discovery.
+// Preserved for recovery only; this implementation copies Codex credentials.
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  type AssistantMessage,
+  type TranscriptContext,
+  type SimpleStreamOptions,
+  type Model,
+  type Api
+} from "@earendil-works/pi-ai";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+
+const PROVIDER_ID = "chatgpt-web";
+const MCP_GPT_DIR = "/home/deuz/projects/mcp-gpt";
+const RUNNER_SCRIPT = join(MCP_GPT_DIR, "src/bridge/runner.ts");
+const SESSION_FILE = "/home/deuz/.mcp-gpt/electron-profile/mcp-gpt-session.json";
+const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+function extractContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((block) => block && (block.type === "text" || typeof block.text === "string"))
+      .map((block) => (block as { text: string }).text)
+      .join("\n");
+  }
+  return "";
+}
+
+function buildTurnPrompt(context: TranscriptContext): string {
+  const parts: string[] = [];
+  const systemPrompt = getCurrentSystemPrompt(context.messages);
+  if (systemPrompt && systemPrompt.trim()) {
+    parts.push(`[System Instructions]\n${systemPrompt.trim()}`);
+  }
+
+  const nonSystem = context.messages.filter((m) => m.role !== "system");
+  if (nonSystem.length === 1 && nonSystem[0].role === "user" && !systemPrompt) {
+    return extractContentText(nonSystem[0].content).trim();
+  }
+
+  for (const msg of nonSystem) {
+    const text = extractContentText(msg.content).trim();
+    if (!text) continue;
+
+    if (msg.role === "user") {
+      parts.push(`[User]\n${text}`);
+    } else if (msg.role === "assistant") {
+      parts.push(`[Assistant]\n${text}`);
+    } else if (msg.role === "toolResult" || (msg as any).type === "tool_result") {
+      const toolName = (msg as any).toolName ?? "tool";
+      parts.push(`[Tool Result (${toolName})]\n${text}`);
+    }
+  }
+
+  return parts.join("\n\n");
+}
+
+function checkElectronSession(): { ok: boolean; message?: string } {
+  return { ok: true };
+}
+
+export default function registerChatGptWebProvider(pi: ExtensionAPI): void {
+  pi.registerProvider(PROVIDER_ID, {
+    name: "ChatGPT Web (mcp-gpt)",
+    api: "openai-responses",
+    apiKey: "web-session",
+    baseUrl: "https://chatgpt.com",
+    models: [
+      {
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol (Web)",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: ZERO_COST,
+        contextWindow: 272_000,
+        maxTokens: 128_000
+      },
+      {
+        id: "gpt-6-astra",
+        name: "GPT-6 Astra (Web)",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: ZERO_COST,
+        contextWindow: 272_000,
+        maxTokens: 128_000
+      },
+      {
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1 Sol (Web)",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: ZERO_COST,
+        contextWindow: 272_000,
+        maxTokens: 128_000
+      },
+      {
+        id: "default",
+        name: "ChatGPT Web (Default)",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: ZERO_COST,
+        contextWindow: 272_000,
+        maxTokens: 128_000
+      }
+    ],
+    streamSimple(model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) {
+      const stream = createAssistantMessageEventStream();
+
+      const output: AssistantMessage = {
+        role: "assistant",
+        content: [{ type: "text", text: "" }],
+        stopReason: "stop",
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0
+        }
+      };
+
+      const fail = (errMsg: string) => {
+        output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+        output.errorMessage = errMsg;
+        stream.push({ type: "error", reason: output.stopReason, error: output });
+        stream.end(output);
+      };
+
+      queueMicrotask(() => {
+        if (options?.signal?.aborted) {
+          fail("Request aborted before start");
+          return;
+        }
+
+        const sessionCheck = checkElectronSession();
+        if (!sessionCheck.ok) {
+          fail(sessionCheck.message ?? "Electron session check failed");
+          return;
+        }
+
+        const taskPrompt = buildTurnPrompt(context);
+        if (!taskPrompt) {
+          fail("Prompt is empty");
+          return;
+        }
+
+        const inputPayload = JSON.stringify({
+          task: taskPrompt,
+          model: model.id === "default" ? undefined : model.id,
+          mode: "advisory",
+          workspace: process.cwd()
+        });
+
+        const child = spawn("bun", ["run", RUNNER_SCRIPT], {
+          cwd: MCP_GPT_DIR,
+          env: {
+            ...process.env,
+            MCP_GPT_CONFIG: join(MCP_GPT_DIR, "mcp-gpt.config.json")
+          },
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+
+        let accumulatedText = "";
+        let streamStarted = false;
+
+        const onAbort = () => {
+          try {
+            child.kill("SIGTERM");
+            setTimeout(() => {
+              try { child.kill("SIGKILL"); } catch {}
+            }, 1000);
+          } catch {}
+        };
+        options?.signal?.addEventListener("abort", onAbort, { once: true });
+
+        const rl = createInterface({ input: child.stdout });
+
+        rl.on("line", (rawLine) => {
+          const line = rawLine.trim();
+          if (!line.startsWith("{")) return;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "start" && !streamStarted) {
+              streamStarted = true;
+              stream.push({ type: "start", partial: output });
+              stream.push({ type: "text_start", contentIndex: 0, partial: output });
+            } else if (event.type === "text_delta" && typeof event.delta === "string") {
+              if (!streamStarted) {
+                streamStarted = true;
+                stream.push({ type: "start", partial: output });
+                stream.push({ type: "text_start", contentIndex: 0, partial: output });
+              }
+              accumulatedText += event.delta;
+              (output.content[0] as { type: "text"; text: string }).text = accumulatedText;
+              stream.push({
+                type: "text_delta",
+                contentIndex: 0,
+                delta: event.delta,
+                partial: output
+              });
+            } else if (event.type === "done") {
+              const finalText = event.text || accumulatedText;
+              (output.content[0] as { type: "text"; text: string }).text = finalText;
+              output.stopReason = "stop";
+              stream.push({
+                type: "text_end",
+                contentIndex: 0,
+                content: finalText,
+                partial: output
+              });
+              stream.push({ type: "done", reason: "stop", message: output });
+              stream.end(output);
+            } else if (event.type === "error") {
+              fail(event.error || "Unknown error from mcp-gpt runner");
+            }
+          } catch {
+            // Ignore non-JSON lines
+          }
+        });
+
+        child.stderr.on("data", (data) => {
+          const text = data.toString("utf8");
+          // Non-fatal logging from mcp-gpt
+          if (text.includes("error") || text.includes("Error")) {
+            console.error(`[chatgpt-web] ${text.trim()}`);
+          }
+        });
+
+        child.on("error", (err) => {
+          options?.signal?.removeEventListener("abort", onAbort);
+          fail(`Failed to spawn mcp-gpt runner: ${err.message}`);
+        });
+
+        child.on("close", (code) => {
+          options?.signal?.removeEventListener("abort", onAbort);
+          if (output.stopReason === "stop" && accumulatedText) {
+            // Already ended cleanly via done event
+            return;
+          }
+          if (code !== 0 && !options?.signal?.aborted) {
+            fail(`mcp-gpt runner exited with code ${code}`);
+          } else if (accumulatedText) {
+            (output.content[0] as { type: "text"; text: string }).text = accumulatedText;
+            output.stopReason = "stop";
+            stream.push({
+              type: "text_end",
+              contentIndex: 0,
+              content: accumulatedText,
+              partial: output
+            });
+            stream.push({ type: "done", reason: "stop", message: output });
+            stream.end(output);
+          }
+        });
+
+        // Write input payload to stdin and close
+        child.stdin.write(inputPayload);
+        child.stdin.end();
+      });
+
+      return stream;
+    }
+  });
+
+  function syncCodexOAuthToken(): void {
+    try {
+      const codexPath = join(process.env.HOME || "/home/deuz", ".codex", "auth.json");
+      if (!existsSync(codexPath)) return;
+      const codex = JSON.parse(readFileSync(codexPath, "utf8"));
+      const tokens = codex?.tokens;
+      if (!tokens?.access_token) return;
+
+      const oauthEntry = {
+        type: "oauth",
+        access: tokens.access_token,
+        refresh: tokens.refresh_token ?? "",
+        expires: Date.now() + 86400000 * 30
+      };
+
+      const targetPaths = [
+        join(process.env.HOME || "/home/deuz", ".pi", "agent", "auth.json"),
+        join(process.env.HOME || "/home/deuz", ".gentle-shell", "agent", "auth.json")
+      ];
+
+      for (const authPath of targetPaths) {
+        if (!existsSync(authPath)) continue;
+        const current = JSON.parse(readFileSync(authPath, "utf8"));
+        if (current["openai-codex"]?.access !== oauthEntry.access) {
+          current["openai-codex"] = oauthEntry;
+          writeFileSync(authPath, JSON.stringify(current, null, 2));
+        }
+      }
+    } catch {
+      // Non-blocking background sync
+    }
+  }
+
+  syncCodexOAuthToken();
+  pi.on("session_start", async () => {
+    syncCodexOAuthToken();
+  });
+
+  pi.registerCommand("chatgpt-web", {
+    description: "Check ChatGPT Web Electron session status",
+    handler: async (_args, ctx) => {
+      syncCodexOAuthToken();
+      const check = checkElectronSession();
+      if (!check.ok) {
+        if (ctx.hasUI) ctx.ui.notify(check.message ?? "Error", "error");
+        return;
+      }
+      if (ctx.hasUI) {
+        ctx.ui.notify("ChatGPT Web (Electron) session is ready and connected.", "info");
+      }
+    }
+  });
+}

@@ -1,0 +1,855 @@
+version: 1
+document: "gentle-facts-gaps-and-improvement-roadmap"
+generated_at: "2026-10-04"
+repository:
+  root: "/home/deuz/projects/gentle-shell"
+  head_observed: "e0ade638a52ba0b050337a1c6fafdf8915ffdcc7"
+  scope:
+    - "Gentle Facts architecture and correctness model"
+    - "Declaration, dependency, impact, contract and repository-knowledge discovery"
+    - "Repeated local execution bottlenecks across agents"
+    - "Execution-result reuse, invalidation and selective verification"
+    - "Performance, observability, quality and product differentiation"
+  working_tree_note: >
+    The audit found pre-existing local changes in bin/gentle-shell.mjs,
+    lib/codex-native/provider.ts, tests/codex-native-extension.test.ts and .agents/.
+    This document is the only intentional repository change made by this phase.
+
+executive_assessment:
+  verdict: "promising_and_worth_investing"
+  thesis: >
+    Gentle Facts is already a credible versioned evidence index for declarations,
+    signatures, imports, commit/tree impact, historical snapshots and compact
+    agent context. Its strongest next step is to become the invalidation and
+    provenance layer for reusable execution proofs, while first making its own
+    freshness path much cheaper.
+  strategic_positioning: >
+    The differentiated product should be an agent-oriented evidence system:
+    Facts answers what is known about a repository and where that knowledge came
+    from; a new proof layer answers what has already been demonstrated about that
+    exact state, why the proof is still valid, what invalidated it, and the
+    minimum verification required to regain confidence.
+  current_scores:
+    index_integrity_and_versioning: 9.0
+    declaration_discovery: 8.5
+    static_dependency_and_impact: 8.5
+    potential_context_reduction: 8.0
+    semantic_or_conceptual_search: 5.5
+    non_typescript_contract_discovery: 4.5
+    repeated_query_cost: 6.0
+    execution_evidence_reuse: 2.0
+    multi_agent_infrastructure_potential: 9.0
+
+observed_evidence:
+  prior_repository_probe:
+    indexed_files: 565
+    indexed_symbols: 7284
+    resolved_imports: 1141
+    unresolved_imports: 1987
+    unresolved_breakdown:
+      builtins: 1752
+      external: 235
+      relative: 0
+    focused_facts_tests:
+      total: 299
+      passed: 299
+      failed: 0
+    repeated_sync_ms:
+      - 1871
+      - 1035
+      - 867
+    repeated_mcp_query_ms:
+      - 675
+      - 735
+    interpretation: >
+      Symbol lookup itself is cheap; repeated freshness proof dominates the live
+      path in the real repository.
+  stored_benchmark_evidence:
+    note: >
+      Existing benchmarks are synthetic and explicitly do not claim a production
+      SLA, billed-token savings or end-to-end agent latency savings.
+    historical_median_examples_ms:
+      synthetic_25_files:
+        cold: 49.15
+        unchanged: 22.03
+        one_edited_file: 23.91
+      synthetic_250_files:
+        cold: 116.05
+        unchanged: 22.60
+        one_edited_file: 32.16
+      synthetic_2500_files:
+        cold: 1320.72
+        unchanged: 108.71
+        one_edited_file: 150.80
+    diverse_workload_example:
+      workload: "large-files"
+      source_bytes: 2444304
+      cold_median_ms: 295.114
+      warm_median_ms: 72.236
+      changed_median_ms: 85.628
+      query_median_ms: 0.042
+  source_level_observations:
+    - id: "OBS-001"
+      finding: >
+        FactsService.sync performs a Git workspace scan before indexing and a
+        second workspace scan for snapshot validation.
+      implication: >
+        An unchanged query still pays repository-wide freshness work.
+    - id: "OBS-002"
+      finding: >
+        Every live facts_query, facts_dependents and facts_status refreshes the
+        service before answering; before_agent_start and session_start also
+        refresh, and successful write/edit/apply_diff tool completions trigger a
+        refresh.
+      implication: >
+        One user action can cause multiple refresh opportunities around the same
+        unchanged epoch.
+    - id: "OBS-003"
+      finding: >
+        FactsService serializes sync calls through a pending promise chain but
+        does not coalesce callers that ask for the same still-clean state.
+      implication: >
+        Concurrent agents or hooks can queue multiple equivalent full freshness
+        checks instead of sharing one result.
+    - id: "OBS-004"
+      finding: >
+        Execution receipts are extracted once during candidate construction and
+        again during snapshot validation.
+      implication: >
+        Manifest/lockfile discovery and parsing are repeated inside a single sync.
+    - id: "OBS-005"
+      finding: >
+        TypeScript module resolution is recomputed from the full typed-file set on
+        each sync and then its metadata probe snapshot is revalidated.
+      implication: >
+        Warm refresh can remain expensive even when zero source files need
+        reindexing.
+    - id: "OBS-006"
+      finding: >
+        recordFactsHistory serializes and hashes a canonical representation of the
+        full Facts database before it checks whether the latest transcript receipt
+        already has the same digest.
+      implication: >
+        Unchanged refreshes can pay full snapshot serialization/hash work even when
+        no new history entry will be appended.
+    - id: "OBS-007"
+      finding: >
+        querySymbols walks every indexed file and symbol; dependency traversal
+        repeatedly scans the complete resolution-edge array for each breadth
+        level.
+      implication: >
+        Current scale is acceptable, but lookup complexity will grow needlessly
+        for very large repositories and high query volume.
+    - id: "OBS-008"
+      finding: >
+        Immutable generation storage, content hashes, writer locks, commit/tree
+        indexing and bounded history already solve many hard provenance problems.
+      implication: >
+        The proof layer can reuse these design patterns instead of creating an
+        unrelated cache subsystem.
+    - id: "OBS-009"
+      finding: >
+        Existing ExecutionReceipts describe declared commands, package manager,
+        dependencies and cwd; they do not prove that a command was actually run
+        successfully.
+      implication: >
+        The name can be confused with runtime execution evidence; a separate
+        proof type is needed.
+    - id: "OBS-010"
+      finding: >
+        facts_query is primarily exact structural lookup. It is strong when the
+        symbol or file is known and weaker for conceptual questions whose wording
+        does not match a declaration.
+      implication: >
+        Agents still fall back to grep/source reads for broad conceptual
+        discovery.
+    - id: "OBS-011"
+      finding: >
+        TypeScript declarations and import edges are first-class, while OpenAPI,
+        JSON Schema, GraphQL, protobuf, SQL migrations, routes, configuration and
+        behavioral contracts are not modeled as first-class entities.
+      implication: >
+        Contract discovery and impact analysis remain incomplete outside the
+        current source-symbol model.
+    - id: "OBS-012"
+      finding: >
+        Facts impact is intentionally potential file-consumer evidence, not
+        function-level call impact and not proof that runtime behavior is
+        unchanged.
+      implication: >
+        It is useful for invalidation and test selection but must not be treated
+        as sufficient proof for skipping verification.
+    - id: "OBS-013"
+      finding: >
+        Cursor pagination already preserves immutable result snapshots.
+      implication: >
+        The system already has a useful pattern for stable read views that can be
+        extended to proof/result inspection.
+    - id: "OBS-014"
+      finding: >
+        Existing synthetic benchmarks show much faster warm behavior than the
+        earlier real-repository probe.
+      implication: >
+        Performance work must include representative real repositories with
+        realistic manifests, aliases, generated files, configs and module graphs.
+
+gaps:
+  - id: "GF-P0-001"
+    priority: "P0"
+    title: "Freshness fast path / workspace epoch"
+    problem: >
+      Every ordinary live query can pay a full synchronization even when nothing
+      relevant has changed.
+    proposal:
+      - "Maintain a process-local workspace epoch and dirty-file set."
+      - "Use file-system change observation to mark the epoch dirty."
+      - "Return the already validated in-memory generation immediately while the epoch is clean."
+      - "Reconcile periodically with the full Git scan to protect against missed watcher events."
+      - "Keep the current scan/validation path as the conservative fallback."
+      - "Track dirty reasons: source, manifest, lockfile, tsconfig, generated metadata, external-writer generation."
+    acceptance:
+      - "Repeated unchanged facts_query/facts_dependents calls should avoid full Git scanning."
+      - "No freshness regression in edit-between-scan, concurrent-writer, reversion and cancellation tests."
+      - "A forced reconciliation must converge to the same database as the conservative path."
+
+  - id: "GF-P0-002"
+    priority: "P0"
+    title: "Single-flight synchronization"
+    problem: >
+      sync requests are serialized, but equivalent callers do not share the same
+      in-flight computation.
+    proposal:
+      - "Key an in-flight refresh by workspace root plus dirty epoch."
+      - "Return the same promise to concurrent callers for the same epoch."
+      - "Cancel an individual waiter without necessarily cancelling a refresh still needed by other waiters."
+      - "Start a new refresh only after the epoch changes or the prior refresh fails irrecoverably."
+    expected_value: "Prevents agent/hook stampedes and redundant refresh queues."
+
+  - id: "GF-P0-003"
+    priority: "P0"
+    title: "Incremental module-resolution cache"
+    problem: >
+      Full TypeScript module resolution and probe validation are repeated on warm
+      syncs.
+    proposal:
+      - "Persist importer -> resolved edges plus the exact metadata probes that justified each edge."
+      - "Key importer resolution by importer SHA, import list, effective tsconfig digest and relevant resolver metadata."
+      - "Invalidate only importers affected by source imports, config changes or invalidated metadata probes."
+      - "Maintain a reverse map from tsconfig/project-reference input to importers for targeted invalidation."
+      - "Re-run full resolution on reconciliation or when the dependency set cannot be proven complete."
+    expected_value: "Likely removes one of the largest warm-sync CPU/IO components."
+
+  - id: "GF-P0-004"
+    priority: "P0"
+    title: "Receipt/config fingerprint cache"
+    problem: "Execution-receipt extraction is repeated twice per sync."
+    proposal:
+      - "Fingerprint package.json, lockfiles and nearest-package traversal inputs once per epoch."
+      - "Reuse the parsed receipt during snapshot validation if those exact inputs remain unchanged."
+      - "Treat package-manager, scripts and dependency changes as explicit invalidation causes."
+    expected_value: "Small-to-medium latency reduction with low architectural risk."
+
+  - id: "GF-P0-005"
+    priority: "P0"
+    title: "History write fast path"
+    problem: >
+      Unchanged refreshes can serialize/hash the complete database before learning
+      that the history digest is already present.
+    proposal:
+      - "Bind the last successful history receipt to the Facts generation ID."
+      - "If generation is unchanged, reuse the prior receipt without canonicalizing the database again."
+      - "Only serialize/hash when a new generation has been published."
+      - "Keep content-address verification on first write/load."
+    expected_value: "Removes avoidable CPU and IO from every repeated refresh."
+
+  - id: "GF-P0-006"
+    priority: "P0"
+    title: "Refresh scheduling around lifecycle hooks"
+    problem: >
+      session_start, before_agent_start, query/status tools and post-write hooks can
+      all trigger refreshes around the same edit epoch.
+    proposal:
+      - "Mark dirty on write/edit/apply_diff instead of immediately forcing duplicate full refreshes."
+      - "Refresh lazily on the first consumer that needs fresh facts."
+      - "Optionally debounce eager background refreshes, but preserve a synchronous fresh barrier before answers."
+      - "Expose refresh reason and whether a query used fast-path, incremental or full reconciliation."
+    expected_value: "Reduces duplicate work without weakening visible freshness."
+
+  - id: "GF-P1-001"
+    priority: "P1"
+    title: "Execution Proof Ledger"
+    problem: >
+      Agents repeatedly execute the same tests, typechecks, lints, builds and
+      validation tools because the system cannot prove that an earlier result
+      remains valid.
+    proposal:
+      name_options:
+        - "Gentle Proofs"
+        - "Execution Evidence"
+        - "Proof Ledger"
+      design: >
+        Store immutable, content-addressed proof receipts for real executions.
+        Reuse a green result only when all required inputs are equivalent under a
+        declared trust policy.
+      lifecycle_states:
+        - "running"
+        - "passed"
+        - "failed"
+        - "stale"
+        - "expired"
+        - "invalidated"
+        - "aborted"
+      reuse_rule: >
+        A command is reusable when an existing successful proof has the same
+        canonical execution identity and all inputs required by its confidence
+        class still match current state.
+      explicit_non_rule: >
+        Do not reuse merely because the command string matches or because no
+        regression has yet been observed.
+
+  - id: "GF-P1-002"
+    priority: "P1"
+    title: "Canonical execution fingerprint"
+    required_inputs:
+      command:
+        - "canonical argv, without shell-format ambiguity"
+        - "working directory"
+        - "selected test targets / filters / shards"
+        - "runner identity and version"
+      repository:
+        - "Git tree or dirty-worktree digest"
+        - "Facts generation"
+        - "relevant file content hashes"
+        - "package.json and lockfile digests"
+        - "test/build/lint config digests"
+        - "generated-code/config inputs when relevant"
+      toolchain:
+        - "Node/Bun/Python/Go/JDK/etc. versions as applicable"
+        - "package-manager version"
+        - "compiler/linter/test-runner version"
+        - "OS and architecture when behavior can differ"
+        - "browser and Playwright/WebDriver versions for browser tests"
+      environment:
+        - "declared environment-variable dependency set"
+        - "safe fingerprints for value-sensitive non-secret variables"
+        - "secret values must never be persisted in plaintext"
+      runtime_state:
+        - "database schema and seed fingerprint"
+        - "fixture/version fingerprint"
+        - "service/container image versions"
+        - "feature-flag state"
+        - "clock/timezone policy when relevant"
+        - "network/external-service policy"
+    security_note: >
+      If a secret value must influence validity, use a local keyed digest/HMAC or
+      a provider-issued version identifier. Never store the secret itself in the
+      ledger or logs.
+
+  - id: "GF-P1-003"
+    priority: "P1"
+    title: "Cross-agent single-flight execution"
+    problem: >
+      Several agents can start the same expensive command at nearly the same time.
+    proposal:
+      - "Acquire a proof lease keyed by the execution fingerprint."
+      - "One owner executes; equivalent callers wait for or subscribe to the same proof."
+      - "Use heartbeat/lease expiry so a dead owner cannot block the key forever."
+      - "Permit takeover after proven owner loss."
+      - "Record provenance for owner, waiters and final publication."
+    expected_value: "Eliminates both sequential and concurrent duplicate execution."
+
+  - id: "GF-P1-004"
+    priority: "P1"
+    title: "Safe invalidation engine"
+    layers:
+      - name: "exact-input"
+        rule: "Any exact fingerprint input change invalidates the proof."
+      - name: "static-reachability"
+        rule: >
+          Facts dependents/impact can invalidate proofs whose known source inputs
+          are reached by the changed files.
+      - name: "runtime-observation"
+        rule: >
+          Coverage/tracing can refine test-to-input relationships after real runs.
+      - name: "policy-expiry"
+        rule: >
+          Time, remote state, feature flags or non-hermetic dependencies can force
+          TTL expiry or no-cache behavior.
+    invariant: >
+      Facts impact is an invalidation aid; absence of a static path is not by
+      itself proof that runtime behavior is unchanged.
+
+  - id: "GF-P1-005"
+    priority: "P1"
+    title: "Confidence classes for proof reuse"
+    classes:
+      hermetic_static:
+        examples: ["eslint", "formatter check", "pure compiler/typecheck"]
+        reuse: "strong"
+        conditions: "Exact source/config/toolchain/environment fingerprint."
+      hermetic_unit:
+        examples: ["isolated deterministic unit tests"]
+        reuse: "strong"
+        conditions: "Exact test and dependency inputs plus runtime/toolchain fingerprint."
+      controlled_integration:
+        examples: ["local database/container integration tests"]
+        reuse: "conditional"
+        conditions: "Include schema, seed, image/service and fixture fingerprints."
+      controlled_local_e2e:
+        examples: ["Playwright against locally controlled app/services"]
+        reuse: "conditional_conservative"
+        conditions: >
+          Include browser, app build/tree, migrations, seed, runtime configuration,
+          ports/service versions and any other mutable local state.
+      remote_or_nondeterministic_e2e:
+        examples: ["tests against Stripe/GitHub/remote APIs or uncontrolled mutable state"]
+        reuse: "disabled_or_short_ttl"
+        conditions: >
+          Reuse only when an explicit product policy models the remote-state
+          dependency; otherwise execute again.
+    policy: "Unknown dependency => proof is not reusable."
+
+  - id: "GF-P1-006"
+    priority: "P1"
+    title: "Proof result schema and artifacts"
+    suggested_fields:
+      identity:
+        - "proofVersion"
+        - "fingerprint"
+        - "command"
+        - "argv"
+        - "cwd"
+        - "taskKind"
+      result:
+        - "status"
+        - "exitCode"
+        - "durationMs"
+        - "startedAt"
+        - "finishedAt"
+      inputs:
+        - "sourceTreeFingerprint"
+        - "relevantFiles[] with hashes"
+        - "configHashes[]"
+        - "lockfileHashes[]"
+        - "toolchainFingerprint"
+        - "environmentFingerprint"
+        - "runtimeStateFingerprint"
+        - "testSelection"
+      outputs:
+        - "passedTests[]"
+        - "failedTests[]"
+        - "artifactHashes[]"
+        - "stdoutDigest"
+        - "stderrDigest"
+        - "bounded log reference"
+      provenance:
+        - "factsGeneration"
+        - "commit/tree"
+        - "dirtyDiffDigest"
+        - "agent/session"
+        - "host/platform policy"
+        - "confidenceClass"
+        - "invalidationReason"
+    note: >
+      Persist digests and bounded references rather than unbounded stdout/stderr.
+
+  - id: "GF-P1-007"
+    priority: "P1"
+    title: "Side-effect classification"
+    problem: >
+      Some commands validate state while others mutate databases, generate files,
+      publish artifacts or call external systems.
+    proposal:
+      - "Classify commands as pure_validation, reproducible_build, local_mutation, external_side_effect."
+      - "Allow transparent reuse only for pure validation and explicitly safe reproducible builds."
+      - "For mutating commands, a proof can inform the agent but must not silently replace required side effects."
+      - "Persist generated artifact hashes separately from proof-of-validation."
+    expected_value: "Prevents a fast cache from becoming semantically incorrect."
+
+  - id: "GF-P1-008"
+    priority: "P1"
+    title: "Failure and flake policy"
+    problem: "Caching failures can amplify transient or flaky outcomes."
+    proposal:
+      - "Cache deterministic failures only under exact fingerprints."
+      - "Give failed proofs shorter retention by default."
+      - "Track pass/fail history for the same fingerprint and test."
+      - "Mark statistically unstable tests as flaky evidence."
+      - "Require rerun/quorum policy before treating flaky failure or success as durable."
+      - "Never let a cached historical failure block execution after relevant inputs change."
+
+  - id: "GF-P2-001"
+    priority: "P2"
+    title: "Selective verification / minimum test set"
+    problem: "Binary run-all versus reuse-all leaves most savings unrealized."
+    proposal:
+      - "Map changed inputs to affected tests using static Facts edges first."
+      - "Reuse valid proofs for unaffected tests."
+      - "Execute only tests whose proof inputs were invalidated."
+      - "Compose suite confidence from per-test/per-shard proofs."
+      - "Fall back to a broader suite when mapping confidence is incomplete."
+    target_behavior_example: >
+      If 980 of 1000 tests retain valid proofs and 20 are affected, run the 20
+      plus any required safety canary instead of blindly rerunning all 1000.
+
+  - id: "GF-P2-002"
+    priority: "P2"
+    title: "Learn test-to-input relationships"
+    stages:
+      - "Stage 1: static imports and Facts dependency graph."
+      - "Stage 2: coverage files / module-load tracing."
+      - "Stage 3: runtime service/database/fixture dependency tracing where feasible."
+      - "Stage 4: compare predicted invalidation with actual changed coverage to tune conservatism."
+    invariant: "Dynamic learning may narrow invalidation but must never silently override hard exact-input rules."
+
+  - id: "GF-P2-003"
+    priority: "P2"
+    title: "Contract Facts / Entity Facts"
+    problem: "SymbolFact is too narrow for repository-wide contract discovery."
+    proposal:
+      generalized_entity_types:
+        - "symbol"
+        - "route"
+        - "schema"
+        - "api_operation"
+        - "graphql_type"
+        - "protobuf_message"
+        - "database_table"
+        - "migration"
+        - "test"
+        - "command"
+        - "config"
+        - "contract"
+        - "generated_artifact"
+      relation_types:
+        - "declares"
+        - "implements"
+        - "consumes"
+        - "tests"
+        - "generates"
+        - "dependsOn"
+        - "migrates"
+        - "serves"
+        - "validates"
+      initial_parsers:
+        - "OpenAPI"
+        - "JSON Schema"
+        - "GraphQL SDL"
+        - "protobuf"
+        - "SQL migrations"
+        - "package/workspace scripts"
+        - "route manifests/framework route definitions"
+    expected_value: >
+      Moves Gentle Facts from code-symbol index toward a verifiable repository
+      knowledge graph and materially improves contract searches.
+
+  - id: "GF-P2-004"
+    priority: "P2"
+    title: "Lexical/conceptual discovery layer"
+    problem: "Exact-name lookup does not answer broad conceptual questions well."
+    proposal:
+      - "Build per-generation indexes for symbol names, paths, docstrings and entity labels."
+      - "Support prefix, token, trigram/fuzzy and ranked lexical search."
+      - "Return exact evidence with every match."
+      - "Keep semantic/embedding search optional and evidence-linked rather than replacing exact structural facts."
+    expected_value: "Reduces fallback grep/source scans for concept-level discovery."
+
+  - id: "GF-P2-005"
+    priority: "P2"
+    title: "Per-generation query indexes"
+    proposal:
+      - "Map lowercase symbol name -> results."
+      - "Map file path -> file facts."
+      - "Build reverse dependency adjacency once per generation."
+      - "Optionally map exported symbol -> owning files."
+    expected_value: >
+      Makes repeated lookups proportional to result size instead of repository size
+      and prepares Facts for much larger monorepos.
+
+  - id: "GF-P2-006"
+    priority: "P2"
+    title: "Multi-process generation notification"
+    problem: >
+      A process-local watcher cannot see all external writers reliably without a
+      coherence mechanism.
+    proposal:
+      - "Treat the immutable generation pointer as the cross-process source of truth."
+      - "Use a cheap pointer stat/version check before serving a clean local generation."
+      - "Invalidate local fast-path state when another process publishes a new generation."
+      - "Optionally add an IPC/event notification for lower latency, with pointer reconciliation as fallback."
+
+  - id: "GF-P2-007"
+    priority: "P2"
+    title: "Real-repository performance corpus"
+    proposal:
+      - "Benchmark the current repository and several representative external fixture shapes."
+      - "Capture warm query, first query after edit, multi-agent burst and cross-process publication."
+      - "Separate Git-scan, cache-load, parse, receipt, resolver, validation, history and response timings."
+      - "Report p50/p95/p99, not only median."
+      - "Record filesystem type and cold/warm OS-cache assumptions."
+    expected_value: "Makes optimization decisions evidence-based and prevents synthetic-only tuning."
+
+  - id: "GF-P2-008"
+    priority: "P2"
+    title: "Proof-aware test runner integration"
+    proposal:
+      - "Wrap existing run-test-suite stages with proof lookup/publication."
+      - "Keep stage independence: one cached/failed stage must not suppress execution/reporting of others."
+      - "Surface reused versus executed stages explicitly."
+      - "Allow force-run, no-cache and reconcile modes."
+      - "Make prepublish/release gates optionally require fresh execution even when reusable development proofs exist."
+    expected_value: "Introduces savings without weakening release policy."
+
+  - id: "GF-P3-001"
+    priority: "P3"
+    title: "Explainable proof queries for agents"
+    proposed_tools:
+      - "proof_status"
+      - "proof_query"
+      - "proof_why_valid"
+      - "proof_why_stale"
+      - "proof_minimum_verification"
+      - "proof_invalidate"
+    response_requirements:
+      - "State exact proof fingerprint and age."
+      - "State confidence class."
+      - "List relevant inputs and any policy assumptions."
+      - "Explain why the proof is valid or the exact invalidation reason."
+      - "Recommend the smallest verification command when stale."
+
+  - id: "GF-P3-002"
+    priority: "P3"
+    title: "Proof composition"
+    proposal:
+      - "Represent a suite proof as a Merkle-like composition of test/shard proofs."
+      - "Rebuild the aggregate cheaply when only a subset changes."
+      - "Keep provenance from aggregate result down to each constituent proof."
+    expected_value: "Scales selective verification to large suites."
+
+  - id: "GF-P3-003"
+    priority: "P3"
+    title: "Distributed/shared proof storage"
+    proposal:
+      - "Start local and content-addressed."
+      - "Add optional shared storage only after local correctness and invalidation metrics are mature."
+      - "Namespace by repository identity, platform policy and trust domain."
+      - "Do not share secret-derived fingerprints across trust boundaries unless designed explicitly."
+    expected_value: "Enables team-wide reuse later without making distributed coherence a P0 dependency."
+
+execution_proof_reference_model:
+  canonical_question_before_running: >
+    Is there already a successful proof for this canonical command whose required
+    inputs are equivalent to the current state under the applicable confidence
+    policy?
+  invalidation_question_after_change: >
+    Did this modification alter any exact proof input, any statically reachable
+    dependency, any runtime-observed input, or any policy-controlled mutable state?
+  result:
+    valid: "Reuse with explicit provenance."
+    partially_invalid: "Run the minimum affected subset and compose a new proof."
+    unknown: "Execute conservatively."
+    invalid: "Execute and publish a replacement proof."
+
+quality_invariants:
+  - "No proof reuse from command-string equality alone."
+  - "Unknown or unmodeled mutable input prevents strong reuse."
+  - "A source/config/toolchain/runtime change invalidates before reuse, not after a regression is observed."
+  - "Facts impact never becomes an authorization to skip runtime verification by itself."
+  - "Proof publication is immutable/content-addressed; replaceable pointers only select current views."
+  - "Concurrent writers must use the same proven locking/publication discipline as Facts."
+  - "A stale or failed proof is evidence, not permission to suppress a newly required execution."
+  - "Release/security-critical policies may always force fresh execution."
+  - "Secrets are never persisted in plaintext proof material."
+  - "Every reused result must be explainable to an agent and reviewer."
+
+observability:
+  facts_metrics:
+    - "refresh_total"
+    - "refresh_fast_path_total"
+    - "refresh_incremental_total"
+    - "refresh_full_reconcile_total"
+    - "refresh_coalesced_waiters"
+    - "git_scan_ms"
+    - "cache_load_ms"
+    - "source_index_ms"
+    - "receipt_extract_ms"
+    - "module_resolve_ms"
+    - "snapshot_validate_ms"
+    - "history_save_ms"
+    - "query_lookup_ms"
+    - "dirty_epoch_age_ms"
+  proof_metrics:
+    - "proof_lookup_total"
+    - "proof_hit_total"
+    - "proof_miss_total"
+    - "proof_stale_total"
+    - "proof_expired_total"
+    - "proof_singleflight_wait_total"
+    - "proof_execution_total"
+    - "proof_reused_duration_ms"
+    - "proof_executed_duration_ms"
+    - "tests_reused"
+    - "tests_executed"
+    - "invalidation_reason_counts"
+    - "proof_age_at_reuse_ms"
+    - "flake_rate"
+    - "forced_fresh_execution_total"
+  success_metrics:
+    - "median and p95 unchanged Facts query latency"
+    - "time saved per agent turn from avoided refreshes"
+    - "duplicate command executions per task/session"
+    - "multi-agent duplicate execution ratio"
+    - "percentage of test cases reused safely"
+    - "wall-clock time to trustworthy verification"
+    - "false-reuse incidents, target zero"
+    - "fallback-to-conservative-execution rate"
+
+validation_plan:
+  facts_fast_path:
+    - "Existing Facts focused suite remains green."
+    - "Add watcher-missed-event reconciliation tests."
+    - "Add concurrent same-epoch coalescing tests."
+    - "Add external-process generation publication tests."
+    - "Add repeated before_agent_start/query/post-write scheduling tests."
+    - "Benchmark current repo before and after with phase-level timings."
+  proof_ledger:
+    - "Same inputs reuse a prior pass without executing the runner."
+    - "Source edit invalidates the correct affected proof."
+    - "Lockfile/config/runtime version changes invalidate."
+    - "Unrelated changes preserve safe proofs when dependency evidence is complete."
+    - "Unknown dependency forces execution."
+    - "Concurrent identical requests produce one execution."
+    - "Dead lease owner is recoverable."
+    - "Failed/flaky results follow the configured retry policy."
+    - "Secret values never appear in stored receipts or logs."
+    - "Remote/uncontrolled E2E defaults to no strong reuse."
+    - "Force-run bypasses reuse and publishes fresh evidence."
+  selective_verification:
+    - "Changed file -> affected tests mapping is conservative."
+    - "Suite aggregate never reports green when an invalidated constituent lacks a new valid proof."
+    - "Fallback to broader execution works when mapping confidence is incomplete."
+
+delivery_roadmap:
+  phase_0_measure_and_instrument:
+    priority: "P0"
+    deliverables:
+      - "Per-phase refresh timers and counters."
+      - "Real-repository baseline benchmark."
+      - "Multi-agent burst benchmark."
+  phase_1_make_facts_cheap:
+    priority: "P0"
+    deliverables:
+      - "workspace epoch and dirty set"
+      - "single-flight sync"
+      - "receipt/config caching"
+      - "generation-aware history fast path"
+      - "incremental resolver cache"
+      - "periodic/full reconciliation path"
+    target: >
+      Unchanged repeated queries should be dominated by in-memory lookup and cheap
+      coherence checks rather than repository-wide scans.
+  phase_2_execution_proofs_mvp:
+    priority: "P1"
+    deliverables:
+      - "proof schema"
+      - "content-addressed local proof store"
+      - "canonical fingerprint"
+      - "single-flight execution lease"
+      - "hermetic_static and hermetic_unit confidence classes"
+      - "integration with unit tests, typecheck and lint"
+      - "explainable hit/miss/stale output"
+  phase_3_scope_aware_invalidation:
+    priority: "P1/P2"
+    deliverables:
+      - "Facts-based source reachability"
+      - "per-test proof records"
+      - "minimum affected test selection"
+      - "suite proof composition"
+  phase_4_contract_and_concept_search:
+    priority: "P2"
+    deliverables:
+      - "EntityFact abstraction"
+      - "OpenAPI/JSON Schema/GraphQL/protobuf/SQL parsers"
+      - "lexical/fuzzy entity discovery"
+      - "contract relationships and impact queries"
+  phase_5_dynamic_learning_and_optional_sharing:
+    priority: "P3"
+    deliverables:
+      - "coverage/module-load tracing"
+      - "learned test-to-input edges"
+      - "flake scoring"
+      - "optional shared proof backend"
+
+recommended_order:
+  - "1. Instrument and benchmark the live refresh path."
+  - "2. Implement workspace epoch + single-flight + reconciliation."
+  - "3. Cache receipts/history/module-resolution inputs incrementally."
+  - "4. Build a local Execution Proof Ledger for deterministic validation commands."
+  - "5. Add cross-agent single-flight execution."
+  - "6. Add Facts-driven invalidation and minimum test selection."
+  - "7. Expand to controlled integration/E2E confidence classes."
+  - "8. Introduce EntityFact/Contract Facts and conceptual discovery."
+  - "9. Learn runtime test-to-input relationships."
+  - "10. Consider distributed proof sharing only after local correctness is measured."
+
+product_opportunity:
+  differentiation: >
+    Avoid positioning the system as another generic task cache like Nx/Turborepo.
+    The stronger differentiator is explainable, provenance-rich evidence for
+    autonomous agents: what is known, what was proven, why it is still valid,
+    exactly what changed, and the minimum work needed to restore certainty.
+  quality_gain: >
+    The same machinery that saves time can improve quality because it makes
+    verification state explicit, forces input modeling, preserves provenance,
+    identifies stale evidence and enables targeted re-verification instead of
+    informal agent assumptions.
+  time_saving_gain: >
+    The largest expected wins come from removing repeated Facts freshness work,
+    deduplicating concurrent identical commands, and re-running only affected
+    tests rather than entire suites.
+  long_term_vision: >
+    A repository-local evidence graph combining structural facts, contracts,
+    change impact, execution proofs and runtime-observed dependencies can become
+    a durable shared memory of engineering certainty across agents and sessions.
+
+risks_and_guardrails:
+  - risk: "Watcher events can be lost."
+    guardrail: "Periodic/full Git reconciliation remains authoritative."
+  - risk: "Static dependency graphs miss runtime/dynamic coupling."
+    guardrail: "Unknown coupling forces broader execution; runtime tracing may refine later."
+  - risk: "E2E depends on mutable external state."
+    guardrail: "No strong reuse unless that state is modeled; otherwise short TTL or execute."
+  - risk: "Environment fingerprint leaks secrets."
+    guardrail: "Never persist secret plaintext; use local keyed digests/version IDs if needed."
+  - risk: "Cached failure amplifies flakes."
+    guardrail: "Short retention, flake classification and rerun/quorum policy."
+  - risk: "Proof reuse hides required side effects."
+    guardrail: "Explicit command side-effect classes; reuse only safe validation semantics."
+  - risk: "Cross-process cache coherence becomes complex."
+    guardrail: "Immutable artifacts plus generation pointer remain authoritative."
+  - risk: "Optimization weakens existing snapshot integrity."
+    guardrail: "Fast paths are bypassable; full reconciliation must remain testable and equivalent."
+  - risk: "Synthetic benchmarks overstate savings."
+    guardrail: "Use real-repository p50/p95/p99 and phase-level measurements."
+  - risk: "Overly aggressive minimum-test selection misses regressions."
+    guardrail: "Conservative fallback and explicit confidence thresholds."
+
+what_not_to_do:
+  - "Do not cache raw stdout and treat it as proof."
+  - "Do not key reuse only by command string."
+  - "Do not wait for a regression before invalidating after a relevant modification."
+  - "Do not treat absence of a Facts edge as proof of runtime independence."
+  - "Do not reuse uncontrolled remote E2E as if it were hermetic."
+  - "Do not silently skip commands with side effects."
+  - "Do not distribute proof caches before local correctness and provenance are mature."
+  - "Do not claim billed-token or production-SLA savings from current synthetic benchmarks."
+
+closure_criteria_for_future_implementation:
+  - "Facts repeated-query fast path is measurably cheaper on the actual repository."
+  - "No regression in snapshot integrity, writer safety, cancellation or external-edit detection."
+  - "Identical concurrent proof requests execute once."
+  - "Relevant source/config/toolchain/runtime changes invalidate before reuse."
+  - "Selective verification never composes a green suite from stale constituents."
+  - "Every reused result is explainable with provenance and invalidation inputs."
+  - "E2E reuse is disabled when hermeticity cannot be demonstrated."
+  - "Observed wall-clock savings are reported alongside false-reuse rate and fallback rate."
