@@ -9,7 +9,7 @@
 // the caller's "provider/id" selection through pi's live model registry,
 // authenticates through the registry's own resolver, and completes exactly
 // one frozen prompt as a single user message — no systemPrompt, no tools, no
-// session, and none of pi's tool/skill/prompt extension hooks. Extension
+// retained agent history, and none of pi's tool/skill/prompt extension hooks. Extension
 // *providers* are the opposite: they are explicitly in scope. Reading the
 // earlier "no extension hooks" wording as "no extension providers" is what
 // produced gentle-shell#1304, where every extension-registered model was
@@ -20,6 +20,7 @@
 // this into the lens relay (lib/review-host-relay.ts); P3 wires the provider
 // role vectors. This file stays a pure completion, never invoked from here.
 
+import { randomUUID } from "node:crypto";
 import type { Api, AssistantMessage, Context, Model, ProviderHeaders, SimpleStreamOptions, TextContent, ThinkingLevel } from "@earendil-works/pi-ai";
 import type { completeSimple } from "@earendil-works/pi-ai/compat";
 import { SAFE_MODEL_ID_PATTERN } from "./model-routing-authority.ts";
@@ -275,6 +276,11 @@ export async function runInProcessReviewer(request: InProcessReviewerRequest, de
 		],
 	};
 	const options: SimpleStreamOptions = {
+		// Transport identity is private to this completion, not the parent's
+		// agent cursor. OpenCode attribution above keeps the live parent id.
+		sessionId: randomUUID(),
+		cacheRetention: "none",
+		toolChoice: "none",
 		signal: combinedSignal,
 		timeoutMs: request.timeoutMs,
 		...(auth.apiKey === undefined ? {} : { apiKey: auth.apiKey }),

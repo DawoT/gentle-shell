@@ -343,6 +343,24 @@ test("passes exactly one user message with the verbatim prompt, no systemPrompt,
 	assert.ok(!("tools" in calls[0]!.context));
 });
 
+test("each reviewer receives a fresh tool-free transport identity, never the parent cursor", async () => {
+  const { complete, calls } = capturingComplete(assistantText("independent verdict"));
+  const registry = fakeRegistry([fakeModel()]);
+  for (const sessionId of ["parent-session", "parent-session", undefined]) {
+    const result = await runInProcessReviewer(baseRequest({ sessionId }), { registry, complete });
+    assert.equal(expectText(result).text, "independent verdict");
+  }
+  const identities = calls.map(({ options }) => options?.sessionId);
+  assert.equal(new Set(identities).size, 3);
+  for (const { options } of calls) {
+    assert.match(options!.sessionId!, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.notEqual(options?.sessionId, "parent-session");
+    assert.equal(options?.cacheRetention, "none");
+    assert.equal(options?.toolChoice, "none");
+    assert.ok(!("headers" in options!));
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Thinking mapping
 // ---------------------------------------------------------------------------
