@@ -16,6 +16,7 @@ const sources = [
 	"review-risk-assessment",
 	"native-review-cli",
 	"telemetry-trigger",
+	"child-package-injection",
 	"gentle-shell-launcher",
 	"gentle-shell-resume-hint",
 ];

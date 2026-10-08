@@ -15,9 +15,10 @@ import { resolveGentleAiDevBinaryOverride, type GentleAiDevBinaryOverride } from
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { quietToolsEnabled } from "../lib/quiet-tools-config.ts";
 import { registerCompactCodemode } from "../lib/codemode-renderer.ts";
+import { offerBuiltinCodemodeOptOut, type BuiltinCodemodeOptOutOptions } from "../lib/builtin-codemode-optout.ts";
 import { getGentleAiRenderState, renderGentleAiLifecycleCall, renderGentleAiResult, type GentleAiRenderContext } from "../lib/gentle-ai-renderer.ts";
 import {
-	CARD_TONE, cardAwaitingResult, cardBottom, cardInnerWidth, cardLine, cardRunningLine, cardTopRows, floatRows, markCardResult,
+	CARD_TONE, cardAwaitingResult, cardBottom, cardInnerWidth, cardLine, cardRunningLine, cardStyle, cardTopRows, floatRows, markCardResult,
 	type CardRowContext, type CardTheme,
 } from "../lib/shell-card.ts";
 import { sanitizeTerminalText, stripAnsi } from "../lib/terminal-theme.ts";
@@ -423,7 +424,10 @@ export function formatToolResultOutput(
 ): string {
 	const text = safeText(extractTextContent(result));
 	if (expanded) {
-		const detail = expandedResultText(toolName, result, text);
+		// Write results only acknowledge the operation; the body lives in the call args.
+		const detail = toolName === "write" && !isError && typeof args?.content === "string" && args.content.length > 0
+			? safeText(args.content)
+			: expandedResultText(toolName, result, text);
 		return detail ? `\n${detail}` : "";
 	}
 	if (isError) {
@@ -568,7 +572,23 @@ function toolTone(pending: boolean, failed: boolean): ToolTone {
 	return pending ? CARD_TONE.WARNING : CARD_TONE.SUCCESS;
 }
 
+/** One settled frame per component: bounded memory, including all card chrome. */
+class ToolCardRows {
+	private frame?: { width: number; style: ReturnType<typeof cardStyle>; running: boolean; lines: string[] };
+
+	render(width: number, running: boolean, build: () => string[]): string[] {
+		const style = cardStyle();
+		if (this.frame?.width === width && this.frame.style === style && this.frame.running === running) return this.frame.lines;
+		const lines = build();
+		this.frame = { width, style, running, lines };
+		return lines;
+	}
+
+	invalidate(): void { this.frame = undefined; }
+}
+
 class ToolCardTop implements Component {
+	private readonly rows = new ToolCardRows();
 	private readonly header: () => string;
 	private readonly glyph: string;
 	private readonly tone: ToolTone;
@@ -590,41 +610,44 @@ class ToolCardTop implements Component {
 		const target = Math.max(0, Math.floor(width));
 		if (target === 0) return [];
 		const running = this.row !== undefined && cardAwaitingResult(this.row);
-		return floatRows(this.tone, this.theme, target, (inner) => ({
+		return this.rows.render(target, running, () => floatRows(this.tone, this.theme, target, (inner) => ({
 			head: cardTopRows({ title: this.header(), glyph: this.glyph, body: [], tone: this.tone }, this.theme, inner, this.hint),
 			body: running ? [cardRunningLine(this.tone, this.theme, inner)] : undefined,
 			bottom: running ? cardBottom(this.tone, this.theme, inner) : undefined,
-		}));
+		})));
 	}
 
-	invalidate(): void {}
+	invalidate(): void { this.rows.invalidate(); }
 }
 
 class ToolCardBody implements Component {
+	private readonly rows = new ToolCardRows();
 	private readonly inner: () => Component;
 	private readonly tone: ToolTone;
 	private readonly theme: CardTheme;
 
-	constructor(inner: () => Component, tone: ToolTone, theme: CardTheme) {
+	private readonly cacheable: boolean;
+
+	constructor(inner: () => Component, tone: ToolTone, theme: CardTheme, cacheable = true) {
 		this.inner = inner;
 		this.tone = tone;
 		this.theme = theme;
+		this.cacheable = cacheable;
 	}
 
 	/** Renders the inner component between the card sides and closes the frame, even when the result has no rows. */
 	render(width: number): string[] {
 		const target = Math.max(0, Math.floor(width));
 		if (target === 0) return [];
-		return floatRows(this.tone, this.theme, target, (inner) => ({
+		const build = () => floatRows(this.tone, this.theme, target, (inner) => ({
 			body: this.inner().render(cardInnerWidth(inner)).map((line) => cardLine(line.trimEnd(), this.tone, this.theme, inner)),
 			bottom: cardBottom(this.tone, this.theme, inner),
 			afterHeading: true,
 		}));
+		return this.cacheable ? this.rows.render(target, false, build) : build();
 	}
 
-	invalidate(): void {
-		// Content is rebuilt with the current theme at render time.
-	}
+	invalidate(): void { this.rows.invalidate(); }
 }
 
 function shouldRenderPreviewTail(
@@ -734,7 +757,7 @@ export function createQuietToolRenderer(
 				return renderGentleAiResult(safeResult, { expanded: options.expanded, isPartial: options.isPartial, isError }, theme, renderContext ? withElapsedTiming(renderContext as GentleAiRenderContext) : undefined);
 			}
 			const resultTone = toolTone(options.isPartial === true, isError);
-			const carded = (component: () => Component): Component => new ToolCardBody(component, resultTone, theme);
+			const carded = (component: () => Component, cacheable = options.isPartial !== true): Component => new ToolCardBody(component, resultTone, theme, cacheable);
 			if (options.isPartial) {
 				if (options.expanded) return carded(() => new Text(`${theme.fg("warning", partialLabel(toolName, text))}\n${theme.fg("muted", text)}`, 0, 0));
 				const visible = lastOutputLines(text, PREVIEW_LINE_LIMIT);
@@ -749,7 +772,7 @@ export function createQuietToolRenderer(
 					options,
 					theme,
 					sanitizedRenderContext(renderContext) as any,
-				));
+				), false);
 			}
 			let output = formatToolResultOutput(toolName, safeResult, {
 				expanded: options.expanded,
@@ -789,11 +812,24 @@ function registerQuietTool(pi: ExtensionAPI, toolName: RegisteredToolName, resol
 	});
 }
 
-export default function quietTools(pi: ExtensionAPI, resolveOverride: GentleAiDevBinaryOverrideResolver = () => resolveGentleAiDevBinaryOverride()): ReturnType<ExtensionFactory> {
+export default function quietTools(
+	pi: ExtensionAPI,
+	resolveOverride: GentleAiDevBinaryOverrideResolver = () => resolveGentleAiDevBinaryOverride(),
+	codemodeOptOut: Omit<BuiltinCodemodeOptOutOptions, "effectiveExtensions"> = {},
+): ReturnType<ExtensionFactory> {
 	if (!quietToolsEnabled()) return;
 	let elapsedTiming: GentleAiElapsedTimingLedger | undefined;
+	let codemodeOptOutOffered = false;
 	pi.on("session_start", (_event, ctx) => {
 		elapsedTiming = new GentleAiElapsedTimingLedger(ctx.sessionManager, pi);
+		// The compact codemode below displaces Pi's builtin, which makes Pi warn
+		// at startup. Offer the settings opt-out once per process, detached so
+		// the dialog never holds up startup; the offer itself never throws.
+		if (codemodeOptOutOffered) return;
+		codemodeOptOutOffered = true;
+		let effectiveExtensions: unknown;
+		try { effectiveExtensions = pi.getSettings().extensions; } catch { /* Fall back to the settings file alone. */ }
+		void offerBuiltinCodemodeOptOut(ctx, { ...codemodeOptOut, effectiveExtensions });
 	});
 	// Only bash calls that render as gentle-ai cards carry a durable duration;
 	// every other quiet tool keeps its plain renderer and writes no entries.
