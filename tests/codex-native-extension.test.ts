@@ -48,3 +48,25 @@ test("codex-native extension registers provider with Pi and exposes the sol mode
 	const models = registeredProvider.getModels();
 	assert.ok(models.some((m) => m.id === "gpt-6.1-sol"));
 });
+
+test("codex-native provider apiKey.check allows model visibility without opt-in flag", async () => {
+	let registeredProvider: Provider | undefined;
+	const mockPi = {
+		registerProvider(provider: string | Provider) {
+			if (typeof provider !== "string") registeredProvider = provider;
+		},
+	};
+
+	registerCodexNativeExtension(mockPi, {});
+	assert.ok(registeredProvider);
+	assert.ok(registeredProvider.auth?.apiKey?.check);
+
+	// With credential
+	const withCred = await registeredProvider.auth.apiKey.check({
+		ctx: { env: async () => undefined, fileExists: async () => false },
+		credential: { type: "api_key", key: "codex-auth" },
+		signal: new AbortController().signal,
+	});
+	assert.deepEqual(withCred, { source: "Codex auth.json", type: "api_key" });
+});
+

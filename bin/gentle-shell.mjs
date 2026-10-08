@@ -1381,7 +1381,10 @@ async function main() {
 		looseExtensionEntries,
 		passthrough: [...managedHerdrExtensionArgs(home, args), ...args.passthrough],
 		piSubcommand: args.piSubcommand,
-		baseEnv: process.env,
+		baseEnv: {
+			GENTLE_CODEX_NATIVE: process.env.GENTLE_CODEX_NATIVE ?? "1",
+			...process.env,
+		},
 		homedir: homedir(),
 	});
 

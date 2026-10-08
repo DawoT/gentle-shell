@@ -1,6 +1,7 @@
 import { openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type { Model, Provider } from "@earendil-works/pi-ai";
-import { readCodexAuth, type CodexAuth } from "./auth.ts";
+import { existsSync } from "node:fs";
+import { getDefaultCodexAuthPath, readCodexAuth, type CodexAuth } from "./auth.ts";
 import {
 	CODEX_NATIVE_DEFAULT_ORIGIN,
 	CODEX_NATIVE_PROVIDER_ID,
@@ -100,6 +101,12 @@ export function createCodexNativeProvider(
 		auth: {
 			apiKey: {
 				name: "Codex Auth",
+				async check(input) {
+					if (options.authResolver || input?.credential?.key || existsSync(getDefaultCodexAuthPath())) {
+						return { source: "Codex auth.json", type: "api_key" };
+					}
+					return undefined;
+				},
 				async resolve() {
 					try {
 						const auth = resolveAuth();
