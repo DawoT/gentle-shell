@@ -1,19 +1,21 @@
 import { CustomEditor, keyHint, type ExtensionAPI, type ExtensionContext, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import { isHomeOrBroadUserDirectory } from "../lib/bounded-writer-admission.ts";
 import { Editor, decodeKittyPrintable, isKeyRelease, matchesKey, parseKey, truncateToWidth, visibleWidth, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
 import { execFile, spawnSync } from "node:child_process";
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { lstat, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { profilesFilePath, profileRoleEntries, readProfilesFileResult } from "../lib/agent-profiles.ts";
-import { readSessionProfileBinding } from "../lib/session-profile-binding.ts";
-import { resolveProfilePin } from "../lib/agent-profile-pin.ts";
+import { resolveSessionProfile, sessionProfileLabel, sessionProfileModelProfiles } from "../lib/session-profile-freeze.ts";
 import * as os from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildShellHeaderModel, renderShellBar, renderShellBelowInputFloat, renderShellBottomOnlyBar, renderShellHeaderChrome, renderShellSidebarBar, keepNativeWorkingRow, shellEnabled, shellHeaderUsageHit, shellJobsCount, type ShellBarModel, type ShellBarTheme } from "../lib/shell-bar.ts";
-import { CHANGE_STATUS, RootBranchLabels, renderChangesWidget, type ChangedFile, type ChangesModel, type GitRunner, type WorktreeChanges } from "../lib/shell-changes.ts";
+import { CHANGE_STATUS, DIFF_MAX_BYTES, DIFF_MAX_LINES, DIFF_TOO_LARGE, WorktreeChangesTracker, renderChangesWidget, type ChangedFile, type ChangesModel, type FileRevision, type GitRunner, type LineCounter, type WorktreeChanges } from "../lib/shell-changes.ts";
 import { WorktreeChangesView } from "../lib/shell-changes-view.ts";
 import { SessionWorktreeRegistry, resolveSessionWorktree, worktreeGitEnvironment, type WorktreeResolver, type WorktreeIdentity } from "../lib/session-worktree-registry.ts";
 import { CARD_STYLE, CARD_TONE, cardStyle, renderCard, setCardStyle, type Card, type CardTheme } from "../lib/shell-card.ts";
 import { resolveCardStyle, writeCardStyle } from "../lib/card-style-policy.ts";
+import { CARD_CONTENT, resolveCardContent, setCardContent, writeCardContent } from "../lib/card-content-policy.ts";
 import { CommandPalette, commandsKey, type CommandPaletteResult } from "../lib/command-palette.ts";
 import { buildCommandPaletteGroups } from "../lib/command-palette-catalog.ts";
 import { discoverYoloUiAdapter, YOLO_DISPLAY, type YoloDisplay, type YoloUiAdapter } from "../lib/yolo-session-policy.ts";
@@ -29,6 +31,8 @@ import { oddPhaseRegistry } from "../lib/odd-phase.ts";
 import { inferOddPhase } from "../lib/odd-phase-inference.ts";
 import { isInteractiveMode } from "../lib/rpc-host.ts";
 import { gentlePiConfigHome } from "../lib/agent-home.ts";
+import { bundledGentlePiConfigHome } from "../lib/gentle-shell-bundled.ts";
+import { isNanAdaptiveReasoningModel } from "../lib/nan-provider.ts";
 import { resolveAnimationPolicy, writeAnimationPolicy, type AnimationPolicy } from "../lib/animation-policy.ts";
 import { resolveVimPolicy, writeVimPolicy, type VimPolicy } from "../lib/vim-policy.ts";
 import { resolveHistoryCapture, writeHistoryCapturePolicy } from "../lib/history-capture-policy.ts";
@@ -114,7 +118,7 @@ import { accountIdFromToken, CODEX_PROVIDER, CODEX_USAGE_URL, NAN_PROVIDER, NAN_
 import { UsageView } from "../lib/shell-usage-view.ts";
 import { sidebarHeader, sidebarPart, sidebarState, VISUAL_SETTINGS_CHANGED, type SidebarRail } from "../lib/shell-sidebar.ts";
 import { installSidebar, invalidateSidebar, narrowStatusOwner, SIDEBAR_BREAKPOINT, STATUS_OWNER } from "../lib/shell-sidebar-layout.ts";
-import { SessionChanges, SESSION_CHANGE_EVENT } from "../lib/session-changes.ts";
+import { sessionChangeRoots } from "../lib/session-changes.ts";
 import { REVIEW_SIDEBAR_EVENT, isReviewSidebarSnapshot, type ReviewSidebarSnapshot } from "../lib/review-sidebar-state.ts";
 import { JOBS_SIDEBAR_EVENT, JOBS_STATUS_KEY, isJobsSidebarSnapshot, type RunningJobDisplay } from "../lib/jobs-sidebar-state.ts";
 import { installSessionChangeCapture } from "../lib/session-change-capture.ts";
@@ -160,7 +164,10 @@ export interface ShellDeps {
 	now(): number;
 	devBinary(): DevBinaryNotice | undefined;
 	resolveWorktree: WorktreeResolver;
-	gitRunner(cwd: string): GitRunner;
+	/** maxBuffer bounds one diff; status and discovery stay unbounded. */
+	gitRunner(cwd: string, maxBuffer?: number): GitRunner;
+	/** A root Changes may scan: removed worktrees and leftover directories are skipped. */
+	rootExists(root: string): boolean;
 	vimRuntimeVersion?(): string | undefined;
 }
 
@@ -173,7 +180,7 @@ export type ActiveProfileReader = (() => string | undefined) & {
 // Unbound reads retain the global file-identity cache, including atomic replacements.
 // Bound reads are snapshots: no filesystem or Git work is done during a frame.
 export function createActiveProfileReader(env: NodeJS.ProcessEnv = process.env): ActiveProfileReader {
-	const path = profilesFilePath(env.GENTLE_PI_CONFIG_HOME ?? join(os.homedir(), ".pi", "gentle-ai"));
+	const path = profilesFilePath(bundledGentlePiConfigHome(env) ?? env.GENTLE_PI_CONFIG_HOME ?? join(os.homedir(), ".pi", "gentle-ai"));
 	let fingerprint: string | undefined;
 	let name: string | undefined;
 	let bound = false;
@@ -200,23 +207,18 @@ export function createActiveProfileReader(env: NodeJS.ProcessEnv = process.env):
 	const reader = (() => bound ? effective : global()) as ActiveProfileReader;
 	reader.refresh = () => {
 		if (!bound) return false;
-		// gentle-shell#1064 slice 1: a parent-session profile binding outranks
-		// both the pin layers and the global active profile, with the same
-		// "name (scope)" spelling the pin uses. The shared precedence rule lives
-		// in one place: session → p (local pin) → P (repo declaration) → global.
-		const session = sessionId === undefined ? undefined : readSessionProfileBinding(sessionId);
-		if (session !== undefined) {
-			const next = `${session.name} (session)`;
-			const changed = next !== effective;
-			effective = next;
-			return changed;
-		}
-		const pin = identity && cwd ? resolveProfilePin({
+		// gentle-shell#1064: the status shows the profile launches use, through
+		// the same single rule (explicit Enter binding → profile frozen at
+		// startup → live p → P → G only in follow mode), with the existing
+		// spelling: "name (session)", "name (local)", "name (repo)", or the bare
+		// global name.
+		const next = cwd === undefined ? global() : sessionProfileLabel(resolveSessionProfile({
+			sessionId,
 			cwd,
-			configHome: env.GENTLE_PI_CONFIG_HOME ?? join(os.homedir(), ".pi", "gentle-ai"),
-			resolveWorktree: () => identity!,
-		}) : undefined;
-		const next = pin ? `${pin.profile} (${pin.source})` : global();
+			configHome: bundledGentlePiConfigHome(env) ?? env.GENTLE_PI_CONFIG_HOME ?? join(os.homedir(), ".pi", "gentle-ai"),
+			resolveWorktree: () => identity,
+			env,
+		}));
 		const changed = next !== effective;
 		effective = next;
 		return changed;
@@ -243,7 +245,7 @@ function ambientDevBinary(): DevBinaryNotice | undefined {
 	}
 }
 
-const defaultShellDeps: Omit<ShellDeps, "activeProfile"> = { fetch: (input, init) => globalThis.fetch(input, init), now: () => Date.now(), devBinary: ambientDevBinary, resolveWorktree: resolveSessionWorktree, gitRunner: shellGitRunner };
+const defaultShellDeps: Omit<ShellDeps, "activeProfile"> = { fetch: (input, init) => globalThis.fetch(input, init), now: () => Date.now(), devBinary: ambientDevBinary, resolveWorktree: resolveSessionWorktree, gitRunner: (cwd, maxBuffer) => shellGitRunner(cwd, process.env, execFile, maxBuffer), rootExists: (root) => existsSync(join(root, ".git")) };
 
 interface AssistantUsageEntry {
 	type: string;
@@ -309,6 +311,7 @@ export function buildShellBarModel(
 	const home = options.home ?? os.homedir();
 	const { usage, costTotal } = sessionStats(ctx);
 	const model = ctx.model;
+	const adaptiveReasoning = isNanAdaptiveReasoningModel(model);
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
 		.filter(([key]) => options.jobs === undefined || key !== JOBS_STATUS_KEY)
 		.sort(([a], [b]) => a.localeCompare(b))
@@ -320,7 +323,7 @@ export function buildShellBarModel(
 		dirty: options.dirty,
 		sessionName: ctx.sessionManager.getSessionName(),
 		modelId: model?.id ?? "no-model",
-		effort: model?.reasoning ? pi.getThinkingLevel() : undefined,
+		effort: model?.reasoning ? (adaptiveReasoning ? "auto" : pi.getThinkingLevel()) : undefined,
 		contextPercent: usage?.percent ?? null,
 		contextWindow: usage?.contextWindow ?? model?.contextWindow ?? 0,
 		costTotal,
@@ -589,9 +592,10 @@ export class GentlePromptEditor extends CustomEditor {
 			this.pendingIdleClearText = undefined;
 		}
 		// Vim owns its modal keys and paste frames. Ordinary editing retains
-		// native selection before the prompt's existing input chain.
+		// native selection before the prompt's existing input chain, but a
+		// registered extension shortcut still owns its chord (gentle-shell#1565).
 		if (this.vimPolicy === "on") this.handleInputNative(data);
-		else this.selectionEngine.handleInput(data, (d) => this.handleInputNative(d));
+		else this.selectionEngine.handleInput(data, (d) => this.handleInputNative(d), (d) => this.onExtensionShortcut?.(d) === true);
 	}
 
 	private handleInputNative(data: string): void {
@@ -1222,7 +1226,7 @@ const COMMANDS_COMMAND_NAME = "gentle:commands";
 const OVERLAY_HEIGHT_RATIO = 0.8;
 const OVERLAY_MIN_ROWS = 8;
 
-export function shellGitRunner(cwd: string, env: NodeJS.ProcessEnv = process.env, run: typeof execFile = execFile): GitRunner {
+export function shellGitRunner(cwd: string, env: NodeJS.ProcessEnv = process.env, run: typeof execFile = execFile, maxBuffer = Infinity): GitRunner {
 	// Pi exec cannot replace the inherited environment. Use argv directly and
 	// a complete sanitized environment for discovery, status, and lazy diffs.
 	const childEnv = worktreeGitEnvironment(env);
@@ -1235,8 +1239,10 @@ export function shellGitRunner(cwd: string, env: NodeJS.ProcessEnv = process.env
 			timeout: GIT_TIMEOUT_MS,
 			// Pi exec accumulates output without a maxBuffer cap. In particular,
 			// large porcelain inventories must not become partial successful scans.
-			maxBuffer: Infinity,
+			// Only a single diff passes a bound, and is told when it hit it.
+			maxBuffer,
 		}, (error, stdout) => {
+			if ((error as { code?: unknown } | null)?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return resolve({ stdout, code: 1, truncated: true });
 			resolve({ stdout, code: error ? typeof error.code === "number" ? error.code : 1 : 0 });
 		});
 	});
@@ -1245,8 +1251,23 @@ export function shellGitRunner(cwd: string, env: NodeJS.ProcessEnv = process.env
 export async function loadFileDiff(git: GitRunner, file: ChangedFile): Promise<string> {
 	const args = file.status === CHANGE_STATUS.UNTRACKED ? ["diff", "--no-index", "--", "/dev/null", file.path] : ["diff", "HEAD", "--", file.path];
 	const result = await git(args);
+	if (result.truncated || result.stdout.length > DIFF_MAX_BYTES || result.stdout.split("\n", DIFF_MAX_LINES + 2).length > DIFF_MAX_LINES + 1) return DIFF_TOO_LARGE;
 	return result.code === 0 || result.code === 1 ? result.stdout : "";
 }
+
+// Untracked files have no numstat; count their lines without reading past the diff bound.
+const untrackedLines = (root: string): LineCounter => async (path) => {
+	const target = join(root, path);
+	const info = await lstat(target);
+	if (!info.isFile() || info.size > DIFF_MAX_BYTES) return 0;
+	const text = await readFile(target, "utf8");
+	return text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+};
+// Same-count edits still change size or mtime, so an open diff reloads.
+const fileRevision = (root: string): FileRevision => async (path) => {
+	const info = await lstat(join(root, path));
+	return `${info.size}:${info.mtimeMs}`;
+};
 
 export interface ExternalEditorHost {
 	stop(): void;
@@ -1296,48 +1317,39 @@ const USAGE_FETCH_TIMEOUT_DEFAULT_MS = 10_000;
 const usageFetchTimeoutMs = (env: NodeJS.ProcessEnv): number => positiveMs(env.GENTLE_PI_SHELL_USAGE_TIMEOUT_MS, USAGE_FETCH_TIMEOUT_DEFAULT_MS);
 
 function changesFingerprint(model: ChangesModel): string {
-	return [model.notice ?? "", ...model.files.map((file) => `${file.path}:${file.status}:${file.added}:${file.deleted}:${file.diffRevision ?? ""}:${file.countsUnavailable ?? ""}`)].join("|");
+	return model.files.map((file) => `${file.path}:${file.status}:${file.added}:${file.deleted}:${file.diffRevision ?? ""}:${file.countsUnavailable ?? ""}`).join("|");
 }
 
 interface OverlayDeps {
-	loadDiff(root: string, file: ChangedFile): string;
+	loadDiff(root: string, file: ChangedFile): Promise<string>;
 	worktrees(): WorktreeChanges[];
 	refresh(): Promise<ChangesModel>;
 	apply(ctx: ExtensionContext, model: ChangesModel): void;
 	pollMs: number;
-	gitForRoot(root: string): GitRunner;
 }
 
-// Refresh only the captured session model. Never read live files here; the
-// only Git the overlay touches is each root's HEAD, to label its tree.
+// The overlay polls each root's Git state while it is open; diffs load lazily.
 async function showChangesOverlay(ctx: ExtensionContext, deps: OverlayDeps): Promise<void> {
 	let host: ExternalEditorHost | undefined;
 	let view: WorktreeChangesView | undefined;
-	// Session evidence knows roots, not branches; label them while the overlay
-	// is open and repaint when Git answers.
-	const labels = new RootBranchLabels(deps.gitForRoot, () => {
-		view?.update(labels.decorate(deps.worktrees()));
-		host?.requestRender();
-	});
-	const worktrees = () => labels.decorate(deps.worktrees());
 	const refresh = async () => {
 		const latest = await deps.refresh();
-		view?.update(worktrees());
+		view?.update(deps.worktrees());
 		deps.apply(ctx, latest);
 	};
-	const poll = setInterval(() => void refresh(), deps.pollMs);
+	const poll = setInterval(() => void refresh().catch(() => {}), deps.pollMs);
 	poll.unref();
 	try {
 		const chosen = await ctx.ui.custom<{ root: string; file: ChangedFile } | null>(
 			(tui, theme, _keybindings, done) => {
 				const close = withOverlayRepaint(tui, done);
 				host = tui;
-				view = new WorktreeChangesView(worktrees(), {
+				view = new WorktreeChangesView(deps.worktrees(), {
 					theme,
 					rows: () => Math.max(OVERLAY_MIN_ROWS, Math.floor(tui.terminal.rows * OVERLAY_HEIGHT_RATIO)),
-					loadDiff: (root, file) => Promise.resolve(deps.loadDiff(root, file)),
+					loadDiff: deps.loadDiff,
 					onOpen: (root, file) => close({ root, file }),
-					onRefresh: () => void refresh(),
+					onRefresh: () => void refresh().catch(() => {}),
 					onClose: () => close(null),
 					requestRender: () => tui.requestRender(),
 				});
@@ -1498,6 +1510,23 @@ async function fetchFromSource(source: UsageSource, apiKey: string | undefined, 
 	}
 }
 
+// Changes refreshes started without awaiting (turn end, worktree registration)
+// are tracked so tests can wait for them instead of guessing a delay.
+const backgroundChangeRefreshes = new Set<Promise<void>>();
+function trackChangeRefresh(refresh: Promise<void>): void {
+	const tracked = refresh.catch(() => {}).finally(() => { backgroundChangeRefreshes.delete(tracked); });
+	backgroundChangeRefreshes.add(tracked);
+}
+
+/** Resolves once every background Changes refresh has finished, or after `timeoutMs` for one that never settles. */
+export async function backgroundChangeRefreshesSettled(timeoutMs = 2000): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); });
+	const settled = (async () => { while (backgroundChangeRefreshes.size > 0) await Promise.all([...backgroundChangeRefreshes]); })();
+	await Promise.race([settled, deadline]);
+	clearTimeout(timer);
+}
+
 export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env, overrides: Partial<ShellDeps> = {}): void {
 	installSessionChangeCapture(pi, env, overrides.resolveWorktree ?? resolveSessionWorktree);
 	if (!shellEnabled(env)) return;
@@ -1528,23 +1557,35 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	// overlapping refreshes of the SAME source (or of builtins) can otherwise
 	// let an older failure settle after a newer success and poison it.
 	const usageGenerations = new Map<string, number>();
+	// NaN accepts a thinking level for DeepSeek V4 Flash, Qwen 3.8 Flash, and MiMo
+	// but manages their depth itself, so the header reports `auto` and the shell says
+	// why once per model instead of repeating it on every level change.
+	const adaptiveReasoningNotices = new Set<string>();
+	const announceAdaptiveReasoning = (ctx: ExtensionContext, model: { provider: string; id: string; name?: string } | undefined) => {
+		if (!ctx.hasUI || !isNanAdaptiveReasoningModel(model)) return;
+		const key = `${model.provider}/${model.id}`;
+		if (adaptiveReasoningNotices.has(key)) return;
+		adaptiveReasoningNotices.add(key);
+		ctx.ui.notify(`${model.name || model.id} chooses its reasoning depth automatically; the selected thinking level is accepted but does not change it.`, "info");
+	};
 	// One spelling of the config home, so the pin resolver, the global profiles
 	// store and the profile reader cannot drift onto two different stores.
 	const usageConfigHome = gentlePiConfigHome(env);
 	const usageFetchTimeout = usageFetchTimeoutMs(env);
-	// The subagent routing in force for this session: a session binding first
-	// (gentle-shell#1064 slice 1), then a repository pin, then the global active
-	// profile. Only the profile's own role entries count; the reserved
-	// orchestrator key is not a route.
+	// The subagent routing in force for this session, through the same single
+	// rule launches use (gentle-shell#1064): explicit Enter binding, then the
+	// profile frozen at startup, then the live p → P → G only in follow mode.
+	// Only the profile's own role entries count; the reserved orchestrator key
+	// is not a route.
 	const activeRoutingModels = (ctx: ExtensionContext): Array<string | undefined> => {
-		const session = readSessionProfileBinding(ctx.sessionManager?.getSessionId?.())?.modelProfiles;
-		if (session) return [...profileRoleEntries(session).map(([, entry]) => entry.model)];
-		const pin = resolveProfilePin({ cwd: ctx.cwd, configHome: usageConfigHome, resolveWorktree: deps.resolveWorktree });
-		const config = pin ? pin.modelProfiles : undefined;
-		if (config) return [...profileRoleEntries(config).map(([, entry]) => entry.model)];
-		const store = readProfilesFileResult(profilesFilePath(usageConfigHome));
-		const active = store.status === "valid" && store.file.active !== undefined ? store.file.profiles[store.file.active] : undefined;
-		return active ? profileRoleEntries(active).map(([, entry]) => entry.model) : [];
+		const config = sessionProfileModelProfiles(resolveSessionProfile({
+			sessionId: ctx.sessionManager?.getSessionId?.(),
+			cwd: ctx.cwd,
+			configHome: usageConfigHome,
+			resolveWorktree: deps.resolveWorktree,
+			env,
+		}));
+		return config ? profileRoleEntries(config).map(([, entry]) => entry.model) : [];
 	};
 	// A bare model id names a provider only when exactly one provider in the
 	// registry carries that id; anything else stays untargeted rather than guessed.
@@ -1739,6 +1780,10 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	// preference fills it at startup and again on every session start.
 	const applyCardStyle = () => setCardStyle(resolveCardStyle(animationOptions).style);
 	applyCardStyle();
+	// The Card content preference rides the same kind of slot: the quiet tool
+	// renderers read it live, so the saved level applies from the first render.
+	const applyCardContent = () => setCardContent(resolveCardContent(animationOptions).content);
+	applyCardContent();
 	const reportVim = (ctx: ExtensionContext, result: ReturnType<typeof resolveVimPolicy>) => {
 		const source = result.source === "default" ? "built-in default" : `global file ${result.globalFile}`;
 		const effective = prompt?.effectiveVimPolicy;
@@ -1761,7 +1806,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		env,
 		gentlePiConfigHome: doubleEscCancelConfigHome,
 	}).policy;
-	let changes: SessionChanges | undefined;
+	let changes: WorktreeChangesTracker | undefined;
 	let registry: SessionWorktreeRegistry | undefined;
 	let currentContext: ExtensionContext | undefined;
 	let review: ReviewSidebarSnapshot | undefined;
@@ -1795,35 +1840,43 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		shown = fingerprint;
 		showChanges(ctx, model, visualSettings.visibility.changes, (width) => groupedChangesOwner(width));
 	};
+	const gitForRoot = (root: string) => deps.gitRunner(root);
+	// Changes is the Git state of the session's roots that still exist: read
+	// at turn end, on panel open and by the panel's poll, never at startup.
+	const changesTracker = (ctx: ExtensionContext) => {
+		const sessionId = ctx.sessionManager.getSessionId();
+		const roots = () => {
+			try { return sessionChangeRoots(sessionId, ctx.sessionManager.getEntries()).filter((root) => deps.rootExists(root) && !isHomeOrBroadUserDirectory(root)); }
+			catch { return []; }
+		};
+		return new WorktreeChangesTracker(gitForRoot(ctx.cwd), gitForRoot, untrackedLines, roots, fileRevision);
+	};
 	const refreshChanges = async (ctx: ExtensionContext) => {
 		const tracker = changes;
 		if (!tracker || !ctx.hasUI || registry?.sessionId !== ctx.sessionManager.getSessionId()) return;
-		tracker.restore(ctx.sessionManager.getEntries());
 		const model = await tracker.refresh();
 		if (changes === tracker) applyChanges(ctx, model);
 	};
-	const unsubscribeWorktrees = pi.events.on(SESSION_CHANGE_EVENT, (data) => {
-		if (!currentContext || !registry || (data as { sessionId?: string } | undefined)?.sessionId !== registry.sessionId) return;
-		const notice = (data as { notice?: string } | undefined)?.notice;
-		if (notice) { if (changes) changes.notice = notice; currentContext.ui.notify(notice, "warning"); }
-		void refreshChanges(currentContext);
-	});
 	pi.registerTool({
 		name: "session_worktree_register",
 		renderShell: "self",
 		label: "Register session worktree",
-		description: "Register a worktree in the same Git clone for session coordination. Registration does not attribute file changes; Changes shows captured write/edit operations only.",
+		description: "Register a worktree in the same Git clone for session coordination. /gentle:changes then also lists that worktree's uncommitted Git changes.",
 		parameters: { type: "object", required: ["path"], additionalProperties: false, properties: { path: { type: "string", description: "Worktree path to include in this session." } } } as never,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			if (!registry || registry.sessionId !== ctx.sessionManager.getSessionId()) throw new Error("No active session worktree registry.");
 			const root = registry.register((params as { path: string }).path, "explicit");
-			await refreshChanges(ctx);
+			trackChangeRefresh(refreshChanges(ctx));
 			return { content: [{ type: "text", text: `Registered session worktree: ${root}` }], details: { root, sessionId: registry.sessionId } };
 		},
 	});
 	pi.on("session_start", async (_event, ctx) => {
 		closeCustomize?.();
 		runningJobs = undefined;
+		adaptiveReasoningNotices.clear();
+		// A restored or default session never emits model_select, so the startup model
+		// announces itself here when it manages its own depth.
+		announceAdaptiveReasoning(ctx, ctx.model);
 		if (review) {
 			review = undefined;
 			redrawReview();
@@ -1835,6 +1888,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		registry = new SessionWorktreeRegistry(pi, ctx.sessionManager, ctx.cwd, deps.resolveWorktree);
 		registry.start();
 		applyCardStyle();
+		applyCardContent();
 		if (!ctx.hasUI) return;
 		visualSettings = resolveVisualSettings(animationOptions).settings;
 		if (!overrides.activeProfile) {
@@ -1848,7 +1902,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			}, 2_000);
 			profilePoll.unref?.();
 		}
-		changes = new SessionChanges(ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());
+		changes = changesTracker(ctx);
 		const tracker = changes;
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			sidebarTui = tui;
@@ -1861,7 +1915,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			// rebuilds the model exactly as the narrow bottom bar does every frame.
 			const footerModel = (): ShellBarModel => ({
 				...buildShellBarModel(pi, ctx, footerData, { dirty: tracker.model.files.length, usage: usage.get(ctx.model?.provider ?? ""), profile: deps.activeProfile(), jobs: runningJobs }),
-				changes: { files: tracker.model.files.length, added: tracker.model.added, deleted: tracker.model.deleted, notice: tracker.model.notice },
+				changes: { files: tracker.model.files.length, added: tracker.model.added, deleted: tracker.model.deleted },
 				review,
 			});
 			// At narrow fullscreen widths only one status row paints: a top header
@@ -1991,26 +2045,33 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		registry = undefined;
 		changes = undefined;
 		currentContext = undefined;
-		unsubscribeWorktrees();
 	});
 	const openChanges = async (ctx: ExtensionContext) => {
 		if (!changes) return;
 		const tracker = changes;
 		const model = await tracker.refresh();
+		if (changes !== tracker) return;
+		applyChanges(ctx, model);
+		// A failed root scan is unknown, never clean: say so whenever one failed.
+		const failed = tracker.failedRoots.length;
+		const roots = tracker.scannedRootCount;
 		if (model.files.length === 0) {
-			ctx.ui.notify("No captured agent changes. Only successful write/edit operations from this session and its subagents are shown; shell changes are not attributed.", "info");
+			if (failed > 0 && failed === roots) ctx.ui.notify(`Could not read Git status for ${failed} ${failed === 1 ? "root" : "roots"}; uncommitted changes are unknown.`, "error");
+			else if (failed > 0) ctx.ui.notify(`No uncommitted changes in the roots Git could read; Git status failed for ${failed} of ${roots} roots.`, "warning");
+			else ctx.ui.notify("No uncommitted changes in this session's repository or its subagents' worktrees.", "info");
 			return;
 		}
-		await showChangesOverlay(ctx, { loadDiff: (root, file) => tracker.loadDiff(root, file), worktrees: () => tracker.worktrees, refresh: () => tracker.refresh(), apply: applyChanges, pollMs: changesPollMs(env), gitForRoot: (root) => deps.gitRunner(root) });
+		if (failed > 0) ctx.ui.notify(`Git status failed for ${failed} ${failed === 1 ? "root" : "roots"}; ${failed === 1 ? "its" : "their"} changes are not listed.`, "warning");
+		await showChangesOverlay(ctx, { loadDiff: (root, file) => loadFileDiff(deps.gitRunner(root, DIFF_MAX_BYTES), file), worktrees: () => tracker.worktrees, refresh: () => tracker.refresh(), apply: applyChanges, pollMs: changesPollMs(env) });
 	};
 	pi.registerCommand(CHANGES_COMMAND_NAME, {
-		description: "Browse captured write/edit changes from this agent session and its subagents, excluding preexisting and external edits. Shell changes are not attributed. Press o to open $EDITOR.",
+		description: "Browse uncommitted Git changes (working tree vs HEAD, untracked included) in this session's repository and its subagents' worktrees. Press o to open $EDITOR.",
 		handler: async (_args, ctx) => openChanges(ctx),
 	});
 	const shortcut = changesShortcut(env);
 	if (shortcut) {
 		pi.registerShortcut(shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], {
-			description: "Open captured agent session changes",
+			description: "Open the session's uncommitted Git changes",
 			handler: async (ctx) => openChanges(ctx),
 		});
 	}
@@ -2026,7 +2087,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		});
 	}
 	pi.registerCommand("gentle:customize", {
-		description: "Configure appearance, audio notifications, global Vim prompt editing, session-only YOLO permission and prompt history capture.",
+		description: "Configure appearance, audio notifications, Vim editing, session permissions and global Auto/YOLO defaults, and prompt history capture.",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui" || !ctx.hasUI) {
 				if (ctx.hasUI) ctx.ui.notify("Customization requires an interactive terminal.", "warning");
@@ -2152,6 +2213,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 				},
 			});
 			let yoloDisplay: YoloDisplay = YOLO_DISPLAY.unavailable;
+			let permissionDisplay = "normal", permissionDefault = "normal";
 			let requestYoloRender = () => {};
 			let refreshing: Promise<void> | undefined;
 			let refreshAgain = false;
@@ -2163,9 +2225,16 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 				refreshing = (async () => {
 					while (refreshAgain && !closed) {
 						refreshAgain = false;
-						const next = await adapter?.read().catch(() => YOLO_DISPLAY.unavailable) ?? YOLO_DISPLAY.unavailable;
+						const snapshot = await adapter?.readSnapshot?.().catch(() => undefined);
+						const next = snapshot?.yolo ?? await adapter?.read().catch(() => YOLO_DISPLAY.unavailable) ?? YOLO_DISPLAY.unavailable;
 						if (closed) return;
+						const nextMode = snapshot?.mode ?? "normal";
+						const nextDefault = snapshot?.defaultMode ?? "normal";
+						if (closed) return;
+						if (refreshAgain) continue;
 						yoloDisplay = next;
+						permissionDisplay = nextMode;
+						permissionDefault = nextDefault;
 						requestYoloRender();
 					}
 				})().finally(() => { refreshing = undefined; });
@@ -2182,6 +2251,28 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 						return;
 					}
 					await adapter.toggle();
+					await refreshYolo();
+				},
+			});
+			for (const mode of ["normal", "auto", "yolo"] as const) rows.push({
+				category,
+				label: () => `Session permissions: ${mode.toUpperCase()}${mode === "auto" ? " (beta)" : ""}${permissionDisplay === mode ? " (current)" : ""}`,
+				preview: () => ({ title: "Permissions · current session", sample: mode === "auto"
+					? "independent session-model action checks · extra inference cost · hard safety and native consent remain"
+					: mode === "yolo" ? "ordinary scoped delivery permission · destructive confirmations remain" : "normal checks · overrides an elevated global default" }),
+				action: async () => {
+					if (closed) return;
+					if (!adapter?.setMode || !await adapter.setMode(mode)) ctx.ui.notify("Session mode unchanged — live primary UI unavailable or changed.", "warning");
+					await refreshYolo();
+				},
+			});
+			for (const mode of ["normal", "auto", "yolo"] as const) rows.push({
+				category,
+				label: () => `Default permissions: ${mode.toUpperCase()}${mode === "auto" ? " (beta)" : ""}${permissionDefault === mode ? " (saved)" : ""}`,
+				preview: () => ({ title: "Permissions · user-global default", sample: `New primary sessions start in ${mode.toUpperCase()}; current session stays unchanged. ${mode === "auto" ? "Additional classifier inference uses the session model; usage is separate." : "Independent safety and consent remain."}` }),
+				action: async () => {
+					if (closed) return;
+					if (!adapter?.saveDefault || !await adapter.saveDefault(mode)) ctx.ui.notify("Default unchanged — trusted UI unavailable or preference could not be saved.", "warning");
 					await refreshYolo();
 				},
 			});
@@ -2232,6 +2323,26 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 					requestCustomizeRender?.();
 				},
 				() => ({ title: `Cards · ${style}`, sample: `${cardStylePreview[style]}${resolveCardStyle(home).malformed ? " · malformed or unreadable file" : ""}` }),
+			);
+			// The content level picks between the quiet tools' result previews
+			// (default) and command-only cards (minimal).
+			const cardContentPreview = {
+				[CARD_CONTENT.DEFAULT]: "≡ read a.ts · result previews + counts · bash rows keep pi's native card",
+				[CARD_CONTENT.MINIMAL]: "≡ read a.ts · command only · ctrl+o expands · bash draws as a Gentle card",
+			};
+			for (const content of Object.values(CARD_CONTENT)) add(
+				() => {
+					const current = resolveCardContent(home);
+					return `Card content: ${content}${current.content === content && !current.malformed ? " (current)" : ""}`;
+				},
+				`Card content: ${content}. Quiet tool cards redraw now; bash rows follow on new calls.`,
+				() => {
+					writeCardContent(content, home);
+					setCardContent(content);
+					renderHost?.requestRender();
+					requestCustomizeRender?.();
+				},
+				() => ({ title: `Cards · content ${content}`, sample: `${cardContentPreview[content]}${resolveCardContent(home).malformed ? " · malformed or unreadable file" : ""}` }),
 			);
 			category = "Sections";
 			for (const key of VISUAL_SECTION_KEYS) add(
@@ -2489,7 +2600,14 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		}
 	});
 	pi.on("agent_end", async (_event, ctx) => {
-		await refreshChanges(ctx);
+		// A slow or failing Git never holds the turn end.
+		trackChangeRefresh(refreshChanges(ctx));
 		void refreshUsage(ctx, false);
+	});
+	pi.on("model_select", (event, ctx) => {
+		announceAdaptiveReasoning(ctx, event.model);
+	});
+	pi.on("thinking_level_select", (_event, ctx) => {
+		announceAdaptiveReasoning(ctx, ctx.model);
 	});
 }

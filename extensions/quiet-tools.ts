@@ -12,6 +12,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { resolveGentleAiDevBinaryOverride, type GentleAiDevBinaryOverride } from "../lib/gentle-ai-binary.ts";
+import { CARD_CONTENT, cardContent } from "../lib/card-content-policy.ts";
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { quietToolsEnabled } from "../lib/quiet-tools-config.ts";
 import { registerCompactCodemode } from "../lib/codemode-renderer.ts";
@@ -55,6 +56,11 @@ const COLLAPSED_COUNT_LABELS: Partial<Record<QuietToolName, string>> = {
 	find: "files",
 	ls: "entries",
 };
+
+// Cards that show only the command while the Card content preference is
+// minimal: their results stay one expand key away and never add rows to the
+// transcript view.
+const COMMAND_ONLY_TOOLS: ReadonlySet<QuietToolName> = new Set(["read", "bash", "grep", "find", "ls", "edit", "write"]);
 
 const COLLAPSED_TAIL_LINE_LIMIT = 10;
 const PREVIEW_LINE_LIMIT = 3;
@@ -474,7 +480,9 @@ interface ToolRenderContextLike {
 	lastComponent?: unknown;
 	state?: unknown;
 	cwd?: string;
-	[key: string]: unknown;
+	expanded?: boolean;
+	toolCallId?: string;
+	durationMs?: number;
 }
 
 function formatToolCall(toolName: QuietToolName, args: Record<string, unknown>, theme: ThemeLike): string {
@@ -486,7 +494,9 @@ function formatToolCall(toolName: QuietToolName, args: Record<string, unknown>, 
 		case "bash": {
 			const command = safeText(asString(args.command, "..."));
 			const timeout = typeof args.timeout === "number" ? theme.fg("muted", ` (timeout ${args.timeout}s)`) : "";
-			return `${theme.fg("toolTitle", theme.bold(`bash $ ${command}`))}${timeout}`;
+			// Minimal cards title bash with the bare command; the card glyph supplies the `$` prompt.
+			const title = cardContent() === CARD_CONTENT.MINIMAL ? command : `bash $ ${command}`;
+			return `${theme.fg("toolTitle", theme.bold(title))}${timeout}`;
 		}
 		case "grep": {
 			let text = `${theme.fg("toolTitle", theme.bold("grep"))} ${theme.fg("accent", `/${safeText(asString(args.pattern))}/`)} in ${safeText(shortenPath(args.path) || ".")}`;
@@ -672,11 +682,15 @@ function hasImageContent(result: AgentToolResult<unknown>): boolean {
 	return result.content.some((content) => content.type === "image");
 }
 
-function sanitizedRenderContext(context: ToolRenderContextLike | undefined): ToolRenderContextLike {
+function isRenderArgs(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizedRenderContext(context: (Omit<ToolRenderContextLike, "args"> & { args?: unknown }) | undefined): ToolRenderContextLike {
 	if (!context) return { args: {} };
 	return {
 		...context,
-		args: sanitizedArgs(context.args),
+		args: sanitizedArgs(isRenderArgs(context.args) ? context.args : undefined),
 		cwd: typeof context.cwd === "string" ? safeText(context.cwd) : context.cwd,
 	};
 }
@@ -708,7 +722,7 @@ function gentleAiRenderTransition(
 	return { directResult: false };
 }
 
-/** Rendering-only factory; Bash renderers are not attached to production native Bash. */
+/** Rendering-only factory; the default export attaches the Bash renderers to native Bash through pi.registerToolRenderer, so execution and schema stay pi's. */
 export function createQuietToolRenderer(
 	toolName: QuietToolName,
 	resolveOverride: GentleAiDevBinaryOverrideResolver = () => undefined,
@@ -725,7 +739,7 @@ export function createQuietToolRenderer(
 		renderShell: "self",
 		renderCall(args, theme, context) {
 			const callArgs = args as Record<string, unknown>;
-			const renderContext = sanitizedRenderContext(context as ToolRenderContextLike | undefined);
+			const renderContext = sanitizedRenderContext(context);
 			const operationPath = toolName === "bash"
 				? gentleAiRenderTransition(callArgs, renderContext, commandArguments()).operationPath
 				: undefined;
@@ -741,12 +755,15 @@ export function createQuietToolRenderer(
 		},
 		/** Builds the card component for this render pass; collapsed cards delegate to the wrapped-line cache keyed by the tool result object. */
 		renderResult(result, options, theme, context) {
-			const renderContext = context as ToolRenderContextLike | undefined;
+			const renderContext = context ? sanitizedRenderContext(context) : undefined;
 			markCardResult(renderContext?.state);
 			const cacheKey = typeof result === "object" && result !== null ? result : undefined;
 			const safeResult = sanitizedResult(result);
 			const text = safeText(extractTextContent(safeResult));
-			const isError = renderContext?.isError ?? options.isError ?? false;
+			// Current Pi carries errors on the context. Older renderer callers
+			// supplied them on options; keep that structural fallback for those hosts.
+			const legacyError = "isError" in options && options.isError === true;
+			const isError = renderContext?.isError ?? legacyError;
 			const directResult = toolName === "bash" && gentleAiRenderTransition(
 				renderContext?.args,
 				renderContext,
@@ -758,6 +775,13 @@ export function createQuietToolRenderer(
 			}
 			const resultTone = toolTone(options.isPartial === true, isError);
 			const carded = (component: () => Component, cacheable = options.isPartial !== true): Component => new ToolCardBody(component, resultTone, theme, cacheable);
+			// Under the minimal Card content preference, every quiet tool draws
+			// the command alone while collapsed; the expand key still reveals
+			// the full result. Failures keep their bounded error tail so a red
+			// card always says why. The default preference keeps the previews.
+			if (COMMAND_ONLY_TOOLS.has(toolName) && !options.expanded && !isError && cardContent() === CARD_CONTENT.MINIMAL) {
+				return carded(() => new Text("", 0, 0));
+			}
 			if (options.isPartial) {
 				if (options.expanded) return carded(() => new Text(`${theme.fg("warning", partialLabel(toolName, text))}\n${theme.fg("muted", text)}`, 0, 0));
 				const visible = lastOutputLines(text, PREVIEW_LINE_LIMIT);
@@ -771,7 +795,7 @@ export function createQuietToolRenderer(
 					safeResult,
 					options,
 					theme,
-					sanitizedRenderContext(renderContext) as any,
+					{ ...sanitizedRenderContext(renderContext), lastComponent: undefined } as any,
 				), false);
 			}
 			let output = formatToolResultOutput(toolName, safeResult, {
@@ -847,6 +871,16 @@ export default function quietTools(
 		elapsedTiming ? { ...context, elapsedTiming } : context;
 	for (const toolName of Object.keys(TOOL_CREATORS) as RegisteredToolName[]) {
 		registerQuietTool(pi, toolName, resolveOverride, () => elapsedTiming);
+	}
+	// Native Bash keeps pi's execution and schema; only its drawing becomes a
+	// Gentle card while the Card content preference is minimal, so quiet bash
+	// rows match the other tools. The resolver API is newer than this
+	// package's pinned pi types, so it is probed structurally; hosts without it
+	// — and the default content preference — keep pi's native bash rendering.
+	const host = pi as typeof pi & { registerToolRenderer?: (resolver: (toolName: string, next: () => unknown) => unknown) => void };
+	if (typeof host.registerToolRenderer === "function") {
+		host.registerToolRenderer((toolName, next) =>
+			toolName === "bash" && cardContent() === CARD_CONTENT.MINIMAL ? createQuietToolRenderer("bash", resolveOverride, () => elapsedTiming) : next());
 	}
 	return registerCompactCodemode(pi);
 }

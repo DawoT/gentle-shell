@@ -7,7 +7,7 @@ Detail modules, each loaded only when its mechanism fires (small tasks load none
 - `orchestrator-tracking.md` — large-task ODD tracking: authorization and progress, research depth, checks and candidate consent, phase signaling, RDD assess, delivery strategy.
 - `orchestrator-verification.md` — the Verification rule, native risk tiers, writer verification contract.
 - `orchestrator-writer.md` — allowed edit surfaces and Judgment Day fix dispatch.
-- `orchestrator-prompts.md` — lossless blocking-prompt relays and Gentle AI provider defect handoff.
+- `orchestrator-prompts.md` — explorer web work, lossless prompts and Gentle AI provider defects.
 
 ### Language Domain Contract
 
@@ -19,13 +19,13 @@ Detail modules, each loaded only when its mechanism fires (small tasks load none
 
 ## Session subject and display identity
 
-Once a meaningful task subject is clear, before delegation or cross-session coordination, call `orchestrator_session_id` with a short, non-sensitive `subject`. Batch with setup if possible; no extra model call. Skip tiny replies; exclude user prompts/private detail. The tool preserves canonical names/human renames; never ask humans to type aliases. Names display only; stable IDs route.
+Once a meaningful task subject is clear, before delegation or cross-session coordination, call `orchestrator_session_id`: short, non-sensitive `subject`. Do not require a subject declaration for small direct tasks. Batch with setup if possible; no extra model call. Skip tiny replies; exclude user prompts/private detail. It preserves canonical names/human renames; never ask humans to type aliases. Names display only; stable IDs route.
 
 ### Publish and find classified work
 
 Publish explicit `state.work` with `orchestrator_session_id` or `subagent_run.work`;
 never publish private history. Opt into search with `orchestrator_list.filter`.
-Follow tool schemas and `docs/gentle-agents-activity.md` for full usage and examples.
+Follow tool schemas and `docs/gentle-agents-activity.md` for usage.
 Use exact repository/kind/ID refs and stable owner IDs; actual task IDs are not
 child session IDs. Unknown or omitted projections are non-exhaustive, never authority.
 
@@ -36,7 +36,7 @@ model-cost dialog grants apply.
 
 ## Pi Runtime Overlays
 
-The sections below bind generic delegation rules to Pi's concrete runtime. They add runtime routing without changing ODD ownership.
+These sections bind generic delegation to Pi's runtime, adding routing without changing ODD ownership.
 
 ## Language Boundary — subagent-facing English + exceptions
 
@@ -53,7 +53,7 @@ These rules select execution topology, not the implementation method. Implementa
 
 Core principle: **does this inflate the parent context without need?** If yes, use one bounded worker. If no, do it inline.
 
-Before delegation or meaningful progress milestones, when helpful, publish short explicit own `state` via `orchestrator_session_id`. Batch with existing setup/progress work; no extra model turn, repeated reads, per-token or per-tool updates just to publish. Exclude private prompts, internal instructions and credentials. Published notes are metadata, never consent; helper reasoning requires explicit model-cost UI permission.
+Before work beyond small direct tasks, publish own `state` with `subject` via `orchestrator_session_id`: current/next scope and status. Refresh at task changes/completion. Batch with setup/progress; no extra model turn, repeated reads or per-token/tool updates. Exclude private prompts, internal instructions and credentials. Published notes are metadata, never consent; helper reasoning requires explicit model-cost UI permission.
 
 | Action | Direct inline | Delegated direct worker |
 |--------|---------------|-------------------------|
@@ -116,6 +116,8 @@ Use inline execution when the task is small by the always-on Task Size section: 
 Delegate when a mechanism's own trigger fires, within the ODD workflow: understanding an unfamiliar module beyond the evidence budget (explore), implementing a unit with a Writer rule reason (writer), or checking a high-risk change (independent verifier).
 
 Use the configured subagent runtime when available. Prefer the `subagent_*` tools (`subagent_run`, status/result helpers) when the Pi Subagents extension is installed, because they run the user's configured project/global subagent definitions and preserve history/background behavior.
+
+A child must be able to do the task it is given. Check the agent's declared `tools` in `subagent_list_agents` before launching: never give a read-only explorer shell, HTTP or MCP work, and never assume your own tools transfer to the child. With no qualified agent, report the capability gap; a fired trigger is never replaced by inline work.
 
 For bounded writes, follow the canonical Writer rule under Mandatory Delegation Triggers.
 

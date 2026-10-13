@@ -7,13 +7,34 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(fileURLToPath(new URL("..", import.meta.url)));
 
-const requiredPaths = [
+// Browser installation wizard: bootstrap scripts, entry, host and static assets.
+export const installerPaths = Object.freeze([
+  "bin/gentle-shell-install.mjs",
+  "scripts/installer-server.mjs",
+  "scripts/installer-runner.mjs",
+  "scripts/installer-preflight.mjs",
+  "scripts/installer-probes.mjs",
+  "scripts/installer-downloads.mjs",
+  "scripts/main-channel.mjs",
+  "scripts/installer-windows.mjs",
+  "scripts/installer-windows-artifacts.json",
+  "scripts/bundled-wizard.mjs",
+  "scripts/bundled-install.mjs",
+  "scripts/bootstrap.sh",
+  "scripts/bootstrap.cmd",
+  "assets/install-wizard/index.html",
+  "assets/install-wizard/wizard.js",
+  "assets/install-wizard/wizard.css",
+]);
+
+export const requiredPaths = [
   "runtime/facts-parser-worker.mjs",
   "runtime/facts/facts-ts-extractor.mjs",
   "runtime/facts/facts-module-resolver.mjs",
   "lib/facts/parsers/python_facts.py",
   "lib/facts/parsers/go_facts.go",
   "bin/gentle-shell.mjs",
+  ...installerPaths,
   "extensions/gentle-notifications.ts",
   "lib/notification-audio.ts",
   "lib/notification-audio-native.ts",
@@ -69,8 +90,13 @@ const requiredPaths = [
   "lib/child-package-injection.ts",
   "lib/gentle-ai-binary.ts",
   "lib/gentle-shell-launcher.ts",
+  "lib/gentle-shell-bundled.ts",
+  "lib/gentle-shell-startup-update.ts",
+  "lib/gentle-shell-update-panel.ts",
+  "lib/gentle-shell-startup-flow.ts",
   "lib/gentle-shell-resume-hint.ts",
   "lib/native-review-cli.ts",
+  "lib/status-timing-diagnostics.ts",
   "lib/provider-contract-bundle.ts",
   "lib/review-host-relay.ts",
   "lib/review-integration-v2.ts",
@@ -91,8 +117,14 @@ const requiredPaths = [
 	"runtime/child-package-injection.mjs",
 	"runtime/gentle-ai-binary.mjs",
 	"runtime/gentle-shell-launcher.mjs",
+	"runtime/gentle-shell-bundled.mjs",
+	"runtime/gentle-shell-startup-update.mjs",
+	"runtime/gentle-shell-update-panel.mjs",
+	"runtime/gentle-shell-startup-flow.mjs",
 	"runtime/gentle-shell-resume-hint.mjs",
+	"runtime/gentle-shell-uninstall.mjs",
 	"runtime/native-review-cli.mjs",
+	"runtime/status-timing-diagnostics.mjs",
 	"runtime/review-integration-v2.mjs",
 	"runtime/review-risk-assessment.mjs",
 	"runtime/review-relay-contract.mjs",
@@ -216,6 +248,14 @@ const contractHashes = {
 
 requiredPaths.push(...Object.keys(contractHashes));
 
+// Required package-relative paths that are missing or are not regular files.
+export function missingRequiredPaths(packageRoot, paths) {
+  return paths.filter((relativePath) => {
+    const absolutePath = join(packageRoot, relativePath);
+    return !existsSync(absolutePath) || !statSync(absolutePath).isFile();
+  });
+}
+
 function listFilesRecursively(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolutePath = join(directory, entry.name);
@@ -331,10 +371,7 @@ async function main() {
     process.exit(1);
   }
 
-  const missing = requiredPaths.filter((relativePath) => {
-    const absolutePath = join(root, relativePath);
-    return !existsSync(absolutePath) || !statSync(absolutePath).isFile();
-  });
+  const missing = missingRequiredPaths(root, requiredPaths);
 
   if (missing.length > 0) {
     console.error("gentle-pi package is missing required Pi resources:");
@@ -375,7 +412,7 @@ async function main() {
   });
 
   if (driftedContracts.length > 0) {
-    console.error("gentle-pi packaged review-integration/v1 and review-integration/v2 contract bytes drifted from the pinned v4.0.0 runtime's vendored Gentle AI contract artifacts:");
+    console.error("gentle-pi packaged review-integration/v1 and review-integration/v2 contract bytes drifted from the pinned v4.1.1 runtime's vendored Gentle AI contract artifacts:");
     for (const drift of driftedContracts) console.error(`- ${drift.relativePath}: expected ${drift.expected}, got ${drift.actual}`);
     process.exit(1);
   }
@@ -420,7 +457,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`gentle-pi package resource check passed (${requiredPaths.length} files; ${Object.keys(contractHashes).length} exact byte-pinned contract artifacts for the v4.0.0 runtime).`);
+  console.log(`gentle-pi package resource check passed (${requiredPaths.length} files; ${Object.keys(contractHashes).length} exact byte-pinned contract artifacts for the v4.1.1 runtime).`);
 }
 
 const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
