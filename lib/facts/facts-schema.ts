@@ -1,6 +1,9 @@
 import { FACTS_DATABASE_VERSION, type FactsDatabase } from "./facts-types.ts";
 
 const SYMBOL_KINDS = new Set(["function", "class", "interface", "typeAlias", "enum", "variable", "constant"]);
+const ENTITY_KINDS = new Set(["api-route", "openapi-schema", "json-schema", "graphql-type", "protobuf-message", "sql-table", "sql-migration"]);
+const ENTITY_RELATION_KINDS = new Set(["consumes", "serves", "validates"]);
+const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -49,6 +52,29 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
         (symbol.docstring !== undefined && typeof symbol.docstring !== "string")) {
         return false;
       }
+    }
+  }
+
+  if (value.entities !== undefined) {
+    if (!Array.isArray(value.entities)) return false;
+    const ids = new Set<string>();
+    for (const entity of value.entities) {
+      if (!isRecord(entity) || !isNonEmptyString(entity.id) || !ENTITY_KINDS.has(entity.kind as string) ||
+        !isNonEmptyString(entity.name) || !isNonEmptyString(entity.path) ||
+        (entity.line !== undefined && (!Number.isSafeInteger(entity.line) || (entity.line as number) < 1)) ||
+        ids.has(entity.id)) return false;
+      ids.add(entity.id);
+    }
+  }
+  if (value.entityRelations !== undefined) {
+    if (!Array.isArray(value.entityRelations)) return false;
+    const edges = new Set<string>();
+    for (const relation of value.entityRelations) {
+      if (!isRecord(relation) || !isNonEmptyString(relation.from) || !isNonEmptyString(relation.to) ||
+        !ENTITY_RELATION_KINDS.has(relation.kind as string)) return false;
+      const key = JSON.stringify([relation.from, relation.to, relation.kind]);
+      if (edges.has(key)) return false;
+      edges.add(key);
     }
   }
 

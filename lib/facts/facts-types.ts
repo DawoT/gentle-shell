@@ -65,6 +65,33 @@ export interface ExecutionReceipts {
   devDependencies: Record<string, string>;
 }
 
+export type EntityKind =
+  | "api-route"
+  | "openapi-schema"
+  | "json-schema"
+  | "graphql-type"
+  | "protobuf-message"
+  | "sql-table"
+  | "sql-migration";
+
+/** A contract entity independent of TypeScript symbols. IDs are stable within a repository. */
+export interface EntityFact {
+  id: string;
+  kind: EntityKind;
+  name: string;
+  path: string;
+  line?: number;
+}
+
+export type EntityRelationKind = "consumes" | "serves" | "validates";
+
+/** Directed contract dependency; endpoints may refer to entities in another indexed file. */
+export interface EntityRelation {
+  from: string;
+  to: string;
+  kind: EntityRelationKind;
+}
+
 export interface FactsDatabase {
   source?: {
     kind: "commit";
@@ -75,6 +102,9 @@ export interface FactsDatabase {
     omitted: Array<{ path: string; reason: "symlink" | "submodule" }>;
   };
   moduleEdges?: FactsModuleEdge[];
+  /** Optional Sprint 6 extension: omitted for legacy databases. */
+  entities?: EntityFact[];
+  entityRelations?: EntityRelation[];
   version: string;
   root: string;
   lastHeadCommit?: string;
