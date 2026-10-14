@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package hermetic.contract.v1;
+
+message UserMessage {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  UserMessage user = 1;
+}

@@ -58,6 +58,16 @@ The index does not use an LLM to generate facts. It records syntax found in sour
 * Detects the package manager from `packageManager` or a lockfile and reports commands declared in `package.json` (e.g. `pnpm test`, `npm run build`, `pnpm run lint`). The indexer does not execute those commands.
 * Includes declared test and build commands in the agent prompt as a starting point for verification.
 
+### 4. Contract and Entity Facts
+* Discovers and indexes contract entities across non-TypeScript files:
+  * **OpenAPI 3.x / Swagger**: Extracts `api-route` endpoints and `openapi-schema` objects, with `serves` dependency edges between routes and schemas.
+  * **JSON Schema**: Extracts `json-schema` definitions and `$defs`.
+  * **GraphQL SDL**: Extracts `graphql-type` declarations (`type`, `interface`, `union`, `input`, `enum`, `scalar`).
+  * **Protobuf 3**: Extracts `protobuf-message` declarations.
+  * **SQL**: Extracts `sql-table` definitions from DDL statements and `sql-migration` entities.
+* **Bounded & Hermetic**: Adheres to strict byte limits (maximum 1 MiB per contract file).
+* **Contract Impact & Layered Invalidation**: Integrates `consumes`, `serves`, and `validates` relations into dependency traversal and proof invalidation.
+
 ---
 
 ## Agent Tools

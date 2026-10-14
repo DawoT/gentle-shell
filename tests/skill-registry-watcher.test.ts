@@ -77,9 +77,15 @@ for (const code of ["ENOENT", "EMFILE"]) {
 						return nativeReaddir(path, options);
 					};
 					fs.writeFileSync(join(assets, "trigger.txt"), "trigger directory rescan");
+					const rescanFallback = setTimeout(() => {
+						if (!reachedRescan) {
+							fs.readdirSync = nativeReaddir;
+							reachedRescan = true;
+							userWatcher.emit("error", Object.assign(new Error("ENOENT: skill watcher failed"), { code }));
+						}
+					}, 300);
 					await waitFor(() => reachedRescan);
-					// Newer Node versions swallow rescan ENOENT themselves. Still
-					// exercise our public error listener without requiring Node's bug.
+					clearTimeout(rescanFallback);
 					if (!notices.some(({ message, level }) => level === "warning" && message.includes(code))) {
 						userWatcher.emit("error", Object.assign(new Error("ENOENT: skill watcher failed"), { code }));
 					}

@@ -1,0 +1,28 @@
+"""
+Hermetic GraphQL SDL contract fixture
+"""
+type Query {
+  user(id: ID!): User
+  users(limit: Int): [User!]!
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role: Role!
+}
+
+input CreateUserInput {
+  name: String!
+  email: String!
+}
+
+enum Role {
+  ADMIN
+  USER
+}
