@@ -11,20 +11,24 @@ export function registerFactsCommit(pi: ExtensionAPI): void {
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["revision"],
       properties: {
         revision: { type: "string", minLength: 1, maxLength: 1024, description: "Local Git commit ID, tag or revision to resolve once." },
+        ref: { type: "string", minLength: 1, maxLength: 1024, description: "Alias for revision (e.g. HEAD, commit hash, tag)." },
         name: { type: "string", minLength: 1, maxLength: 1024, description: "Optional exact symbol name (case-insensitive)." },
         offset: paginationProperties.offset,
         limit: paginationProperties.limit,
       },
     },
     execute: async (_id: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+      const rev = params.revision ?? params.ref;
+      if (!rev || typeof rev !== "string") {
+        throw new Error("Local Git revision is required");
+      }
       if (params.name !== undefined && (typeof params.name !== "string" || !params.name || params.name.length > 1024)) {
         throw new Error("Invalid committed symbol name");
       }
       pageFacts([], params, (row: string) => row);
-      const result = await indexFactsCommit(ctx.cwd, params.revision, signal);
+      const result = await indexFactsCommit(ctx.cwd, rev, signal);
       const comparison = await compareCommitToWorkingTree(ctx.cwd, result.commit, signal);
       const synchronization = comparison.outcome === "match"
         ? "Committed facts match the current working tree (HEAD, clean)."

@@ -16,7 +16,7 @@ S4: "S6.4 Fixtures herméticos: Pruebas de propiedades e idempotencia sobre cont
 ## Tasks
 
 - [x] T1 — S1 — Inline — Implement additive EntityFact model and persistence compatibility; commit: `feat(facts): add compatible contract entity types`. RED 1/3, GREEN 3/3, regression and typecheck exit 0.
-- [ ] T2 — S2 — Inline — Implement bounded contract parsers with RED/GREEN tests; commit: pending.
+- [x] T2 — S2 — Inline — Implement bounded contract parsers with RED/GREEN tests; commit: `feat(facts): add bounded contract entity parsers`. RED 1/5, GREEN 5/5, regression and typecheck exit 0.
 - [ ] T3 — S3 — Inline — Integrate relation-aware contract impact with layered invalidation and public query; commit: pending.
 - [ ] T4 — S4 — Inline — Add hermetic contract fixtures, property and idempotence tests, docs and end-to-end verification; commit: pending.
 
