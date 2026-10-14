@@ -31,6 +31,29 @@ function inventory(database: FactsDatabase) {
       unresolvedImports++;
     }
   }
+  const entities = database.entities ?? [];
+  const entityRelations = database.entityRelations ?? [];
+  if (entities.length > 50_000 || entityRelations.length > 100_000) throw new Error("Facts impact inventory limit exceeded");
+  const entityMap = new Map<string, (typeof entities)[number]>();
+  for (const entity of entities) {
+    entityMap.set(entity.id, entity);
+  }
+  for (const rel of entityRelations) {
+    const fromEntity = entityMap.get(rel.from);
+    const toEntity = entityMap.get(rel.to);
+    if (fromEntity && toEntity) {
+      resolvedImports++;
+      if (fromEntity.path !== toEntity.path) {
+        const importers = reverse.get(toEntity.path) ?? new Set<string>();
+        importers.add(fromEntity.path);
+        reverse.set(toEntity.path, importers);
+      }
+      const signature = JSON.stringify([rel.kind, rel.from, rel.to]);
+      const list = signatures.get(fromEntity.path) ?? [];
+      list.push(signature);
+      signatures.set(fromEntity.path, list);
+    }
+  }
   return {
     reverse,
     signatures: new Map([...signatures].map(([path, values]) => [path, JSON.stringify([...new Set(values)].sort())])),

@@ -5,7 +5,8 @@ import { calculateFactsDelta, computeGitBlobSha, scanGitWorkspace } from "./fact
 import { extractExecutionReceipts } from "./facts-receipts-extractor.ts";
 import { FactsStore } from "./facts-store.ts";
 import { extractSourceFacts, factsLanguage } from "./facts-languages.ts";
-import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact } from "./facts-types.ts";
+import { isContractFile, parseContractFacts } from "./facts-contract-parser.ts";
+import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact, type EntityFact, type EntityRelation, type EntityKind, type EntityRelationKind } from "./facts-types.ts";
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
 import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapshot } from "./facts-phase-metrics.ts";
 import { WorkspaceEpoch, type WorkspaceDirtyReason } from "./facts-workspace-epoch.ts";
@@ -259,9 +260,10 @@ export class FactsService {
 
   private async syncSnapshot(signal: AbortSignal | undefined): Promise<SyncResult | null> {
     signal?.throwIfAborted();
+    const isCandidate = (path: string) => factsLanguage(path) !== undefined || isContractFile(path);
     this.phase = "git_scan";
     const scan = await this.timePhase("git_scan", () =>
-      scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined));
+      scanGitWorkspace(this.workspaceRoot, signal, isCandidate));
 
     this.phase = "cache_load";
     // The lock serializes writers; reload their last publication before diffing.
@@ -290,6 +292,16 @@ export class FactsService {
     // 1. Purge deleted files
     for (const delPath of delta.deleted) {
       delete db.files[delPath];
+      if (db.entities) {
+        db.entities = db.entities.filter((e) => e.path !== delPath);
+      }
+      if (db.entityRelations) {
+        db.entityRelations = db.entityRelations.filter((r) => {
+          const fromEntity = db.entities?.find((e) => e.id === r.from);
+          const toEntity = db.entities?.find((e) => e.id === r.to);
+          return fromEntity && toEntity;
+        });
+      }
     }
 
     // 2. Index added and modified files
@@ -300,7 +312,7 @@ export class FactsService {
 
     await this.timePhase("source_index", async () => {
       for (const relPath of toIndex) {
-        if (!factsLanguage(relPath)) continue;
+        if (!isCandidate(relPath)) continue;
 
         const entry = scan.files.get(relPath);
         if (!entry || entry.status === "deleted") continue;
@@ -312,9 +324,28 @@ export class FactsService {
           if (indexedBytes > MAX_INDEX_BYTES) {
             throw new FactsLimitError(`Facts workspace byte limit (${MAX_INDEX_BYTES}) exceeded`);
           }
-          const facts = await extractSourceFacts(relPath, content.toString("utf8"), computeGitBlobSha(content), signal);
-          db.files[relPath] = facts;
-          indexedCount++;
+          if (factsLanguage(relPath)) {
+            const facts = await extractSourceFacts(relPath, content.toString("utf8"), computeGitBlobSha(content), signal);
+            db.files[relPath] = facts;
+            indexedCount++;
+          } else if (isContractFile(relPath)) {
+            const contract = parseContractFacts(relPath, content);
+            db.files[relPath] = {
+              path: relPath,
+              sha: computeGitBlobSha(content),
+              symbols: [],
+              imports: [],
+              exports: [],
+              sourceBytes: content.length,
+            };
+            db.entities = [...(db.entities ?? []).filter((e) => e.path !== relPath), ...contract.entities];
+            const incomingIds = new Set(contract.entities.map((e) => e.id));
+            db.entityRelations = [
+              ...(db.entityRelations ?? []).filter((r) => !incomingIds.has(r.from)),
+              ...contract.entityRelations,
+            ];
+            indexedCount++;
+          }
         } catch (cause) {
           signal?.throwIfAborted();
           if (cause instanceof FactsLimitError || (cause instanceof Error && cause.name === "FactsParserError")) throw cause;
@@ -345,7 +376,7 @@ export class FactsService {
     this.phase = "snapshot_validation";
     this.validationRevision = this.epoch?.revision;
     const validated = await this.timePhase("snapshot_validation", async (): Promise<boolean> => {
-      const observed = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
+      const observed = await scanGitWorkspace(this.workspaceRoot, signal, isCandidate);
       const candidateHashes = new Map(Object.entries(db.files).map(([path, facts]) => [path, facts.sha]));
       const drift = calculateFactsDelta(candidateHashes, observed.files);
       let validationBytes = 0;
@@ -402,6 +433,30 @@ export class FactsService {
       if (!this.db) return [];
       if (this.queryIndexDisabled) return querySymbolsLinear(this.db, query);
       return querySymbolsWithIndex(this.queryIndexFor(), query);
+    });
+  }
+
+  queryEntities(query: { name?: string; path?: string; kind?: EntityKind } = {}): EntityFact[] {
+    return this.timeSyncPhase("query_lookup", () => {
+      const entities = this.db?.entities ?? [];
+      return entities.filter((entity) => {
+        if (query.name !== undefined && entity.name.toLowerCase() !== query.name.toLowerCase()) return false;
+        if (query.path !== undefined && entity.path !== query.path) return false;
+        if (query.kind !== undefined && entity.kind !== query.kind) return false;
+        return true;
+      });
+    });
+  }
+
+  queryEntityRelations(query: { from?: string; to?: string; kind?: EntityRelationKind } = {}): EntityRelation[] {
+    return this.timeSyncPhase("query_lookup", () => {
+      const relations = this.db?.entityRelations ?? [];
+      return relations.filter((rel) => {
+        if (query.from !== undefined && rel.from !== query.from) return false;
+        if (query.to !== undefined && rel.to !== query.to) return false;
+        if (query.kind !== undefined && rel.kind !== query.kind) return false;
+        return true;
+      });
     });
   }
 
