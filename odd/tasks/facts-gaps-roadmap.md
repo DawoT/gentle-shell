@@ -211,7 +211,7 @@ byte-identical; no protocol schema changes.
   test files, per-test coverage via Facts + recorded coverage, live minimum
   set selection in pnpm test (harness proofs are stage-level today; this
   activates the real saving: 980 of 1000 tests reused, 20 executed).
-- [ ] S7.4 Conservatism tuning: compare predicted vs actual invalidation on
+- [x] S7.4 Conservatism tuning: compare predicted vs actual invalidation on
   repeated runs; measure mapping precision/recall and tune the confidence
   threshold. Target: false-reuse rate = 0.
 
@@ -658,3 +658,22 @@ directly on main.
 - Live measurement after the fix (2 drifted test files, clean tree):
   full GENTLE_PROOFS suite run in 7s, all three stages PASS, ~368 of 370
   test files reused per-file — the roadmap's reuse pattern working live.
+
+### 2026-10-15 — S7.4 conservatism tuning executed (commit 19efcd99b)
+
+- Measurement cycles (GENTLE_PROOFS, real repo): clean re-run 0 incidents
+  (~367/370 reused); covered-file mutation -> the 8 tests covering it
+  re-executed via exact-input (recall 100%), 0 incidents; revert cycle
+  OBSERVED a stage-level false-reuse — the stage proof from the mutated
+  cycle was reused although the underlying content differed.
+- Root cause: computeTreeDigest hashed the git status STRING, so two
+  different dirty contents behind the same status signature shared a
+  digest. RED->GREEN: same-status different-content now moves the digest
+  (tracked diff content hashed); live re-measurement of the exact
+  scenario re-executes the covering tests granularly, 0 incidents.
+- The granular runner gained a post-execution false-reuse audit with
+  self-healing: reused proofs are re-digested against current content,
+  drift emits FALSE-REUSE and re-executes the affected file with a fresh
+  proof before the single stage proof consolidates. Incidents measured 0
+  across clean, mutation, revert and same-status-different-content
+  cycles. Sprint 7 CLOSED: S7.1-S7.4 complete.
