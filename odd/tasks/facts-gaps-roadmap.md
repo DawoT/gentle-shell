@@ -648,3 +648,13 @@ directly on main.
 - Known MVP limits: first per-file proof build costs one subprocess per
   test file; files Facts does not index count as unknown reachability
   and force the full stage (intentional).
+- Follow-up fix (commit 68a50d15d): the writer's blanket fallback (prior
+  per-file proofs + no explicit changed files -> full stage) defeated the
+  saving for the normal post-commit flow; live dogfooding reproduced it.
+  Per-file coverage snapshots are the committed-change detector now
+  (digest drift); RED/GREEN for the committed-change scenario; runner
+  spawn tests pin default-path env (GENTLE_PROOFS leaked into children
+  sharing the repo ledger).
+- Live measurement after the fix (2 drifted test files, clean tree):
+  full GENTLE_PROOFS suite run in 7s, all three stages PASS, ~368 of 370
+  test files reused per-file — the roadmap's reuse pattern working live.
