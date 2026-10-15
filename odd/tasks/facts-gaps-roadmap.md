@@ -704,3 +704,15 @@ directly on main.
   GREEN proofs 59/59, facts 370/370, typecheck 0, live chain query ->
   prefix -> full status on the real ledger. S8.2 (suite proof
   composition) remains pending.
+- Live gate audit (post-restart, commit 6610fb2c9): the S8.1 gate
+  requires every response to state the exact validity/staleness reason;
+  dogfooding found passed proofs printed no validity explanation. Fixed:
+  statusText now states validity per record (passed = reusable while
+  inputsDigest matches; other statuses = not reusable with the stored
+  reason). Live operator invalidation of a real per-file proof showed
+  invalidated + exact reason + allowed transitions: none, and the next
+  GENTLE_PROOFS run self-healed (affected file re-executed with a fresh
+  passed proof, 0 false-reuse incidents, all stages PASS). Proofs 60/60.
+  Remaining known limitation (documented): the smallest
+  re-verification command is not stored (secrets policy); responses
+  guide re-verification by inputs digest.
