@@ -221,7 +221,7 @@ coverage is absent.
 
 ### Sprint 8 — Proofs for agents + composition (GF-P3-001 + GF-P3-002; GF-P3-003 optional) — ~1 week
 
-- [ ] S8.1 Agent proof tools: proof_status, proof_query, proof_why_valid,
+- [x] S8.1 Agent proof tools: proof_status, proof_query, proof_why_valid,
   proof_why_stale, proof_minimum_verification, proof_invalidate as Pi/MCP
   tools — every response must state the exact fingerprint, age, confidence
   class, inputs and the exact validity/staleness reason, with the smallest
@@ -677,3 +677,30 @@ directly on main.
   proof before the single stage proof consolidates. Incidents measured 0
   across clean, mutation, revert and same-status-different-content
   cycles. Sprint 7 CLOSED: S7.1-S7.4 complete.
+
+### 2026-10-15 — S8.1 agent proof tools executed (commit 4c6c706bb)
+
+- Explorer agent unavailable (two failed launches); exploration performed
+  inline over the Facts MCP pattern and the ProofLedger API.
+- MVP consolidates the six roadmap tools into three MCP tools over stdio
+  (bin/gentle-proofs-mcp.mjs, lib/proofs/proof-mcp-server.ts):
+  proof_query (bounded listing, newest first, no commands or secrets),
+  proof_status (full fingerprint, age, confidence class, side effects,
+  inputs digest, exact stored lifecycle reason, allowed transitions,
+  re-verification guidance by inputs digest — consolidating
+  proof_why_valid/proof_why_stale/proof_minimum_verification), and
+  proof_invalidate (the only mutating tool; required non-empty reason,
+  full fingerprint required for mutations). ProofLedger gained
+  list(limit) bounded to 200 records, newest first.
+- Live dogfooding against the real .pi/proofs ledger (read-only):
+  tools/list and proof_query returned real proofs from the GENTLE_PROOFS
+  runs, and exposed a chaining gap — proof_query truncated fingerprints
+  to 12 characters while proof_status required all 64. Fixed with an
+  unambiguous-prefix resolution in proof_status (schema {12,64}); the
+  live chain query -> prefix -> status now returns the full explanation
+  from the real ledger.
+- Verification: verifier agent unavailable this session; inline
+  verification — RED (4 server-absent failures + 1 prefix failure),
+  GREEN proofs 59/59, facts 370/370, typecheck 0, live chain query ->
+  prefix -> full status on the real ledger. S8.2 (suite proof
+  composition) remains pending.
