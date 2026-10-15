@@ -560,3 +560,25 @@ directly on main.
   rebuilds the proof-harness stageInput shape; extract a shared helper in
   a later unit and add the verifier's proposed anti-drift regression test
   (fixed stage -> digest equality between harness helper and runner).
+
+### 2026-10-15 — fast-path regression found by the live benchmark gate (fixed)
+
+- Live dogfooding reran scripts/benchmark-facts-real.mjs after session
+  reload; the Sprint 1 autoRead gate failed: second auto sync returned
+  'full' instead of 'fast'. Instrumented probes (temporary debug copy,
+  deleted after diagnosis) isolated eligibility (clean, within budget)
+  and pinned the cause in verifyUnchanged: it scanned with a
+  factsLanguage-only filter while syncSnapshot indexes source + contract
+  files since S6, so every contract file (61 in this repo) became a
+  phantom deletion and the fast path was permanently unavailable here.
+- RED: tests/facts-fast-path.test.ts "fast path stays available when the
+  workspace indexes contract files" failed with actual 'full' vs
+  expected 'fast'; contract-edit case pins that contract files still
+  participate in freshness (never served stale).
+- GREEN: shared isIndexCandidate predicate (factsLanguage || isContractFile)
+  used by both verifyUnchanged and syncSnapshot. Suite 368/368, typecheck
+  0 diagnostics. Benchmark (2 samples, 1221-file corpus, tmpfs): autoRead
+  p50 42.47ms vs warm full sync p50 176.76ms (~4.2x); nameQuery batch p50
+  4.3ms (40 queries), evidenceQuery p50 0.24ms (20 transitive queries),
+  lexicalQuery p50 158.23ms (10 ranked searches, documented
+  O(candidates)); cold 1866.74ms, postEdit 242.92ms. Sprint gates green.
