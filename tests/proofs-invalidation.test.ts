@@ -69,6 +69,61 @@ test("absence of a static path is NOT runtime independence by default", () => {
   assert.match(verdict.reason, /runtime independence/i);
 });
 
+test("S7.2 unreachable change without runtime observation preserves S4.1 invalidation", () => {
+  const verdict = evaluateProofValidity(record(), coverage({ "math.ts": "sha1" }), {
+    changedFiles: ["unrelated.ts"],
+    currentFileDigests: { "math.ts": "sha1", "unrelated.ts": "sha4" },
+    reaches: () => false,
+  });
+  assert.equal(verdict.valid, false);
+  assert.equal(verdict.layer, "static-reachability");
+  assert.equal(
+    verdict.reason,
+    "No static path was found, but absence of a static path is not proof of runtime independence; execute conservatively.",
+  );
+});
+
+test("S7.2 complete runtime observation can justify reuse for an unreachable changed file it did not observe", () => {
+  const verdict = evaluateProofValidity(
+    record({ runtimeObservation: { kind: "v8-coverage", files: ["math.ts"] } }),
+    coverage({ "math.ts": "sha1" }),
+    {
+      changedFiles: ["unrelated.ts"],
+      currentFileDigests: { "math.ts": "sha1", "unrelated.ts": "sha4" },
+      reaches: () => false,
+    },
+  );
+  assert.equal(verdict.valid, true);
+  assert.match(verdict.reason, /runtime observation/i);
+});
+
+test("S7.2 truncated runtime observation is insufficient evidence for unreachable reuse", () => {
+  const verdict = evaluateProofValidity(
+    record({ runtimeObservation: { kind: "v8-coverage", files: ["math.ts"], truncated: true } }),
+    coverage({ "math.ts": "sha1" }),
+    {
+      changedFiles: ["unrelated.ts"],
+      currentFileDigests: { "math.ts": "sha1", "unrelated.ts": "sha4" },
+      reaches: () => false,
+    },
+  );
+  assert.equal(verdict.valid, false);
+});
+
+test("S7.2 runtime observation never overrides an exact-input change", () => {
+  const verdict = evaluateProofValidity(
+    record({ runtimeObservation: { kind: "v8-coverage", files: ["other.ts"] } }),
+    coverage({ "math.ts": "sha1" }),
+    {
+      changedFiles: ["math.ts"],
+      currentFileDigests: { "math.ts": "sha2" },
+      reaches: () => false,
+    },
+  );
+  assert.equal(verdict.valid, false);
+  assert.equal(verdict.layer, "exact-input");
+});
+
 test("explicit unreachable reuse is allowed only for hermetic classes and recorded", () => {
   const verdict = evaluateProofValidity(record(), coverage({ "math.ts": "sha1" }), {
     changedFiles: ["unrelated.ts"],

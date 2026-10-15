@@ -97,6 +97,22 @@ export function evaluateProofValidity(proof: ProofRecord, coverage: ProofCoverag
       changedFiles: notReachable,
     };
   }
+
+  const runtimeObservation = proof.runtimeObservation;
+  if (
+    notReachable.length > 0 &&
+    runtimeObservation?.kind === "v8-coverage" &&
+    runtimeObservation.truncated !== true &&
+    notReachable.every((changed) => !runtimeObservation.files.includes(changed))
+  ) {
+    return {
+      valid: true,
+      layer: "runtime-observation",
+      reason: "Recorded complete runtime observation did not include the changed files, so the proof can be reused.",
+      changedFiles: notReachable,
+    };
+  }
+
   if (notReachable.length > 0) {
     return {
       valid: false,
