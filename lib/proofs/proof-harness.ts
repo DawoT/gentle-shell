@@ -66,13 +66,16 @@ export function createStageProofLayer(options: StageProofLayerOptions) {
 
 /**
  * Cheap deterministic repository tree digest: HEAD commit plus a digest of
- * the working-tree status. Clean tree -> stable digest; any tracked or
- * untracked change moves it.
+ * the working-tree status and the content of tracked modifications. Clean
+ * tree -> stable digest; any tracked or untracked change moves it — including
+ * two different dirty contents behind the same status signature, so a stage
+ * proof can never be reused for content it did not validate.
  */
 export async function computeTreeDigest(root: string): Promise<string> {
-  const [head, status] = await Promise.all([
+  const [head, status, diff] = await Promise.all([
     execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root, maxBuffer: 1024 * 1024 }),
     execFileAsync("git", ["status", "--porcelain"], { cwd: root, maxBuffer: 1024 * 1024 }),
+    execFileAsync("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 32 * 1024 * 1024 }),
   ]);
-  return createHash("sha256").update(`${head.stdout.trim()}\u0000${status.stdout}\u0000`).digest("hex");
+  return createHash("sha256").update(`${head.stdout.trim()}\u0000${status.stdout}\u0000${diff.stdout}\u0000`).digest("hex");
 }

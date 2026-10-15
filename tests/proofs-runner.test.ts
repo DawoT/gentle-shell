@@ -426,6 +426,73 @@ test("committed changes still select granularly through coverage digest drift", 
   }
 });
 
+test("reuse audit detects mid-flight drift and re-executes the affected file", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "9".repeat(64), repoRoot: fx.root },
+    });
+    fx.executions.length = 0;
+    await writeFile(join(fx.root, "tests", "gamma.test.ts"), 'import "../src/gamma.ts";\n');
+    await writeFile(join(fx.root, "src", "gamma.ts"), "export const gamma = true;\n");
+
+    const output: string[] = [];
+    const runStageWithDrift = async (executedStage: { name: string; command: string }) => {
+      const result = await fx.runStageImpl(executedStage);
+      if (executedStage.command.includes("tests/gamma.test.ts")) {
+        await writeFile(join(fx.root, "src", "alpha.ts"), "export const alpha = 'drifted';\n");
+      }
+      return result;
+    };
+
+    await runTestSuite([fx.stage], {
+      runStageImpl: runStageWithDrift,
+      write: (line) => output.push(line),
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "a".repeat(64), repoRoot: fx.root },
+    });
+
+    assert.ok(
+      output.some((line) =>
+        line.includes("FALSE-REUSE [unit-tests:tests/alpha.test.ts] covered src/alpha.ts drifted after reuse"),
+      ),
+    );
+    assert.ok(fx.executions.some((command) => command.includes("tests/gamma.test.ts")));
+    assert.ok(fx.executions.some((command) => command.includes("tests/alpha.test.ts")));
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("reuse audit reports zero incidents without drift", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "b".repeat(64), repoRoot: fx.root },
+    });
+    fx.executions.length = 0;
+    await writeFile(join(fx.root, "tests", "gamma.test.ts"), 'import "../src/gamma.ts";\n');
+    await writeFile(join(fx.root, "src", "gamma.ts"), "export const gamma = true;\n");
+
+    const output: string[] = [];
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: (line) => output.push(line),
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "c".repeat(64), repoRoot: fx.root },
+    });
+
+    assert.ok(output.includes("false-reuse incidents: 0"));
+    assert.equal(fx.executions.length, 1);
+    assert.match(fx.executions[0]!, /tests\/gamma\.test\.ts/);
+    assert.doesNotMatch(fx.executions[0]!, /tests\/alpha\.test\.ts|tests\/beta\.test\.ts|tests\/\*\.test\.ts/);
+  } finally {
+    await fx.cleanup();
+  }
+});
+
 test("unit-test selection falls back to full stage on incomplete coverage", async () => {
   const fx = await perFileStageFixture();
   try {

@@ -290,11 +290,39 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 					if (execution.result.code !== 0 && code === 0) code = execution.result.code;
 				}
 				if (!granularFallback) {
-					const files = [...new Set([...observations.values()].flatMap((observation) => observation.files))].sort();
-					const runtimeObservation = { kind: "v8-coverage", files };
-					await recordStageProof(proofLedger, stage, proofs, code, runtimeObservation);
-					results.push({ name: stage.name, code });
-					continue;
+					let falseReuseIncidents = 0;
+					for (const item of selection.reuse) {
+						const entry = byName.get(item.name);
+						if (!entry) {
+							granularFallback = true;
+							break;
+						}
+						const current = digestCoveredFiles(proofs.repoRoot, Object.keys(entry.coverage.files));
+						const drifted = Object.entries(entry.coverage.files).filter(
+							([coveredFile, previousDigest]) => current[coveredFile] !== previousDigest,
+						);
+						if (drifted.length === 0) continue;
+						for (const [coveredFile] of drifted) {
+							write(`FALSE-REUSE [${stage.name}:${entry.name}] covered ${coveredFile} drifted after reuse`);
+							falseReuseIncidents += 1;
+						}
+						write(`\n=== [${stage.name}:${entry.name}] ${entry.command} ===`);
+						const execution = await runUnitTestFile(stage, entry, runStageImpl, proofs, proofLedger);
+						if (!execution.trustworthy) {
+							granularFallback = true;
+							break;
+						}
+						observations.set(entry.name, execution.runtimeObservation);
+						if (execution.result.code !== 0 && code === 0) code = execution.result.code;
+					}
+					write(`false-reuse incidents: ${falseReuseIncidents}`);
+					if (!granularFallback) {
+						const files = [...new Set([...observations.values()].flatMap((observation) => observation.files))].sort();
+						const runtimeObservation = { kind: "v8-coverage", files };
+						await recordStageProof(proofLedger, stage, proofs, code, runtimeObservation);
+						results.push({ name: stage.name, code });
+						continue;
+					}
 				}
 			}
 		}

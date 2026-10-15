@@ -111,3 +111,21 @@ async function writeFile2(path: string, content: string): Promise<void> {
   const { writeFile } = await import("node:fs/promises");
   await writeFile(path, content);
 }
+
+test("computeTreeDigest distinguishes dirty contents with the same status signature", async () => {
+  const { dir, cleanup } = await gitFixture();
+  try {
+    await writeFile2(join(dir, "source.ts"), "export const value = 1;\n");
+    execFileSync("git", ["add", "."], { cwd: dir });
+    execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
+
+    await writeFile2(join(dir, "source.ts"), "export const value = 2;\n");
+    const first = await computeTreeDigest(dir);
+    await writeFile2(join(dir, "source.ts"), "export const value = 3;\n");
+    const second = await computeTreeDigest(dir);
+    assert.equal(await computeTreeDigest(dir), second, "same dirty content: stable digest");
+    assert.notEqual(second, first, "different dirty content with the same status signature must move the digest");
+  } finally {
+    await cleanup();
+  }
+});
