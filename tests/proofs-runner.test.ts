@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ProofLedger } from "../lib/proofs/proof-ledger.ts";
 import { runSuiteWithProofs } from "../lib/proofs/proof-runner.ts";
 import { runTestSuite } from "../scripts/run-test-suite.mjs";
@@ -266,5 +267,161 @@ test("unknown reachability triggers the conservative fallback across the suite",
     assert.equal(result.green, true);
   } finally {
     await cleanup();
+  }
+});
+
+async function perFileStageFixture() {
+  const root = await mkdtemp(join(tmpdir(), "proofs-per-file-"));
+  const ledgerRoot = join(root, "ledger");
+  const stage = {
+    name: "unit-tests",
+    command: "node --experimental-strip-types --test tests/*.test.ts",
+  };
+  const files = ["alpha", "beta"] as const;
+  await mkdir(join(root, "tests"), { recursive: true });
+  await mkdir(join(root, "src"), { recursive: true });
+  for (const name of files) {
+    await writeFile(join(root, "tests", `${name}.test.ts`), `import \"../src/${name}.ts\";\n`);
+    await writeFile(join(root, "src", `${name}.ts`), `export const ${name} = true;\n`);
+  }
+
+  const executions: string[] = [];
+  const runStageImpl = async (executedStage: { name: string; command: string }) => {
+    executions.push(executedStage.command);
+    const coverageDir = process.env.NODE_V8_COVERAGE;
+    if (coverageDir) {
+      const covered = ["alpha", "beta", "gamma"].filter((name) => executedStage.command.includes(`tests/${name}.test.ts`));
+      const selected = covered.length > 0 ? covered : files;
+      await writeFile(
+        join(coverageDir, `coverage-${executions.length}.json`),
+        JSON.stringify({
+          result: selected.flatMap((name) => [
+            { url: pathToFileURL(join(root, "tests", `${name}.test.ts`)).href },
+            { url: pathToFileURL(join(root, "src", `${name}.ts`)).href },
+          ]),
+        }),
+      );
+    }
+    return { name: executedStage.name, code: 0 };
+  };
+
+  return {
+    root,
+    ledgerRoot,
+    stage,
+    executions,
+    runStageImpl,
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  };
+}
+
+async function runtimeCoverageSets(ledgerRoot: string) {
+  const recordsRoot = join(ledgerRoot, "records");
+  const fingerprints = await readdir(recordsRoot);
+  const sets: string[][] = [];
+  for (const fingerprint of fingerprints) {
+    const current = JSON.parse(await readFile(join(recordsRoot, fingerprint, "current.json"), "utf8"));
+    if (current.runtimeObservation?.kind === "v8-coverage") {
+      sets.push([...current.runtimeObservation.files].sort());
+    }
+  }
+  return sets;
+}
+
+test("run-test-suite enumerates unit-test files into independent selection items", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "1".repeat(64), repoRoot: fx.root },
+    });
+
+    assert.equal(fx.executions.length, 2);
+    assert.deepEqual(
+      fx.executions.map((command) => command.match(/tests\/(alpha|beta)\.test\.ts/)?.[1]).sort(),
+      ["alpha", "beta"],
+    );
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("per-file coverage is isolated and attributed only to that test file", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "2".repeat(64), repoRoot: fx.root },
+    });
+
+    const coverageSets = await runtimeCoverageSets(fx.ledgerRoot);
+    const isolated = coverageSets.filter((files) => files.length === 2);
+    assert.ok(isolated.some((files) => files.join("|") === "src/alpha.ts|tests/alpha.test.ts"));
+    assert.ok(isolated.some((files) => files.join("|") === "src/beta.ts|tests/beta.test.ts"));
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("unit-test stage executes only selected files when selection is trustworthy", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "3".repeat(64), repoRoot: fx.root },
+    });
+    fx.executions.length = 0;
+    await writeFile(join(fx.root, "tests", "gamma.test.ts"), 'import "../src/gamma.ts";\n');
+    await writeFile(join(fx.root, "src", "gamma.ts"), "export const gamma = true;\n");
+
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "4".repeat(64), repoRoot: fx.root },
+    });
+
+    assert.equal(fx.executions.length, 1);
+    assert.match(fx.executions[0]!, /tests\/gamma\.test\.ts/);
+    assert.doesNotMatch(fx.executions[0]!, /tests\/alpha\.test\.ts|tests\/beta\.test\.ts|tests\/\*\.test\.ts/);
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("unit-test selection falls back to full stage on incomplete coverage", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "5".repeat(64), repoRoot: fx.root },
+    });
+    const initialCoverageSets = await runtimeCoverageSets(fx.ledgerRoot);
+    assert.ok(initialCoverageSets.length >= 2, "setup must produce independent per-file coverage before fallback");
+    const recordsRoot = join(fx.ledgerRoot, "records");
+    const fingerprints = await readdir(recordsRoot);
+    for (const fingerprint of fingerprints) {
+      const currentPath = join(recordsRoot, fingerprint, "current.json");
+      const current = JSON.parse(await readFile(currentPath, "utf8"));
+      if (current.runtimeObservation?.kind === "v8-coverage" && current.runtimeObservation.files?.length === 2) {
+        delete current.runtimeObservation;
+        await writeFile(currentPath, JSON.stringify(current));
+        break;
+      }
+    }
+    fx.executions.length = 0;
+
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "6".repeat(64), repoRoot: fx.root },
+    });
+
+    assert.deepEqual(fx.executions, [fx.stage.command]);
+  } finally {
+    await fx.cleanup();
   }
 });
