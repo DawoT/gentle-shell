@@ -201,7 +201,7 @@ byte-identical; no protocol schema changes.
 
 ### Sprint 7 — Learning + runtime observation (GF-P2-002 + layer 4) — ~1-2 weeks
 
-- [ ] S7.1 Coverage capture: proof-aware runner runs record V8/node --test
+- [x] S7.1 Coverage capture: proof-aware runner runs record V8/node --test
   coverage -> test-to-file edges stored as runtime observation attached to
   the proof (never a substitute for the exact fingerprint).
 - [ ] S7.2 Layer-4 activation: runtime observation REFINES the conservative
@@ -538,3 +538,25 @@ directly on main.
   required a TDD fix. facts_query qualified member projection and the
   exhausted-page header from the same-day dogfooding fix are covered by
   the 367-test suite and verified live after session reload.
+
+### 2026-10-15 — S7.1 coverage capture executed (commit follows)
+
+- RED observed (real failure output captured): runner test failed with no
+  runtimeObservation in the published proof (undefined vs
+  {kind:'v8-coverage',files:[...]}) at tests/proofs-runner.test.ts:203;
+  fingerprint-invariance and ledger round-trip REDs captured likewise
+  (tests/proofs-ledger.test.ts:177).
+- GREEN: scripts/run-test-suite.mjs captures NODE_V8_COVERAGE per
+  proof-aware stage; new lib/proofs/coverage-observation.ts normalizes
+  file:// URLs to repo-relative paths (dedup, lexicographic order,
+  node_modules/runner excluded, 65536-byte bound with truncated:true);
+  ProofRecord.runtimeObservation persisted and revalidated in
+  lib/proofs/proof-ledger.ts. proof-fingerprint.ts untouched; coverage is
+  evidence-only and never a fingerprint input (S7.2 layer-4 activation and
+  S7.3 per-test attribution intentionally NOT implemented).
+- Independent verifier: PASS with citations. proofs 42/42, facts 367/367,
+  typecheck 0 diagnostics, surface exactly the 5 authorized files.
+- Recorded debt (non-blocking): scripts/run-test-suite.mjs locally
+  rebuilds the proof-harness stageInput shape; extract a shared helper in
+  a later unit and add the verifier's proposed anti-drift regression test
+  (fixed stage -> digest equality between harness helper and runner).
