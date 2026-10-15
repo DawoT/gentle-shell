@@ -277,3 +277,51 @@ test("searchSymbols is metered and rebuilds with the generation", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("qualified member queries project class methods consistently in both paths", () => {
+  const db: FactsDatabase = { version: FACTS_DATABASE_VERSION, root: "/repo", updatedAt: 0, files: {} };
+  db.files["src/svc.ts"] = {
+    path: "src/svc.ts",
+    sha: "sha-svc",
+    symbols: [
+      {
+        name: "FactsService",
+        kind: "class",
+        signature: "class FactsService {\n  sync(signal?: string): Promise<void>;\n  close(): void;\n}",
+        startLine: 10,
+        endLine: 50,
+        isExported: true,
+      },
+    ],
+    imports: [],
+    exports: [],
+  } as unknown as FileFacts;
+  const edges: FactsModuleEdge[] = [];
+  const index = buildFactsQueryIndex(db, edges, "gen-qualified");
+
+  for (const query of [
+    { name: "FactsService.sync" },
+    { name: "factsservice.SYNC" },
+    { name: "FactsService.sync", file: "src/svc.ts" },
+  ]) {
+    const linear = querySymbolsLinear(db, query);
+    const indexed = querySymbolsWithIndex(index, query);
+    assert.deepEqual(indexed, linear, JSON.stringify(query));
+    assert.equal(linear.length, 1, JSON.stringify(query));
+    assert.equal(linear[0].file, "src/svc.ts");
+    assert.equal(linear[0].symbol.name, "FactsService.sync");
+    assert.equal(linear[0].symbol.kind, "method");
+    assert.match(linear[0].symbol.signature, /sync\(signal\?: string\): Promise<void>/);
+    assert.equal(linear[0].symbol.startLine, 10);
+    assert.equal(linear[0].symbol.endLine, 50);
+  }
+
+  // Existing unqualified queries are untouched.
+  assert.equal(querySymbolsLinear(db, { name: "FactsService" })[0].symbol.kind, "class");
+  assert.equal(querySymbolsWithIndex(index, { name: "FactsService" }).length, 1);
+
+  // Unknown members or owners resolve to nothing.
+  assert.equal(querySymbolsLinear(db, { name: "FactsService.missing" }).length, 0);
+  assert.equal(querySymbolsLinear(db, { name: "Missing.sync" }).length, 0);
+  assert.equal(querySymbolsWithIndex(index, { name: "FactsService.missing" }).length, 0);
+});

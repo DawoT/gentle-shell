@@ -172,7 +172,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
           type: "string",
           minLength: 1,
           maxLength: 1024,
-          description: "Name of the symbol (function, interface, class, type, or variable) to find.",
+          description: "Name of the symbol (function, interface, class, type, or variable) to find. Qualified class members (Class.member) project the member signature; line ranges cover the owning declaration.",
         },
         kind: {
           type: "string",
@@ -238,7 +238,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const result = {
         content: [{
           type: "text" as const,
-          text: `Found ${filtered.length} symbol(s) matching '${queryLabel}':\n\n${page.text}`,
+          text: `Found ${filtered.length} symbol(s) matching '${queryLabel}':\n\n${page.text || `No rows at this offset; ${filtered.length} total match${filtered.length === 1 ? "" : "es"}. Restart with offset=0.`}`,
         }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), found: filtered.length, query: queryLabel, file, ...page.details },
       };

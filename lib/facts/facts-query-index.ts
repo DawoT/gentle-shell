@@ -79,15 +79,60 @@ export function buildFactsQueryIndex(db: FactsDatabase, edges: FactsModuleEdge[]
 // indexed variants; the service used them before the indexes existed.
 // ---------------------------------------------------------------------------
 
-export function querySymbolsLinear(db: FactsDatabase, query: { name?: string; file?: string }): SymbolQueryResult[] {
+const MEMBER_LINE = /^\s*(?:(?:static|async)\s+)*([A-Za-z_$][\w$]*)/;
+
+/**
+ * Projects a class member (method/property/constructor) from an indexed owner
+ * symbol's signature. Query-time only: members are not stored as symbols, so
+ * the projection reuses the owner's line range and export visibility.
+ */
+function projectMemberSymbol(owner: SymbolFact, member: string): SymbolFact | undefined {
+  const memberLower = member.toLowerCase();
+  for (const line of owner.signature.split("\n")) {
+    const match = MEMBER_LINE.exec(line);
+    if (!match || match[1].toLowerCase() !== memberLower) continue;
+    return {
+      name: `${owner.name}.${match[1]}`,
+      kind: "method",
+      signature: line.trim(),
+      startLine: owner.startLine,
+      endLine: owner.endLine,
+      isExported: owner.isExported,
+    };
+  }
+  return undefined;
+}
+
+/** Resolves `Owner.member` names against owner symbols when no exact symbol matched. */
+function qualifiedMemberResults(entries: Iterable<[string, FileFacts]>, name: string): SymbolQueryResult[] {
+  const dot = name.indexOf(".");
+  if (dot <= 0 || dot === name.length - 1) return [];
+  const owner = name.slice(0, dot).toLowerCase();
+  const member = name.slice(dot + 1);
+  if (member.includes(".")) return [];
   const results: SymbolQueryResult[] = [];
-  for (const [file, facts] of Object.entries(db.files)) {
-    if (query.file !== undefined && file !== query.file) continue;
+  for (const [file, facts] of entries) {
+    for (const symbol of facts.symbols) {
+      if (symbol.name.toLowerCase() !== owner) continue;
+      const projected = projectMemberSymbol(symbol, member);
+      if (projected) results.push({ file, symbol: projected });
+    }
+  }
+  return results;
+}
+
+export function querySymbolsLinear(db: FactsDatabase, query: { name?: string; file?: string }): SymbolQueryResult[] {
+  const entries = Object.entries(db.files).filter(([file]) => query.file === undefined || file === query.file);
+  const results: SymbolQueryResult[] = [];
+  for (const [file, facts] of entries) {
     for (const symbol of facts.symbols) {
       if (query.name === undefined || symbol.name.toLowerCase() === query.name.toLowerCase()) {
         results.push({ file, symbol });
       }
     }
+  }
+  if (results.length === 0 && query.name !== undefined) {
+    return qualifiedMemberResults(entries, query.name);
   }
   return results;
 }
@@ -158,10 +203,15 @@ export function querySymbolsWithIndex(index: FactsQueryIndex, query: { name?: st
         results.push({ file: query.file, symbol });
       }
     }
+    if (results.length === 0 && query.name !== undefined) {
+      return qualifiedMemberResults([[query.file, facts]], query.name);
+    }
     return results;
   }
   if (query.name !== undefined) {
-    return [...(index.byLowerName.get(query.name.toLowerCase()) ?? [])];
+    const exact = index.byLowerName.get(query.name.toLowerCase());
+    if (exact !== undefined && exact.length > 0) return [...exact];
+    return qualifiedMemberResults(index.byPath.entries(), query.name);
   }
   const results: SymbolQueryResult[] = [];
   for (const [file, facts] of index.byPath) {

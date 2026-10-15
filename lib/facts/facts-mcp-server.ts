@@ -25,7 +25,7 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
       type: "object",
       properties: {
         file: { type: "string", description: "Repository-relative file path" },
-        name: { type: "string", description: "Exact declaration symbol name" },
+        name: { type: "string", description: "Exact declaration symbol name; Class.member projects the member from the class signature" },
         kind: { type: "string", description: "Optional symbol kind filter" },
         offset: { type: "integer", minimum: 0, default: 0 },
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },

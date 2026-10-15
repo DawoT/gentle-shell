@@ -31,7 +31,8 @@ export type SymbolKind =
   | "typeAlias"
   | "enum"
   | "variable"
-  | "constant";
+  | "constant"
+  | "method";
 
 export interface SymbolFact {
   name: string;

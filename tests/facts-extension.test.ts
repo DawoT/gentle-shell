@@ -830,3 +830,37 @@ test("facts_impact compares pinned commits without reading dirty source as candi
     await cleanup();
   }
 });
+
+test("facts_query resolves qualified class member queries", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, sessionManager: { getSessionId: () => "sess-qualified" } };
+    await pi.emit("session_start", {}, ctx);
+    await writeFile(join(dir, "greeter.ts"), "export class Greeter {\n  greet(name: string): string { return `hi ${name}`; }\n}\n");
+    const result = await pi.getTool("facts_query").execute("call-qualified", { name: "Greeter.greet" }, undefined, undefined, ctx);
+    const text = result.content[0]?.text || "";
+    assert.match(text, /• Greeter\.greet \(method\)/);
+    assert.match(text, /greet\(name: string\): string/);
+    assert.match(text, /greeter\.ts/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("facts_query explains exhausted pages instead of a bare total header", async () => {
+  const { dir, cleanup } = await createFixture();
+  try {
+    const { pi } = createMockPi();
+    gentleFacts(pi as any);
+    const ctx = { cwd: dir, sessionManager: { getSessionId: () => "sess-exhausted" } };
+    await pi.emit("session_start", {}, ctx);
+    const result = await pi.getTool("facts_query").execute("call-exhausted", { file: "math.ts", offset: 5, limit: 10 }, undefined, undefined, ctx);
+    const text = result.content[0]?.text || "";
+    assert.match(text, /Found 1 symbol\(s\)/);
+    assert.match(text, /No rows at this offset/);
+  } finally {
+    await cleanup();
+  }
+});
