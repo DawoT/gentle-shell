@@ -66,7 +66,7 @@ The index does not use an LLM to generate facts. It records syntax found in sour
   * **Protobuf 3**: Extracts `protobuf-message` declarations.
   * **SQL**: Extracts `sql-table` definitions from DDL statements and `sql-migration` entities.
 * **Bounded & Hermetic**: Adheres to strict byte limits (maximum 1 MiB per contract file).
-* **Contract Impact & Layered Invalidation**: Integrates `consumes`, `serves`, and `validates` relations into dependency traversal and proof invalidation.
+* **Contract Impact & Layered Invalidation**: Integrates `consumes`, `serves`, and `validates` relations into dependency traversal and proof invalidation. `FactsService` derives `consumes` and `validates` edges end-to-end from recorded imports of indexed source files into contract files (`consumer:`/`test:` entities; tests validate, other consumers consume). YAML files are contracts only when their content carries an `openapi`/`swagger`/`graphql` marker, so unrelated oversized YAML cannot make a refresh unavailable while genuine oversized contract YAML still fails closed.
 
 ---
 

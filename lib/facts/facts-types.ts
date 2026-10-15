@@ -73,7 +73,9 @@ export type EntityKind =
   | "graphql-type"
   | "protobuf-message"
   | "sql-table"
-  | "sql-migration";
+  | "sql-migration"
+  | "consumer"
+  | "test";
 
 /** A contract entity independent of TypeScript symbols. IDs are stable within a repository. */
 export interface EntityFact {

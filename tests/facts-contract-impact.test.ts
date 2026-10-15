@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { analyzeFactsImpact } from "../lib/facts/facts-impact.ts";
+import { FactsService } from "../lib/facts/facts-service.ts";
 import { FACTS_DATABASE_VERSION, type FactsDatabase, type EntityFact, type EntityRelation } from "../lib/facts/facts-types.ts";
 import { evaluateProofValidity } from "../lib/proofs/proof-invalidation.ts";
 import type { ProofRecord } from "../lib/proofs/proof-ledger.ts";
@@ -151,6 +156,56 @@ test("FactsService indexes contracts and queries entities and relations", async 
     const schemaEntities = service.queryEntities({ name: "Pet" });
     assert.equal(schemaEntities.length, 1);
     assert.equal(schemaEntities[0]?.kind, "openapi-schema");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("FactsService derives consumes and validates relations end-to-end from real imports", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "facts-contract-e2e-"));
+  try {
+    execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+    execFileSync("git", ["config", "user.name", "t"], { cwd: dir });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+    await mkdir(join(dir, "contracts"), { recursive: true });
+    await writeFile(join(dir, "contracts", "pet.schema.json"), JSON.stringify({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Pet",
+      $defs: { Name: { type: "string" } },
+    }));
+    await mkdir(join(dir, "src"), { recursive: true });
+    await writeFile(join(dir, "src", "client.ts"), "import petSchema from '../contracts/pet.schema.json';\nexport const pet = petSchema;\n");
+    await mkdir(join(dir, "test"), { recursive: true });
+    await writeFile(join(dir, "test", "pets.test.ts"), "import petSchema from '../contracts/pet.schema.json';\nimport assert from 'node:assert/strict';\nassert.ok(petSchema);\n");
+    await writeFile(join(dir, ".gitignore"), ".pi/\n");
+    execFileSync("git", ["add", "."], { cwd: dir });
+    execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore" });
+
+    const service = new FactsService(dir);
+    try {
+      await service.sync(undefined, { mode: "full" });
+      const consumes = service.queryEntityRelations({ kind: "consumes" });
+      const validates = service.queryEntityRelations({ kind: "validates" });
+      assert.ok(consumes.some((r) => r.from === "consumer:src/client.ts" && r.to.includes("pet.schema.json")), "client import must derive consumes");
+      assert.ok(validates.some((r) => r.from === "test:test/pets.test.ts" && r.to.includes("pet.schema.json")), "test import must derive validates");
+
+      const before = structuredClone(service.getDatabase());
+      // Same entity set, changed content: derived relations stay stable, so
+      // the consumers must surface through the derived edges (the client and
+      // test keep identical dependency signatures and are not seeds).
+      await writeFile(join(dir, "contracts", "pet.schema.json"), JSON.stringify({
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        title: "Pet",
+        $defs: { Name: { type: "number" } },
+      }));
+      await service.sync(undefined, { mode: "full" });
+      const impact = analyzeFactsImpact(before, service.getDatabase()!);
+      const consumerFiles = impact.consumers.map((c) => c.file);
+      assert.ok(consumerFiles.includes("src/client.ts"), "client must be impacted by the contract change");
+      assert.ok(consumerFiles.includes("test/pets.test.ts"), "test must be impacted by the contract change");
+    } finally {
+      service.close();
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

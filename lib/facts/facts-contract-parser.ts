@@ -180,8 +180,21 @@ function parseSqlFacts(filePath: string, text: string): ParsedContractFacts {
   return { entities, entityRelations: [] };
 }
 
+function isYamlContractMarker(prefix: Buffer): boolean {
+  const text = prefix.toString("utf8").toLowerCase();
+  return text.includes("openapi") || text.includes("swagger") || text.includes("graphql");
+}
+
 export function parseContractFacts(filePath: string, buffer: Buffer): ParsedContractFacts {
   if (buffer.length > MAX_SOURCE_BYTES) {
+    // A YAML file is a contract only if its content says so: an unrelated
+    // oversized YAML (generated CI or deployment config) must not make the
+    // whole Facts refresh unavailable. Contract-marked YAML still fails
+    // closed so a genuine oversized contract surfaces loudly.
+    const lowerPath = filePath.toLowerCase();
+    if ((lowerPath.endsWith(".yaml") || lowerPath.endsWith(".yml")) && !isYamlContractMarker(buffer.subarray(0, 4096))) {
+      return { entities: [], entityRelations: [] };
+    }
     throw new FactsLimitError(`Facts byte limit (${MAX_SOURCE_BYTES}) exceeded: ${filePath}`);
   }
 

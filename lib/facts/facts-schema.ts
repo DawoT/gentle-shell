@@ -1,7 +1,7 @@
 import { FACTS_DATABASE_VERSION, type FactsDatabase } from "./facts-types.ts";
 
 const SYMBOL_KINDS = new Set(["function", "class", "interface", "typeAlias", "enum", "variable", "constant"]);
-const ENTITY_KINDS = new Set(["api-route", "openapi-schema", "json-schema", "graphql-type", "protobuf-message", "sql-table", "sql-migration"]);
+const ENTITY_KINDS = new Set(["api-route", "openapi-schema", "json-schema", "graphql-type", "protobuf-message", "sql-table", "sql-migration", "consumer", "test"]);
 const ENTITY_RELATION_KINDS = new Set(["consumes", "serves", "validates"]);
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 

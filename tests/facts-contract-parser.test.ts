@@ -69,3 +69,13 @@ test("byte limits and unknown extensions fail closed", () => {
   assert.throws(() => parseContractFacts("api/openapi.json", Buffer.alloc(MAX_SOURCE_BYTES + 1)), FactsLimitError);
   assert.throws(() => parse("api/openapi.json", "{invalid"), SyntaxError);
 });
+
+test("oversized YAML only fails closed when its content is a contract", () => {
+  const oversized = Buffer.alloc(MAX_SOURCE_BYTES + 1, 0x61);
+  assert.deepEqual(parseContractFacts("ci/generated-pipeline.yml", oversized), { entities: [], entityRelations: [] });
+  const contractYaml = Buffer.from("openapi: 3.0.0\npaths:\n  /health:\n    get:\n      responses:\n        '200':\n          description: ok\n");
+  assert.throws(
+    () => parseContractFacts("api/openapi-huge.yaml", Buffer.concat([contractYaml, Buffer.alloc(MAX_SOURCE_BYTES)])),
+    FactsLimitError,
+  );
+});

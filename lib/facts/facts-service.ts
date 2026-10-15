@@ -364,6 +364,48 @@ export class FactsService {
       }
     });
 
+    // Contract usage relations (S6.3): derive consumes/validates edges from
+    // recorded imports of indexed source files into contract files. Test
+    // files validate; other consumers consume. Endpoints use derived
+    // consumer/test entities so impact traversal maps them to files.
+    // Previous derivations are rebuilt from scratch on every sync.
+    const contractPaths = new Set(Object.keys(db.files).filter((candidate) => isContractFile(candidate)));
+    const entitiesByPath = new Map<string, EntityFact[]>();
+    for (const entity of db.entities ?? []) {
+      const list = entitiesByPath.get(entity.path) ?? [];
+      list.push(entity);
+      entitiesByPath.set(entity.path, list);
+    }
+    const derivedEntities: EntityFact[] = [];
+    const derivedRelations: EntityRelation[] = [];
+    const derivedEntityIds = new Set<string>();
+    for (const [path, facts] of Object.entries(db.files)) {
+      if (contractPaths.has(path) || facts.imports.length === 0) continue;
+      const isTest = /(^|\/)(tests?|__tests__)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
+      const targets = new Set<string>();
+      for (const specifier of facts.imports) {
+        if (!specifier.startsWith(".")) continue;
+        const resolved = posix.normalize(posix.join(posix.dirname(path), specifier));
+        if (contractPaths.has(resolved)) targets.add(resolved);
+      }
+      for (const target of targets) {
+        const kind: EntityKind = isTest ? "test" : "consumer";
+        const id = `${kind}:${path}`;
+        if (!derivedEntityIds.has(id)) {
+          derivedEntityIds.add(id);
+          derivedEntities.push({ id, kind, name: path.split("/").pop() ?? path, path });
+        }
+        for (const entity of entitiesByPath.get(target) ?? []) {
+          derivedRelations.push({ from: id, to: entity.id, kind: isTest ? "validates" : "consumes" });
+        }
+      }
+    }
+    db.entities = [...(db.entities ?? []).filter((entity) => entity.kind !== "consumer" && entity.kind !== "test"), ...derivedEntities];
+    db.entityRelations = [
+      ...(db.entityRelations ?? []).filter((relation) => !relation.from.startsWith("consumer:") && !relation.from.startsWith("test:")),
+      ...derivedRelations,
+    ];
+
     // 3. Extract execution receipts
     this.phase = "manifest";
     db.receipts = await this.timePhase("manifest", () =>
