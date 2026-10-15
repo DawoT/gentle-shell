@@ -249,12 +249,12 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 			let selection;
 			if (!granularFallback) {
 				const explicitlyChanged = Array.isArray(proofs.changedFiles) ? proofs.changedFiles : [];
-				const hasPriorPerFileProof = [...proofByFingerprint.values()].some(Boolean);
-				if (typeof proofs.reaches === "function" && hasPriorPerFileProof && explicitlyChanged.length === 0) {
-					granularFallback = true;
-				} else {
-					for (const file of explicitlyChanged) changedFiles.add(file);
-				}
+				// Committed changes carry no explicit changed files: the per-file
+				// coverage snapshots are the change detector. Any file a test loaded
+				// is digest-compared against its snapshot; a changed file that no
+				// test loaded cannot affect unit outcomes. Unknown reachability and
+				// selection fallbacks still fail closed inside the selector.
+				for (const file of explicitlyChanged) changedFiles.add(file);
 			}
 			if (!granularFallback) {
 				selection = selectMinimumTestSet({

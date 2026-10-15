@@ -138,7 +138,7 @@ console.log("ENV_PROBE=" + JSON.stringify({
 		{ name: "unit-tests", command: `node "${probePath}"` },
 		{ name: "provider-contract", command: `node "${probePath}"` },
 	]));
-	const childEnv = { ...process.env, ...env, TEST_ENV_SENTINEL: "preserved" };
+	const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env, TEST_ENV_SENTINEL: "preserved" };
 	delete childEnv.GENTLE_PROOFS;
 	const result = spawnSync(process.execPath, [runnerPath, stagesPath], {
 		encoding: "utf8", env: childEnv,

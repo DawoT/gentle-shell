@@ -391,6 +391,41 @@ test("unit-test stage executes only selected files when selection is trustworthy
   }
 });
 
+test("committed changes still select granularly through coverage digest drift", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "7".repeat(64), repoRoot: fx.root },
+    });
+    fx.executions.length = 0;
+    await writeFile(join(fx.root, "tests", "gamma.test.ts"), 'import "../src/gamma.ts";\n');
+    await writeFile(join(fx.root, "src", "gamma.ts"), "export const gamma = false;\n");
+
+    // Real-CLI shape: Facts reachability is provided and the working tree is
+    // clean (the change is committed), so there are no explicit changed
+    // files. The per-file coverage snapshots are the change detector.
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: {
+        ledgerRoot: fx.ledgerRoot,
+        treeDigest: "8".repeat(64),
+        repoRoot: fx.root,
+        changedFiles: [],
+        reaches: (changedFile: string, coveredFile: string) => changedFile === coveredFile,
+      },
+    });
+
+    assert.equal(fx.executions.length, 1);
+    assert.match(fx.executions[0]!, /tests\/gamma\.test\.ts/);
+    assert.doesNotMatch(fx.executions[0]!, /tests\/\*\.test\.ts/);
+  } finally {
+    await fx.cleanup();
+  }
+});
+
 test("unit-test selection falls back to full stage on incomplete coverage", async () => {
   const fx = await perFileStageFixture();
   try {
