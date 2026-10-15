@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProofLedger } from "../lib/proofs/proof-ledger.ts";
 import { runSuiteWithProofs } from "../lib/proofs/proof-runner.ts";
+import { runTestSuite } from "../scripts/run-test-suite.mjs";
 import type { TestInventoryEntry } from "../lib/proofs/proof-invalidation.ts";
 
 const SHA = (n: number) => `sha-${n}`;
@@ -196,6 +197,55 @@ test("a policy-rejected proof surfaces its explanation in the executed entry", a
     assert.match(math?.reason ?? "", /controlled_integration|hermeticity/i);
   } finally {
     await cleanup();
+  }
+});
+
+test("the proof-aware runner publishes deterministic repo-relative V8 coverage", async () => {
+  const root = await mkdtemp(join(tmpdir(), "proofs-v8-coverage-"));
+  const ledgerRoot = join(root, "ledger");
+  try {
+    await mkdir(join(root, "src"), { recursive: true });
+    await mkdir(join(root, "tests"), { recursive: true });
+    await mkdir(join(root, "scripts"), { recursive: true });
+    await mkdir(join(root, "node_modules", "fixture-pkg"), { recursive: true });
+    await writeFile(join(root, "src", "helper.mjs"), "export const answer = 42;\n");
+    await writeFile(join(root, "scripts", "run-test-suite.mjs"), "export const runnerMarker = true;\n");
+    await writeFile(join(root, "node_modules", "fixture-pkg", "index.mjs"), "export const ignored = true;\n");
+    await writeFile(
+      join(root, "tests", "sample.test.mjs"),
+      [
+        'import assert from "node:assert/strict";',
+        'import test from "node:test";',
+        'import { answer as first } from "../src/helper.mjs?first";',
+        'import { answer as second } from "../src/helper.mjs?second";',
+        'import { ignored } from "../node_modules/fixture-pkg/index.mjs";',
+        'import { runnerMarker } from "../scripts/run-test-suite.mjs";',
+        'test("fixture", () => { assert.equal(first + second, 84); assert.equal(ignored, true); assert.equal(runnerMarker, true); });',
+        "",
+      ].join("\n"),
+    );
+
+    const stage = {
+      name: "coverage-stage",
+      command: `env -u NODE_TEST_CONTEXT node --test ${JSON.stringify(join(root, "tests", "sample.test.mjs"))}`,
+    };
+    await runTestSuite([stage], {
+      write: () => {},
+      proofs: { ledgerRoot, treeDigest: "7".repeat(64), repoRoot: root },
+    });
+
+    const recordsRoot = join(ledgerRoot, "records");
+    const fingerprints = (await readdir(recordsRoot)).sort();
+    assert.equal(fingerprints.length, 1);
+    const current = JSON.parse(
+      await readFile(join(recordsRoot, fingerprints[0]!, "current.json"), "utf8"),
+    );
+    assert.deepEqual(current.runtimeObservation, {
+      kind: "v8-coverage",
+      files: ["src/helper.mjs", "tests/sample.test.mjs"],
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

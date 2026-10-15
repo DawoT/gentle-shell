@@ -15,12 +15,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeTreeDigest } from "../lib/proofs/proof-harness.ts";
+import { computeProofFingerprint, proofInputsDigest } from "../lib/proofs/proof-fingerprint.ts";
+import { collectCoverageObservation } from "../lib/proofs/coverage-observation.ts";
 
 export const DEFAULT_STAGES = Object.freeze([
 	{ name: "unit-tests", command: "node --experimental-strip-types --test tests/*.test.ts" },
 	{ name: "provider-contract", command: "pnpm run check:provider-contract" },
 	{ name: "runtime-harness", command: "pnpm run test:harness" },
 ]);
+
+function stageProofInput(stage, treeDigest) {
+	return {
+		command: { argv: [stage.command], cwd: ".", taskKind: "test-suite-stage", selection: [stage.name] },
+		repository: { treeDigest },
+		toolchain: { runtime: "node", runtimeVersion: process.version, os: process.platform, arch: process.arch },
+		environment: { declared: {}, sensitive: {}, hmacKey: "stage-proof-layer" },
+	};
+}
 
 export async function runStage(stage) {
 	// Unit fixtures must not inherit the terminal's Git overrides, child-session
@@ -48,6 +59,7 @@ export async function runStage(stage) {
 export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = runStage, write = (line) => console.log(line), proofs } = {}) {
 	const results = [];
 	let layer;
+	let proofLedger;
 	if (proofs) {
 		// Opt-in proof-aware mode (GENTLE_PROOFS): reuse per-stage proofs while
 		// the tree digest is unchanged. Any failure to load the layer degrades
@@ -57,7 +69,8 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 				import("../lib/proofs/proof-harness.ts"),
 				import("../lib/proofs/proof-ledger.ts"),
 			]);
-			layer = createStageProofLayer({ ledger: new ProofLedger(proofs.ledgerRoot), treeDigest: proofs.treeDigest, agent: proofs.agent });
+			proofLedger = new ProofLedger(proofs.ledgerRoot);
+			layer = createStageProofLayer({ ledger: proofLedger, treeDigest: proofs.treeDigest, agent: proofs.agent });
 		} catch (error) {
 			write(`[proofs] layer unavailable (${error instanceof Error ? error.message : error}); running all stages`);
 		}
@@ -72,9 +85,43 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 			}
 		}
 		write(`\n=== [${stage.name}] ${stage.command} ===`);
-		const result = await runStageImpl(stage);
-		if (layer) {
-			await layer.recordResult(stage, result.code).catch((error) => write(`[proofs] could not record proof for ${stage.name}: ${error.message}`));
+		let result;
+		let runtimeObservation;
+		let coverageDir;
+		const previousCoverageDir = process.env.NODE_V8_COVERAGE;
+		try {
+			if (layer) {
+				coverageDir = mkdtempSync(join(tmpdir(), "gentle-proof-coverage-"));
+				process.env.NODE_V8_COVERAGE = coverageDir;
+			}
+			result = await runStageImpl(stage);
+			if (coverageDir) {
+				runtimeObservation = await collectCoverageObservation(coverageDir, proofs.repoRoot ?? process.cwd());
+			}
+		} finally {
+			if (previousCoverageDir === undefined) delete process.env.NODE_V8_COVERAGE;
+			else process.env.NODE_V8_COVERAGE = previousCoverageDir;
+			if (coverageDir) rmSync(coverageDir, { recursive: true, force: true });
+		}
+		if (layer && proofLedger) {
+			const input = stageProofInput(stage, proofs.treeDigest);
+			const fingerprint = computeProofFingerprint(input);
+			try {
+				const record = await proofLedger.start({
+					fingerprint,
+					inputsDigest: proofInputsDigest(input),
+					confidence: "hermetic_static",
+					sideEffects: "pure_validation",
+					...(proofs.agent ? { agent: proofs.agent } : {}),
+				});
+				await proofLedger.finish(record, {
+					status: result.code === 0 ? "passed" : "failed",
+					exitCode: result.code,
+					...(runtimeObservation ? { runtimeObservation } : {}),
+				});
+			} catch (error) {
+				write(`[proofs] could not record proof for ${stage.name}: ${error.message}`);
+			}
 		}
 		results.push(result);
 	}

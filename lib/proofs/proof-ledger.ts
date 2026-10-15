@@ -1,5 +1,6 @@
 import { mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { RUNTIME_OBSERVATION_MAX_BYTES, type RuntimeCoverageObservation } from "./coverage-observation.ts";
 
 export type ProofStatus = "running" | "passed" | "failed" | "stale" | "expired" | "invalidated" | "aborted";
 export type SideEffectClass = "pure_validation" | "reproducible_build" | "local_mutation" | "external_side_effect";
@@ -20,6 +21,8 @@ export interface ProofRecord {
   durationMs?: number;
   /** Digests only: raw command output is never proof material. */
   outputDigests?: { stdout: string; stderr: string };
+  /** Runtime coverage is attached evidence and never part of the exact fingerprint. */
+  runtimeObservation?: RuntimeCoverageObservation;
   invalidationReason?: string;
 }
 
@@ -95,7 +98,7 @@ export class ProofLedger {
    * current view. The running record lives with the caller (the execution
    * lease); the disk only ever holds published views.
    */
-  async finish(record: ProofRecord, patch: { status: Extract<ProofStatus, "passed" | "failed" | "aborted">; exitCode?: number; durationMs?: number; outputDigests?: { stdout: string; stderr: string } }): Promise<ProofRecord> {
+  async finish(record: ProofRecord, patch: { status: Extract<ProofStatus, "passed" | "failed" | "aborted">; exitCode?: number; durationMs?: number; outputDigests?: { stdout: string; stderr: string }; runtimeObservation?: RuntimeCoverageObservation }): Promise<ProofRecord> {
     const raw = Object.keys(patch).find((key) => RAW_OUTPUT_KEYS.has(key));
     if (raw) throw new Error(`Raw output ("${raw}") is not proof material; store outputDigests only`);
     if (record.proofVersion !== PROOF_VERSION || !FINGERPRINT.test(record.fingerprint) || record.status !== "running") {
@@ -112,6 +115,7 @@ export class ProofLedger {
       ...(patch.exitCode !== undefined ? { exitCode: patch.exitCode } : {}),
       ...(patch.durationMs !== undefined ? { durationMs: patch.durationMs } : {}),
       ...(patch.outputDigests ? { outputDigests: validateOutputDigests(patch.outputDigests) } : {}),
+      ...(patch.runtimeObservation ? { runtimeObservation: validateRuntimeObservation(patch.runtimeObservation) } : {}),
     };
     await publishArtifact(this.root, record.fingerprint, record.seq, JSON.stringify(finished));
     return finished;
@@ -147,6 +151,7 @@ export class ProofLedger {
     }
     const record = JSON.parse(text) as ProofRecord;
     if (record.fingerprint !== fingerprint) throw new Error("Proof record fingerprint mismatch");
+    if (record.runtimeObservation) validateRuntimeObservation(record.runtimeObservation);
     return record;
   }
 
@@ -172,6 +177,25 @@ export class ProofLedger {
       throw error;
     }
   }
+}
+
+function validateRuntimeObservation(value: RuntimeCoverageObservation): RuntimeCoverageObservation {
+  const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  if (bytes > RUNTIME_OBSERVATION_MAX_BYTES) {
+    throw new ProofLifecycleError(`Runtime observation exceeds ${RUNTIME_OBSERVATION_MAX_BYTES} bytes`);
+  }
+  if (value.kind !== "v8-coverage" || !Array.isArray(value.files) || value.files.some((file) => typeof file !== "string")) {
+    throw new ProofLifecycleError("Invalid runtime observation");
+  }
+  const sorted = [...value.files].sort();
+  if (new Set(value.files).size !== value.files.length || sorted.some((file, index) => file !== value.files[index])) {
+    throw new ProofLifecycleError("Runtime observation files must be deduplicated and lexicographically sorted");
+  }
+  return {
+    kind: "v8-coverage",
+    files: [...value.files],
+    ...(value.truncated === true ? { truncated: true as const } : {}),
+  };
 }
 
 function validateOutputDigests(digests: { stdout?: string; stderr?: string }): { stdout: string; stderr: string } {

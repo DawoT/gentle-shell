@@ -147,6 +147,73 @@ test("re-running the same fingerprint publishes a new artifact and current view"
   }
 });
 
+test("runtime coverage never changes the exact proof fingerprint", async () => {
+  const { ledger, cleanup } = await ledgerFixture();
+  try {
+    const input = fingerprintInput();
+    const fingerprint = computeProofFingerprint(input);
+    const start = () => ledger.start({
+      fingerprint,
+      inputsDigest: proofInputsDigest(input),
+      confidence: "hermetic_unit",
+      sideEffects: "pure_validation",
+    });
+
+    const withoutCoverage = await ledger.finish(await start(), { status: "passed", exitCode: 0 });
+    const runtimeObservation = { kind: "v8-coverage", files: ["src/a.ts", "tests/a.test.ts"] } as const;
+    const withCoverage = await ledger.finish(
+      await start(),
+      { status: "passed", exitCode: 0, runtimeObservation } as never,
+    );
+
+    assert.equal(withCoverage.fingerprint, withoutCoverage.fingerprint);
+    assert.equal(withCoverage.fingerprint, fingerprint);
+    assert.deepEqual((withCoverage as typeof withCoverage & { runtimeObservation?: unknown }).runtimeObservation, runtimeObservation);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runtime coverage survives ledger round-trip and rejects payloads above 65536 bytes", async () => {
+  const { ledger, cleanup } = await ledgerFixture();
+  try {
+    const input = fingerprintInput();
+    const fingerprint = computeProofFingerprint(input);
+    const start = () => ledger.start({
+      fingerprint,
+      inputsDigest: proofInputsDigest(input),
+      confidence: "hermetic_unit",
+      sideEffects: "pure_validation",
+    });
+    const runtimeObservation = { kind: "v8-coverage", files: ["src/a.ts", "src/b.ts"] } as const;
+
+    await ledger.finish(
+      await start(),
+      { status: "passed", exitCode: 0, runtimeObservation } as never,
+    );
+    const roundTripped = await ledger.current(fingerprint);
+    assert.deepEqual(
+      (roundTripped as (typeof roundTripped & { runtimeObservation?: unknown })).runtimeObservation,
+      runtimeObservation,
+    );
+
+    const oversizedObservation = {
+      kind: "v8-coverage",
+      files: Array.from({ length: 4096 }, (_, index) => `src/${index.toString().padStart(4, "0")}-${"x".repeat(24)}.ts`),
+    } as const;
+    assert.ok(Buffer.byteLength(JSON.stringify(oversizedObservation), "utf8") > 65_536);
+    await assert.rejects(
+      async () => ledger.finish(
+        await start(),
+        { status: "passed", exitCode: 0, runtimeObservation: oversizedObservation } as never,
+      ),
+      /runtime observation exceeds 65536 bytes/i,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 test("raw command output is rejected as proof material", async () => {
   const { ledger, cleanup } = await ledgerFixture();
   try {
