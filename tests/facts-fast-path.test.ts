@@ -338,3 +338,45 @@ async function createFixture() {
     },
   };
 }
+
+test("fast path stays available when the workspace indexes contract files", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "facts-fast-contract-"));
+  try {
+    execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+    execFileSync("git", ["config", "user.name", "t"], { cwd: dir });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+    await mkdir(join(dir, "contracts"), { recursive: true });
+    await writeFile(join(dir, "src.ts"), "export const value = 1;\n");
+    await writeFile(join(dir, "contracts", "pet.schema.json"), JSON.stringify({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Pet",
+      $defs: { Name: { type: "string" } },
+    }));
+    await writeFile(join(dir, ".gitignore"), ".pi/\n");
+    execFileSync("git", ["add", "."], { cwd: dir });
+    execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore" });
+
+    const service = new FactsService(dir, undefined, { fastPath: true });
+    try {
+      const primed = await service.sync(undefined, { mode: "auto" });
+      assert.equal(primed.path, "full");
+      const read = await service.sync(undefined, { mode: "auto" });
+      assert.equal(read.path, "fast");
+
+      // Contract files participate in freshness: an edit must never be served stale.
+      await writeFile(join(dir, "contracts", "pet.schema.json"), JSON.stringify({
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        title: "Pet",
+        $defs: { Name: { type: "string" }, Age: { type: "integer" } },
+      }));
+      const refreshed = await service.sync(undefined, { mode: "auto" });
+      assert.notEqual(refreshed.path, "fast");
+      assert.equal(refreshed.indexedCount, 1);
+      assert.ok(service.queryEntities({ name: "Pet" }).length >= 1);
+    } finally {
+      service.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

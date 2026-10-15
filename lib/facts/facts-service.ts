@@ -69,6 +69,16 @@ function samePublication(previous: FactsDatabase, candidate: FactsDatabase): boo
   return true;
 }
 
+/**
+ * The fast path and full syncs must agree on which files belong to the
+ * indexed universe: source files plus bounded contract files. A narrower
+ * freshness scan would report phantom deletions and permanently disable
+ * the fast path on repositories containing contract files.
+ */
+function isIndexCandidate(path: string): boolean {
+  return factsLanguage(path) !== undefined || isContractFile(path);
+}
+
 export class FactsService {
   private readonly workspaceRoot: string;
   private readonly store: FactsStore;
@@ -174,7 +184,7 @@ export class FactsService {
   private async verifyUnchanged(signal?: AbortSignal): Promise<boolean> {
     try {
       const started = performance.now();
-      const scan = await scanGitWorkspace(this.workspaceRoot, signal, (path) => factsLanguage(path) !== undefined);
+      const scan = await scanGitWorkspace(this.workspaceRoot, signal, isIndexCandidate);
       this.metrics.record("git_scan", performance.now() - started);
       if (scan.root !== this.db!.root || scan.headCommitSha !== this.db!.lastHeadCommit) return false;
       const hashes = new Map(Object.entries(this.db!.files).map(([path, facts]) => [path, facts.sha]));
@@ -260,7 +270,7 @@ export class FactsService {
 
   private async syncSnapshot(signal: AbortSignal | undefined): Promise<SyncResult | null> {
     signal?.throwIfAborted();
-    const isCandidate = (path: string) => factsLanguage(path) !== undefined || isContractFile(path);
+    const isCandidate = isIndexCandidate;
     this.phase = "git_scan";
     const scan = await this.timePhase("git_scan", () =>
       scanGitWorkspace(this.workspaceRoot, signal, isCandidate));
