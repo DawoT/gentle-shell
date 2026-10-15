@@ -204,7 +204,7 @@ byte-identical; no protocol schema changes.
 - [x] S7.1 Coverage capture: proof-aware runner runs record V8/node --test
   coverage -> test-to-file edges stored as runtime observation attached to
   the proof (never a substitute for the exact fingerprint).
-- [ ] S7.2 Layer-4 activation: runtime observation REFINES the conservative
+- [x] S7.2 Layer-4 activation: runtime observation REFINES the conservative
   fallback (today: any unreachable change invalidates) only with recorded
   runtime evidence; hard invariant: never overrides exact-input rules.
 - [ ] S7.3 Per-test granularity in the real harness: enumerate the stage's
@@ -603,3 +603,24 @@ directly on main.
   4.3ms (40 queries), evidenceQuery p50 0.24ms (20 transitive queries),
   lexicalQuery p50 158.23ms (10 ranked searches, documented
   O(candidates)); cold 1866.74ms, postEdit 242.92ms. Sprint gates green.
+
+### 2026-10-15 — S7.2 layer-4 activation executed (commit 78a6f53d4)
+
+- Explorer mapped evaluateProofValidity layer order and proposed the
+  refinement rules; RED captured on the reuse case (actual false vs
+  expected true) before GREEN.
+- GREEN (commit 78a6f53d4): layer 4 activates only after policy-expiry,
+  exact-input, and static-reachability (unknown always invalidates) and
+  only when a complete non-truncated v8-coverage runtime observation
+  omits every unreachable changed file; reuse carries an explicit
+  runtime-observation layer and reason. Proofs without
+  runtimeObservation keep the exact S4.1 verdict, layer and reason;
+  truncated observations or coverage including a changed file still
+  invalidate conservatively; exact-input is never overridden.
+- Verification caveat: the independent verifier agent was unavailable
+  after two failed launches; verification was performed inline —
+  layer-order audit of evaluateProofValidity plus fresh runs of proofs
+  46/46, facts 370/370 and typecheck 0 diagnostics. Only the two
+  authorized surfaces changed (16 implementation lines, 55 test lines).
+- S7.3 (per-test coverage attribution) and S7.4 (conservatism tuning)
+  remain pending.
