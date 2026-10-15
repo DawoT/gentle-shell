@@ -539,6 +539,27 @@ directly on main.
   exhausted-page header from the same-day dogfooding fix are covered by
   the 367-test suite and verified live after session reload.
 
+### 2026-10-15 — native review correction executed; validator capture blocked
+
+- The native review of this branch (lineage review-8daf826bb2cb243c, target
+  29d6032a, base ae7b4e2fb committed-only, tier medium, 30 files) ran three
+  lens reviewers (risk/resilience/reliability) and a refuter, which
+  corroborated three candidate-caused CRITICAL findings (R3-001, R3-002,
+  R4-001). Correction plan submitted at the 200-line budget; the correction
+  landed as commit 9389fa013 (128 lines): oversized YAML fails closed only
+  when content-marked as a contract, and FactsService now derives
+  consumes/validates relations end-to-end from recorded imports (additive
+  consumer/test entity kinds). Suite 370/370, typecheck 0, focused 30/30.
+- BLOCKED (external): the provider targeted-validator capture is rejected by
+  the compact facade matcher with three distinct reasons across fresh bound
+  STATUS calls (the validation binding carries the correction-target
+  identity while the matcher compares top-level snapshot/authority
+  identities). Looks like a gentle-pi facade version issue, recorded in
+  memory (review-8daf826bb2cb243c-blocked-validator). The lineage stays open
+  in correction_required; resuming requires a fresh bound STATUS plus the
+  capture-validation slot once the facade accepts it. User disposition:
+  native review paused; local verification evidence stands for now.
+
 ### 2026-10-15 — S7.1 coverage capture executed (commit follows)
 
 - RED observed (real failure output captured): runner test failed with no
