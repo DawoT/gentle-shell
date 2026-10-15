@@ -80,6 +80,11 @@ function statusText(record: ProofRecord): string {
     `sideEffects: ${record.sideEffects}`,
     `inputsDigest: ${record.inputsDigest}`,
   ];
+  if (record.status === "passed") {
+    lines.push("validity: reusable while inputsDigest matches the current verification inputs; any lifecycle transition or covered-input change ends reuse.");
+  } else {
+    lines.push(`validity: not reusable (${record.status}).`);
+  }
   if (record.invalidationReason !== undefined) lines.push(`invalidationReason: ${record.invalidationReason}`);
   lines.push(`allowed transitions: ${transitions}`);
   lines.push(`re-verification: recompute the verification inputs and compare inputsDigest ${record.inputsDigest}; raw commands are not stored.`);

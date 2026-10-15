@@ -252,3 +252,23 @@ test("proof_status resolves unambiguous fingerprint prefixes from proof_query ou
     await rm(ledgerRoot, { recursive: true, force: true });
   }
 });
+
+test("proof_status states the exact validity reason for passed and invalidated proofs", async () => {
+  const ledgerRoot = await mkdtemp(join(tmpdir(), "proofs-mcp-ledger-"));
+  const ledger = new ProofLedger(ledgerRoot);
+  const passed = "a".repeat(64);
+  await seedPassed(ledger, passed, "d".repeat(64));
+  const { proc, client } = await startServer(ledgerRoot);
+  try {
+    const passedStatus = await client.request("tools/call", { name: "proof_status", arguments: { fingerprint: passed } });
+    assert.match(textOf(passedStatus), /validity: reusable while inputsDigest matches the current verification inputs/);
+
+    await ledger.transition(passed, "invalidated", "operator revoked proof");
+    const invalidatedStatus = await client.request("tools/call", { name: "proof_status", arguments: { fingerprint: passed } });
+    assert.match(textOf(invalidatedStatus), /validity: not reusable \(invalidated\)/);
+    assert.match(textOf(invalidatedStatus), /invalidationReason: operator revoked proof/);
+  } finally {
+    proc.kill();
+    await rm(ledgerRoot, { recursive: true, force: true });
+  }
+});
