@@ -140,6 +140,34 @@ export class ProofLedger {
     return await this.readPointer(fingerprint);
   }
 
+  async list(limit: number): Promise<ProofRecord[]> {
+    const boundedLimit = Math.min(200, Math.max(0, Math.floor(limit)));
+    if (boundedLimit === 0) return [];
+
+    let entries;
+    try {
+      entries = await readdir(this.root, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+
+    const records: ProofRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isDirectory()).slice(0, 200)) {
+      try {
+        const text = (await readFile(join(this.root, entry.name, "current.json"))).toString("utf8");
+        const record = JSON.parse(text) as ProofRecord;
+        if (record && typeof record === "object" && record.fingerprint === entry.name) records.push(record);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) continue;
+        throw error;
+      }
+    }
+
+    records.sort((left, right) => (right.finishedAt ?? right.startedAt) - (left.finishedAt ?? left.startedAt));
+    return records.slice(0, boundedLimit);
+  }
+
   private async readPointer(fingerprint: string): Promise<ProofRecord | null> {
     if (!FINGERPRINT.test(fingerprint)) throw new Error("Invalid proof fingerprint");
     let text: string;
