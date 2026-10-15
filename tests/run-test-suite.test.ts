@@ -7,6 +7,15 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { DEFAULT_STAGES, runTestSuite } from "../scripts/run-test-suite.mjs";
 
+// Tests in this file assert the plain (non-proof) runner path. The operator
+// may run the whole suite under GENTLE_PROOFS=1, so spawned runners must not
+// inherit that switch.
+function defaultPathEnv(): NodeJS.ProcessEnv {
+	const env = { ...process.env };
+	delete env.GENTLE_PROOFS;
+	return env;
+}
+
 // #1285 requires that a stage-1 failure never suppresses later stages.
 // Orchestration tests use fake stages; CLI tests exercise real child processes.
 
@@ -78,7 +87,7 @@ test("direct invocation exits 1 and names the failed stage when a stage fails", 
 		{ name: "failing-stage", command: "node -e \"process.exit(1)\"" },
 		{ name: "ok-stage", command: "node -e \"process.exit(0)\"" },
 	]);
-	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8" });
+	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8", env: defaultPathEnv() });
 	assert.equal(result.status, 1);
 	assert.match(result.stdout ?? "", /FAIL  failing-stage/);
 	assert.match(result.stdout ?? "", /1 stage\(s\) failed: failing-stage/);
@@ -89,7 +98,7 @@ test("direct invocation exits 0 when every stage passes", (t) => {
 		{ name: "first", command: "node -e \"process.exit(0)\"" },
 		{ name: "second", command: "node -e \"process.exit(0)\"" },
 	]);
-	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8" });
+	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8", env: defaultPathEnv() });
 	assert.equal(result.status, 0);
 	assert.match(result.stdout ?? "", /all stages passed/);
 });
@@ -129,8 +138,10 @@ console.log("ENV_PROBE=" + JSON.stringify({
 		{ name: "unit-tests", command: `node "${probePath}"` },
 		{ name: "provider-contract", command: `node "${probePath}"` },
 	]));
+	const childEnv = { ...process.env, ...env, TEST_ENV_SENTINEL: "preserved" };
+	delete childEnv.GENTLE_PROOFS;
 	const result = spawnSync(process.execPath, [runnerPath, stagesPath], {
-		encoding: "utf8", env: { ...process.env, ...env, TEST_ENV_SENTINEL: "preserved" },
+		encoding: "utf8", env: childEnv,
 	});
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(result.stderr, "");
@@ -196,7 +207,7 @@ test("direct invocation rejects a malformed stages file with a non-zero exit", (
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const stagesPath = join(dir, "stages.json");
 	writeFileSync(stagesPath, JSON.stringify([{ name: "missing-command" }]));
-	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8" });
+	const result = spawnSync(process.execPath, [runnerPath, stagesPath], { encoding: "utf8", env: defaultPathEnv() });
 	assert.equal(result.status, 1);
 	assert.match(result.stderr ?? "", /stages file must be an array/);
 });
