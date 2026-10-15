@@ -181,19 +181,19 @@ full suite green; measured deltas against the baseline.
 
 ### Sprint 6 — Contract/Entity Facts (GF-P2-003) — ~1-2 weeks (largest)
 
-- [ ] S6.1 EntityFact abstraction: entity types (symbol exists; add route,
+- [x] S6.1 EntityFact abstraction: entity types (symbol exists; add route,
   schema, api_operation, graphql_type, protobuf_message, database_table,
   migration, test, command, config, contract, generated_artifact) and
   relation types (declares/implements/consumes/tests/generates/dependsOn/
   migrates/serves/validates), versioned and stored in the Facts db WITHOUT
   touching provider contract 1.2.0 identities (byte-identical invariant).
-- [ ] S6.2 Bounded parsers: OpenAPI and JSON Schema first (highest value,
+- [x] S6.2 Bounded parsers: OpenAPI and JSON Schema first (highest value,
   hermetically testable), then GraphQL SDL, protobuf, SQL migrations and
   package/workspace scripts/route manifests. Each parser is its own unit
   with real fixtures and the existing byte limits.
-- [ ] S6.3 Contract impact queries: consumes/serves/validates over the new
+- [x] S6.3 Contract impact queries: consumes/serves/validates over the new
   entities, integrated with the Sprint 4 layered invalidation.
-- [ ] S6.4 Fixtures and property tests: hermetic real-contract corpus +
+- [x] S6.4 Fixtures and property tests: hermetic real-contract corpus +
   parse-idempotence property tests.
 
 Gate: contract discovery works on the real corpus; provider contract
@@ -513,3 +513,28 @@ directly on main.
 4. On admission: record receipt + SHA256 in main-live-completion.md (B1) and
    facts-informed-review-go.md (L2, gentle-ai). If quota is still exhausted,
    B1 stays blocked and the roadmap continues; no fabricated closure.
+
+### 2026-10-15 — roadmap-vs-reality audit; Sprint 6 reconciled
+
+- Audit trigger: live dogfooding session asked whether every proposed
+  functionality is current and working. Fresh evidence: pnpm test:facts
+  367/367, proofs suites 39/39, typecheck 0 diagnostics (no regressions),
+  and a live end-to-end fixture against the real FactsService: OpenAPI
+  route/schema extraction with the serves edge, JSON Schema entities
+  (Order, Money), entity name lookup, symbol queries, and
+  GENTLE_FACTS_DISABLE_QUERY_INDEX kill-switch equivalence (indexed ==
+  linear reference).
+- S6.1-S6.4 were executed on feat/gf-p2-003-contract-entity-facts (see
+  odd/tasks/gf-p2-003-contract-entity-facts.md, T1-T4 with commits) but
+  this tracker still listed them unchecked; reconciled to [x] above.
+- S7/S8 remain genuinely unimplemented future proposals (P3 in
+  gaps.yaml delivery_roadmap); layer 4 stays reserved in
+  lib/proofs/proof-invalidation.ts. No proof_status/proof_query agent
+  tools exist yet. These are pending work, not regressions.
+- Invalid contract JSON is a tested, intentional hard failure (refresh
+  unavailable instead of silently dropping data):
+  tests/facts-contract-parser.test.ts:70. Not a defect.
+- No defects found among claimed functionality in this audit; nothing
+  required a TDD fix. facts_query qualified member projection and the
+  exhausted-page header from the same-day dogfooding fix are covered by
+  the 367-test suite and verified live after session reload.
