@@ -207,7 +207,7 @@ byte-identical; no protocol schema changes.
 - [x] S7.2 Layer-4 activation: runtime observation REFINES the conservative
   fallback (today: any unreachable change invalidates) only with recorded
   runtime evidence; hard invariant: never overrides exact-input rules.
-- [ ] S7.3 Per-test granularity in the real harness: enumerate the stage's
+- [x] S7.3 Per-test granularity in the real harness: enumerate the stage's
   test files, per-test coverage via Facts + recorded coverage, live minimum
   set selection in pnpm test (harness proofs are stage-level today; this
   activates the real saving: 980 of 1000 tests reused, 20 executed).
@@ -622,5 +622,29 @@ directly on main.
   layer-order audit of evaluateProofValidity plus fresh runs of proofs
   46/46, facts 370/370 and typecheck 0 diagnostics. Only the two
   authorized surfaces changed (16 implementation lines, 55 test lines).
-- S7.3 (per-test coverage attribution) and S7.4 (conservatism tuning)
-  remain pending.
+- S7.4 (conservatism tuning) remains pending.
+
+### 2026-10-15 — S7.3 per-file test granularity executed (commit b2c8e4f2a)
+
+- Explorer mapped the three harness stages and the per-file inventory
+  types; RED captured per case (enumeration, coverage isolation,
+  selected-only execution, full-stage fallback) before GREEN.
+- GREEN (commit b2c8e4f2a, 429 insertions across 2 authorized files):
+  under GENTLE_PROOFS=1 the unit-tests stage enumerates tests/*.test.ts
+  into per-file inventory entries (fingerprint = sha256 of per-file
+  command + cwd + toolchain, never coverage), runs pending files in
+  isolation with per-file NODE_V8_COVERAGE normalized by the S7.1
+  collector, persists covered-file digest snapshots, and feeds
+  selectMinimumTestSet live so only selected files execute; the result
+  still consolidates into one valid unit-tests stage proof.
+- Fail-closed to the exact original full-stage command on empty
+  enumeration, invalid/truncated prior coverage, missing snapshots,
+  unknown reachability, selection fallback, or untrustworthy per-file
+  runs. provider-contract/runtime-harness unchanged; default path
+  without GENTLE_PROOFS byte-identical (regression-tested).
+- Verification caveat: the verifier agent failed again (empty result);
+  inline verification performed — layer-by-layer audit of the runner
+  section plus fresh proofs 50/50, facts 370/370, typecheck 0.
+- Known MVP limits: first per-file proof build costs one subprocess per
+  test file; files Facts does not index count as unknown reachability
+  and force the full stage (intentional).
