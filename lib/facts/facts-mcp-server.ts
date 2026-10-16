@@ -66,6 +66,16 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
     },
   },
   {
+    name: "facts_usages",
+    description: "Find files referencing a symbol by exact name (usage sites), with whether they import its declaring file. Files without recorded references are not reported.",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: { name: { type: "string", description: "Exact symbol name (case-sensitive)" } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "facts_impact",
     description: "Analyze the syntactic impact and potential file consumers between two Git revisions.",
     inputSchema: {
@@ -333,6 +343,21 @@ export class FactsMcpServer {
             return { content: [{ type: "text", text: "No matching contract entities found." }] };
           }
           const lines = entityRows(paged, this.factsService.queryEntities(), this.factsService.queryEntityRelations({}));
+          return { content: [{ type: "text", text: lines.join("\n") }] };
+        }
+
+        case "facts_usages": {
+          await this.factsService.sync(signal);
+          signal.throwIfAborted();
+          if (typeof args.name !== "string" || args.name.trim().length === 0) throw new Error("name must be a non-empty symbol name");
+          const sites = this.factsService.queryUsageSites(args.name);
+          const offset = args.offset ?? 0;
+          const limit = args.limit ?? 20;
+          const paged = sites.slice(offset, offset + limit);
+          if (paged.length === 0) {
+            return { content: [{ type: "text", text: `No usage sites found for '${args.name}'.` }] };
+          }
+          const lines = paged.map((site) => `• ${site.file}${site.importsDeclaration ? " (imports the declaring file)" : " (references without recorded import)"}`);
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

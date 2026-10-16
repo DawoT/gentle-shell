@@ -998,3 +998,18 @@ test("the impact hint honors its kill switch", async () => {
 		await cleanup();
 	}
 });
+
+test("facts_usages answers which files reference a symbol", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		const result = await pi.getTool("facts_usages").execute("usages", { name: "multiply" }, undefined, undefined, ctx);
+		const text = result.content[0].text;
+		assert.match(text, /main\.ts/, "main.ts references and imports multiply");
+	} finally {
+		await cleanup();
+	}
+});

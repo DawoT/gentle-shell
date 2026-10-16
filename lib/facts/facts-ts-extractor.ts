@@ -1,6 +1,11 @@
 import ts from "typescript";
 import type { FileFacts, SymbolFact, SymbolKind } from "./facts-types.ts";
 
+// Local on purpose: runtime/facts copies are self-contained (no cross-module
+// imports), so this bound cannot live in facts-limits without breaking the
+// generated worker.
+const MAX_REFERENCES_PER_FILE = 4_000;
+
 function getDocstring(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
   const fullText = sourceFile.getFullText();
   const ranges = ts.getLeadingCommentRanges(fullText, node.getFullStart());
@@ -48,6 +53,7 @@ export function extractTypeScriptFacts(filePath: string, sourceText: string, sha
   const imports: string[] = [];
   const exports: string[] = [];
   const localExports: Array<{ declarationName: string; exportName: string }> = [];
+  const references = new Set<string>();
 
   let sourceFile: ts.SourceFile;
   try {
@@ -255,6 +261,18 @@ export function extractTypeScriptFacts(filePath: string, sourceText: string, sha
     }
   }
 
+  // Bounded identifier references for usage-site queries: over-inclusive by
+  // design (any identifier text counts), so query-time exact-name matching
+  // keeps precision while recall stays conservative.
+  function collectIdentifierReferences(node: ts.Node): void {
+    if (references.size >= MAX_REFERENCES_PER_FILE) return;
+    if (ts.isIdentifier(node)) {
+      const text = typeof node.escapedText === "string" ? node.escapedText : node.getText(sourceFile);
+      if (text.length > 0) references.add(text);
+    }
+    ts.forEachChild(node, collectIdentifierReferences);
+  }
+
   // These are syntactic dependencies. Computed expressions are never evaluated.
   function collectLiteralDependencies(node: ts.Node): void {
     if (ts.isCallExpression(node) && (
@@ -269,6 +287,7 @@ export function extractTypeScriptFacts(filePath: string, sourceText: string, sha
     ts.forEachChild(node, collectLiteralDependencies);
   }
   collectLiteralDependencies(sourceFile);
+  collectIdentifierReferences(sourceFile);
 
   return {
     path: filePath,
@@ -276,5 +295,6 @@ export function extractTypeScriptFacts(filePath: string, sourceText: string, sha
     symbols,
     imports: imports.sort(),
     exports: exports.sort(),
+    references: [...references].sort(),
   };
 }

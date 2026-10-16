@@ -259,3 +259,20 @@ export { remote as external } from "./remote.js";
   assert.equal(facts.symbols.some((symbol) => symbol.name === "external"), false);
   assert.deepEqual(facts.exports, ["default", "external", "publicName", "unchanged"]);
 });
+
+test("extractor records bounded identifier references for usage-site queries", () => {
+	const facts = extractTypeScriptFacts("main.ts", `
+import { multiply } from "./math.ts";
+import { helper } from "./helper.ts";
+export function run(): number {
+	const total = multiply(2, 3);
+	return helper(total, uniqueHelperName);
+}
+`, "sha");
+	assert.ok(Array.isArray(facts.references), "references must be recorded for usage-site queries");
+	assert.ok(facts.references.includes("multiply"), "imported symbol usage must be referenced");
+	assert.ok(facts.references.includes("uniqueHelperName"), "local identifier usage must be referenced");
+	assert.ok(facts.references.includes("run"), "declarations are also references");
+	assert.ok(!facts.references.includes("definitely-absent-identifier"), "no phantom identifiers");
+	assert.deepEqual(facts.references, [...facts.references].sort(), "references must be sorted for determinism");
+});

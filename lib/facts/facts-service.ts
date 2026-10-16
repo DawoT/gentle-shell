@@ -564,6 +564,31 @@ export class FactsService {
   }
 
 
+  /**
+   * Usage sites of a symbol: files whose recorded references include the
+   * exact name, excluding the declaring files. Files without recorded
+   * references (legacy databases, non-TS sources) are not reported.
+   */
+  queryUsageSites(name: string): Array<{ file: string; importsDeclaration: boolean }> {
+    return this.timeSyncPhase("query_lookup", () => {
+      if (!this.db) return [];
+      const declarations = this.querySymbols({ name });
+      if (declarations.length === 0) return [];
+      const declaringFiles = new Set(declarations.map((match) => match.file));
+      const importersOfDeclaring = new Set<string>();
+      for (const edge of this.resolutionEdges) {
+        if (edge.target !== undefined && declaringFiles.has(edge.target)) importersOfDeclaring.add(edge.importer);
+      }
+      const sites: Array<{ file: string; importsDeclaration: boolean }> = [];
+      for (const [path, file] of Object.entries(this.db.files)) {
+        if (declaringFiles.has(path)) continue;
+        if (file.references?.includes(name) !== true) continue;
+        sites.push({ file: path, importsDeclaration: importersOfDeclaring.has(path) });
+      }
+      return sites;
+    });
+  }
+
   getReceipts(): ExecutionReceipts | undefined {
     return this.db?.receipts;
   }

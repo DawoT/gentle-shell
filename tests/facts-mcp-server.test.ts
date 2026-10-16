@@ -400,3 +400,29 @@ test("facts_entities rows carry the touching contract relations", async () => {
 		await rm(workspace, { recursive: true, force: true });
 	}
 });
+
+test("facts_usages answers which files reference a symbol over MCP", async () => {
+	const workspace = await mkdtemp(join(tmpdir(), "facts-mcp-usages-"));
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+	let proc;
+	try {
+		await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "usages-fixture", version: "1.0.0" }));
+		await writeFile(join(workspace, "helper.ts"), "export function helper(value: number): number { return value * 2; }\n");
+		await writeFile(join(workspace, "main.ts"), "import { helper } from './helper.ts';\nexport const doubled = helper(21);\n");
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: workspace });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: workspace });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: workspace });
+		execFileSync("git", ["add", "."], { cwd: workspace });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: workspace });
+		proc = spawn(process.execPath, [binPath], { cwd: workspace, stdio: ["pipe", "pipe", "pipe"] });
+		const client = createRpcClient(proc);
+		await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+		client.notify("notifications/initialized");
+		const result = await client.request("tools/call", { name: "facts_usages", arguments: { name: "helper" } });
+		assert.match(result.content[0].text, /main\.ts/, "the usage site must be returned");
+	} finally {
+		proc?.kill("SIGKILL");
+		await rm(workspace, { recursive: true, force: true });
+	}
+});

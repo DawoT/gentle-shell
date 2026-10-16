@@ -53,6 +53,8 @@ export interface FileFacts {
   symbols: SymbolFact[];
   imports: string[];
   exports: string[];
+  /** Optional: bounded sorted identifier references for usage-site queries. */
+  references?: string[];
 }
 
 export interface ExecutionReceipts {

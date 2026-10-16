@@ -2,6 +2,11 @@
 import ts from "typescript";
 
 
+// Local on purpose: runtime/facts copies are self-contained (no cross-module
+// imports), so this bound cannot live in facts-limits without breaking the
+// generated worker.
+const MAX_REFERENCES_PER_FILE = 4_000;
+
 function getDocstring(node         , sourceFile               )                     {
   const fullText = sourceFile.getFullText();
   const ranges = ts.getLeadingCommentRanges(fullText, node.getFullStart());
@@ -49,6 +54,7 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
   const imports           = [];
   const exports           = [];
   const localExports                                                         = [];
+  const references = new Set        ();
 
   let sourceFile               ;
   try {
@@ -256,6 +262,18 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
     }
   }
 
+  // Bounded identifier references for usage-site queries: over-inclusive by
+  // design (any identifier text counts), so query-time exact-name matching
+  // keeps precision while recall stays conservative.
+  function collectIdentifierReferences(node         )       {
+    if (references.size >= MAX_REFERENCES_PER_FILE) return;
+    if (ts.isIdentifier(node)) {
+      const text = typeof node.escapedText === "string" ? node.escapedText : node.getText(sourceFile);
+      if (text.length > 0) references.add(text);
+    }
+    ts.forEachChild(node, collectIdentifierReferences);
+  }
+
   // These are syntactic dependencies. Computed expressions are never evaluated.
   function collectLiteralDependencies(node         )       {
     if (ts.isCallExpression(node) && (
@@ -270,6 +288,7 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
     ts.forEachChild(node, collectLiteralDependencies);
   }
   collectLiteralDependencies(sourceFile);
+  collectIdentifierReferences(sourceFile);
 
   return {
     path: filePath,
@@ -277,5 +296,6 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
     symbols,
     imports: imports.sort(),
     exports: exports.sort(),
+    references: [...references].sort(),
   };
 }

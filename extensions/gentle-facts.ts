@@ -28,6 +28,7 @@ export const FACTS_TOOL_QUERY = "facts_query";
 export const FACTS_TOOL_DEPENDENTS = "facts_dependents";
 export const FACTS_TOOL_STATUS = "facts_status";
 export const FACTS_TOOL_ENTITIES = "facts_entities";
+export const FACTS_TOOL_USAGES = "facts_usages";
 
 const FACTS_WIDGET_KEY = "gentle-facts";
 
@@ -70,7 +71,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   }
 
   const impactHintsEnabled = env.GENTLE_FACTS_DISABLE_IMPACT_HINTS !== "1";
-  const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities"]);
+  const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities", "facts_usages"]);
 
   function shapeFor(toolName: string, params: any): string {
     const filters = Object.keys(params ?? {})
@@ -416,6 +417,47 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{ type: "text", text: `Found ${entities.length} contract entit${entities.length === 1 ? "y" : "ies"}:\n\n${page.text}` }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), found: entities.length, ...page.details },
+      };
+    }),
+  });
+
+  // Tool: facts_usages
+  pi.registerTool({
+    name: FACTS_TOOL_USAGES,
+    label: "Facts Usages",
+    description: "Find files referencing a symbol by exact name (usage sites), with whether they import its declaring file. Files without recorded references are not reported.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name"],
+      properties: {
+        ...paginationProperties,
+        name: {
+          type: "string",
+          maxLength: 1024,
+          description: "Exact symbol name (case-sensitive).",
+        },
+      },
+    },
+    execute: tracked("facts_usages", async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+      signal?.throwIfAborted();
+      if (typeof params.name !== "string" || params.name.trim().length === 0 || params.name.length > 1024) {
+        throw new Error("Invalid Facts usages name");
+      }
+      const service = await refreshService(ctx, signal);
+      if (!service) return unavailableResult(ctx);
+      const sites = service.queryUsageSites(params.name);
+      if (sites.length === 0) {
+        return {
+          content: [{ type: "text", text: `No usage sites found for '${params.name}'. Files without recorded references are not reported.` }],
+          details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, returned: 0, nextOffset: null },
+        };
+      }
+      const rows = sites.map((site) => `• ${site.file}${site.importsDeclaration ? " (imports the declaring file)" : " (references without recorded import)"}`);
+      const page = pageFacts(rows, params, (row) => row);
+      return {
+        content: [{ type: "text", text: `Found ${sites.length} usage site${sites.length === 1 ? "" : "s"} for '${params.name}':\n\n${page.text}` }],
+        details: { status: "ready", diagnostics: service.getDiagnostics(), found: sites.length, ...page.details },
       };
     }),
   });
