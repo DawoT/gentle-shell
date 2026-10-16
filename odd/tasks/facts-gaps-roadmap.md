@@ -851,4 +851,12 @@ directly on main.
   churned: the json-schema parser promotes top-level properties to
   entities, so generic names repeat across files ("sha256" once per
   schema) — an extraction-policy change alters the entity corpus and
-  relation derivation and needs an explicit product call.
+  relation derivation and needs an explicit product call. CORRECTION: the
+  diagnosis was wrong — parseJsonSchemaFacts promotes nothing (title +
+  $defs only); the 32 sha256 entities are legitimate $defs entries in the
+  provider-mirrored schemas, fresh parse matches the live index exactly,
+  and a characterization test now pins the path-qualified-id invariant
+  (same def name in different files = distinct artifacts) so future
+  "noise-fixing" churn cannot silently drop defs. Suite 380/380,
+  typecheck 0. The real open lever is source-schema authoring in
+  provider-owned mirrored assets, which must not be edited.

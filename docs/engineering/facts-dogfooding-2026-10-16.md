@@ -159,3 +159,15 @@ path filters disambiguate, but a cleaner extraction policy (skip untitled
 primitive properties, or namespace them) would reduce catalog noise —
 changing it alters the entity corpus and relation derivation, so it needs
 an explicit product call.
+
+CORRECTION (same day, after reading the parser): the diagnosis above was
+wrong. `parseJsonSchemaFacts` promotes nothing — it extracts the root
+schema (by title) plus `$defs`/`definitions` entries only. The 32 "sha256"
+entities are legitimate `$defs` entries in the provider-mirrored schemas
+themselves (`"sha256": {"type": "string", "pattern": "^sha256:..."}`),
+and a fresh parse matches the live index exactly (no staleness, no bug).
+The repetition is source-schema authoring style in provider-owned mirrored
+assets, which must not be edited (provider-contract mirror check). A
+characterization test now pins the invariant that makes the repetition
+harmless: same-named defs in different files yield distinct,
+path-qualified entities (suite 380/380).

@@ -79,3 +79,22 @@ test("oversized YAML only fails closed when its content is a contract", () => {
     FactsLimitError,
   );
 });
+
+test("characterization: the same def name in different files yields distinct path-qualified entities", () => {
+  // The provider-contract mirror defines a local "sha256" alias in many schema
+  // files. Extraction is CORRECT: entity ids are path-qualified, so same-named
+  // defs across files are distinct artifacts, not collisions. This pins that
+  // invariant so a future "noise reduction" cannot silently drop defs.
+  const schemaBody = (title: string) => JSON.stringify({
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    title,
+    type: "object",
+    "$defs": { sha256: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" } },
+  });
+  const first = parse("contracts/a.schema.json", schemaBody("Contract A")).entities;
+  const second = parse("contracts/b.schema.json", schemaBody("Contract B")).entities;
+  const names = [...first, ...second].map((entity) => entity.name);
+  assert.deepEqual(names.filter((name) => name === "sha256").length, 2);
+  const ids = [...first, ...second].map((entity) => entity.id);
+  assert.equal(new Set(ids).size, ids.length, "entity ids must stay path-qualified and unique");
+});
