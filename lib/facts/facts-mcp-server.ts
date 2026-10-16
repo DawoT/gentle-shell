@@ -76,6 +76,19 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
     },
   },
   {
+    name: "facts_search",
+    description: "Fuzzy lexical discovery across indexed symbols, paths, docstrings and contract entities (exact, prefix, token and trigram matching).",
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: {
+        query: { type: "string", description: "Fuzzy query text", minLength: 1 },
+        limit: { type: "integer", minimum: 1, maximum: 200 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "facts_impact",
     description: "Analyze the syntactic impact and potential file consumers between two Git revisions.",
     inputSchema: {
@@ -390,6 +403,22 @@ export class FactsMcpServer {
             return { content: [{ type: "text", text: `No usage sites found for '${args.name}'.` }] };
           }
           const lines = paged.map((site) => `• ${site.file}${site.importsDeclaration ? " (imports the declaring file)" : " (references without recorded import)"}`);
+          return { content: [{ type: "text", text: lines.join("\n") }] };
+        }
+
+        case "facts_search": {
+          await this.factsService.sync(signal);
+          signal.throwIfAborted();
+          if (typeof args.query !== "string" || args.query.trim().length === 0) throw new Error("query must be a non-empty string");
+          const limit = typeof args.limit === "number" && args.limit >= 1 ? args.limit : 20;
+          const matches = this.factsService.searchSymbols(args.query, { limit });
+          if (matches.length === 0) {
+            return { content: [{ type: "text", text: `No matches found for '${args.query}'.` }] };
+          }
+          const lines = matches.map((match) => {
+            const label = match.name ?? match.match.slice(0, 200);
+            return `• [${match.kind}] ${label} — ${match.file} (score ${match.score})`;
+          });
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

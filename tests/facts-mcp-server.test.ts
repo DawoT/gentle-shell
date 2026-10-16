@@ -472,3 +472,29 @@ test("facts_entities federates sibling repositories with tagged rows", async () 
 		await rm(parent, { recursive: true, force: true });
 	}
 });
+
+test("facts_search discovers entities through fuzzy queries over MCP", async () => {
+	const workspace = await mkdtemp(join(tmpdir(), "facts-mcp-search-"));
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+	let proc;
+	try {
+		await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "search-fixture", version: "1.0.0" }));
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(workspace, "petstore.openapi.yaml"), petstore);
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: workspace });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: workspace });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: workspace });
+		execFileSync("git", ["add", "."], { cwd: workspace });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: workspace });
+		proc = spawn(process.execPath, [binPath, "--workspace", workspace], { cwd: workspace, stdio: ["pipe", "pipe", "pipe"] });
+		const client = createRpcClient(proc);
+		await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+		client.notify("notifications/initialized");
+		const result = await client.request("tools/call", { name: "facts_search", arguments: { query: "pets" } });
+		assert.match(result.content[0].text, /Pets/, "fuzzy discovery must find the petstore schema entity");
+	} finally {
+		proc?.kill("SIGKILL");
+		await rm(workspace, { recursive: true, force: true });
+	}
+});

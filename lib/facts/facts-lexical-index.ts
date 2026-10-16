@@ -1,6 +1,6 @@
 import type { FactsDatabase } from "./facts-types.ts";
 
-export type LexicalKind = "symbol" | "path" | "docstring";
+export type LexicalKind = "symbol" | "path" | "docstring" | "entity";
 
 export interface LexicalMatch {
   kind: LexicalKind;
@@ -88,6 +88,11 @@ export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
       push("symbol", path, symbol.name, symbol.name);
       if (symbol.docstring) push("docstring", path, symbol.docstring, symbol.name);
     }
+  }
+  // Contract entities join the same fuzzy discovery: their names carry the
+  // domain vocabulary agents search for (routes, schemas, tables).
+  for (const entity of db.entities ?? []) {
+    push("entity", entity.path, entity.name, entity.name);
   }
   // Hybrid: only the prefix map (the dominant ~800k-operation component) is
   // replaced by a sorted array; trigram postings keep the original map.

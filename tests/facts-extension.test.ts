@@ -1039,3 +1039,29 @@ test("facts_entities federates sibling repositories from the environment", async
 		await rm(sibling, { recursive: true, force: true });
 	}
 });
+
+test("facts_search discovers entities through fuzzy queries", async () => {
+	const { dir, cleanup } = await createFixture();
+	const sibling = join(dirname(dir), "facts-ext-search-sibling");
+	try {
+		const { pi, entries } = createMockPi();
+		gentleFacts(pi as any, { GENTLE_FACTS_SIBLING_ROOTS: sibling });
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await mkdir(sibling, { recursive: true });
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: sibling });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: sibling });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: sibling });
+		await writeFile(join(sibling, "package.json"), JSON.stringify({ name: "search-fixture", version: "1.0.0" }));
+		await writeFile(join(sibling, "capability.schema.json"), JSON.stringify({ title: "CapabilitiesProtocol", type: "object" }));
+		execFileSync("git", ["add", "."], { cwd: sibling });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: sibling });
+
+		const result = await pi.getTool("facts_search").execute("search", { query: "capabil" }, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /CapabilitiesProtocol/, "fuzzy discovery must find contract entities");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+		await rm(sibling, { recursive: true, force: true });
+	}
+});

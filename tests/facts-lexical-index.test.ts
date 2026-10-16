@@ -239,3 +239,28 @@ test("differential oracle: lexicalSearch matches a naive reference implementatio
 		}
 	}
 });
+
+test("the lexical index includes contract entities for fuzzy discovery", () => {
+	const dbWithEntities = {
+		files: {
+			"contracts/capabilities.schema.json": {
+				path: "contracts/capabilities.schema.json",
+				sha: "s",
+				symbols: [],
+				imports: [],
+				exports: [],
+			},
+		},
+		entities: [
+			{ id: "json-schema:contracts/capabilities.schema.json:CapabilitiesProtocol", kind: "json-schema", name: "CapabilitiesProtocol", path: "contracts/capabilities.schema.json" },
+		],
+	};
+	const index = buildLexicalIndex(dbWithEntities as unknown as FactsDatabase);
+	const matches = lexicalSearch(index, "capabil");
+	assert.ok(
+		matches.some((match) => match.kind === "entity" && match.name === "CapabilitiesProtocol"),
+		"entity names must be discoverable through the fuzzy index",
+	);
+	const exact = lexicalSearch(index, "capabilitiesprotocol");
+	assert.equal(exact[0]?.kind, "entity", "exact entity names rank as entity matches");
+});

@@ -30,6 +30,7 @@ export const FACTS_TOOL_DEPENDENTS = "facts_dependents";
 export const FACTS_TOOL_STATUS = "facts_status";
 export const FACTS_TOOL_ENTITIES = "facts_entities";
 export const FACTS_TOOL_USAGES = "facts_usages";
+export const FACTS_TOOL_SEARCH = "facts_search";
 
 const FACTS_WIDGET_KEY = "gentle-facts";
 
@@ -87,7 +88,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     }
     return service;
   }
-  const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities", "facts_usages"]);
+  const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities", "facts_usages", "facts_search"]);
 
   function shapeFor(toolName: string, params: any): string {
     const filters = Object.keys(params ?? {})
@@ -490,6 +491,67 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{ type: "text", text: `Found ${sites.length} usage site${sites.length === 1 ? "" : "s"} for '${params.name}':\n\n${page.text}` }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), found: sites.length, ...page.details },
+      };
+    }),
+  });
+
+  // Tool: facts_search
+  pi.registerTool({
+    name: FACTS_TOOL_SEARCH,
+    label: "Facts Search",
+    description: "Fuzzy lexical discovery across indexed symbols, paths, docstrings and contract entities (exact, prefix, token and trigram matching), including configured sibling repositories.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["query"],
+      properties: {
+        query: {
+          type: "string",
+          maxLength: 1024,
+          description: "Fuzzy query text.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 50,
+          description: "Maximum results per root (default 20).",
+        },
+      },
+    },
+    execute: tracked("facts_search", async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+      signal?.throwIfAborted();
+      if (typeof params.query !== "string" || params.query.trim().length === 0 || params.query.length > 1024) {
+        throw new Error("Invalid Facts search query");
+      }
+      const limit = typeof params.limit === "number" && params.limit >= 1 ? params.limit : 20;
+      const service = await refreshService(ctx, signal);
+      if (!service) return unavailableResult(ctx);
+      const matches = service.searchSymbols(params.query, { limit });
+      const rows = matches.map((match) => {
+        const label = match.name ?? match.match.slice(0, 200);
+        return `• [${match.kind}] ${label} — ${match.file} (score ${match.score})`;
+      });
+      let text = matches.length > 0
+        ? `Found ${matches.length} matches for '${params.query}':\n\n${rows.join("\n")}`
+        : `No matches found for '${params.query}'.`;
+      for (const sibling of siblingRoots) {
+        try {
+          const siblingService = siblingServiceFor(sibling.root);
+          await siblingService.sync(signal);
+          const siblingMatches = siblingService.searchSymbols(params.query, { limit });
+          if (siblingMatches.length === 0) continue;
+          const siblingRows = siblingMatches.map((match) => {
+            const label = match.name ?? match.match.slice(0, 200);
+            return `• [${sibling.name}] [${match.kind}] ${label} — ${match.file} (score ${match.score})`;
+          });
+          text += `\n\n[sibling ${sibling.name}] ${siblingMatches.length} matches:\n${siblingRows.join("\n")}`;
+        } catch {
+          // Siblings are advisory: skip unreachable roots.
+        }
+      }
+      return {
+        content: [{ type: "text", text }],
+        details: { status: "ready", diagnostics: service.getDiagnostics(), found: matches.length, returned: matches.length, nextOffset: null },
       };
     }),
   });
