@@ -94,3 +94,24 @@ Operational note: session tools run the extension loaded at the last
 changes land after the next reload. The live A/B loop caught both the
 stale-session effect and the transport inconsistency — dogfooding with
 metrics is what surfaced them, not the suites alone.
+
+## Second live round: contract entities exposed
+
+Adversarial probes against the reloaded session found the largest gap of
+the day: `FactsService.queryEntities({ name, path, kind })` existed since
+Sprint 6.3 and the live index carried the entities (openapi-schema:Pets,
+graphql-type:User, review-integration json-schemas, 3 api-routes), but NO
+tool surface exposed them — `facts_query` searches symbols only, so contract
+data was invisible to agents by name and by file.
+
+Fix: a new additive `facts_entities` tool on both transports (MCP bin and
+session extension), delegating to `service.queryEntities` with exact
+name/path/kind filters and the standard pagination bounds. RED observed on
+both surfaces (unknown tool), GREEN with shared row format
+`• [kind] name — path[:line]`.
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Entity lookup by name | impossible through tools | `facts_entities {name:"Pets"}` -> `[openapi-schema] Pets` |
+| Entities by kind | impossible | `kind:"api-route"` -> 3 routes with paths, ~1.1s spawn-inclusive |
+| Suite | 375/375 | 377/377 (+2), typecheck 0 |

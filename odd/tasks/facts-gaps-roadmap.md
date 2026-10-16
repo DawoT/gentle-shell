@@ -817,3 +817,18 @@ directly on main.
   explicit 10. NOTE: the pi session tools run the extension loaded at the
   last /reload — the new default is visible to session tools only after the
   next reload; the MCP bin picks it up on the next spawn immediately.
+- P9 — second dogfooding round after reload (commits 8bfb67cbe and
+  facts_entities): (1) the imports section of U1 was missing from the
+  session extension handler, so the same file query answered differently
+  per transport — the renderer moved to facts-response.ts as a shared,
+  data-taking helper used by both surfaces (RED 36/37, suite 375/375 at
+  the time); (2) adversarial probes proved contract entities were indexed
+  (FactsService.queryEntities populated since Sprint 6.3) but exposed
+  through NO tool surface; new additive facts_entities tool on MCP and
+  session (RED unknown-tool on both, GREEN shared row format, suite
+  377/377, typecheck 0). Live metrics: kind=api-route -> 3 routes with
+  paths (~1.1s spawn-inclusive); name=Pets -> openapi-schema entity;
+  post-reload session dependents returned 15 importers in one call
+  (default 50 verified live). Remaining known limits, documented not
+  fixed: coverage-universe difference between live index and committed
+  impact graphs, and the non-TS resolution layer.
