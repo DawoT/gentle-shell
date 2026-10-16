@@ -932,3 +932,27 @@ test("facts_status reports whether the loaded extension code matches the working
 		await cleanup();
 	}
 });
+
+test("facts_status surfaces recent empty query shapes without values", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await pi.getTool("facts_query").execute("query", { name: "definitely-missing-symbol" }, undefined, undefined, ctx);
+		const status = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+		assert.match(
+			status.content[0].text,
+			/Recent empty queries: facts_query\(name\)/,
+			"empty queries must surface their shape without values",
+		);
+		assert.doesNotMatch(
+			status.content[0].text,
+			/definitely-missing-symbol/,
+			"values must not leak into the telemetry",
+		);
+	} finally {
+		await cleanup();
+	}
+});

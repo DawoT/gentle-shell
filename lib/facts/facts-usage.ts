@@ -16,11 +16,13 @@ export interface FactsUsageSnapshot {
   baselineFiles: number;
   baselineCapped: boolean;
   estimatedReductionTokens: number | null;
+  recentEmptyQueries: string[];
 }
 
 /** Session-local estimates, not provider token accounting or causal savings. */
 export class FactsUsage {
   private readonly credited = new Set<string>();
+  private readonly recentEmpty: string[] = [];
   private counters = {
     queries: 0,
     answered: 0,
@@ -33,7 +35,7 @@ export class FactsUsage {
     baselineCapped: false,
   };
 
-  record(event: { status: string; returned: number; text: string; sources?: readonly SourceSize[] }): void {
+  record(event: { status: string; returned: number; text: string; sources?: readonly SourceSize[]; shape?: string }): void {
     const counts = this.counters;
     counts.queries++;
     counts.responseBytes += Buffer.byteLength(event.text, "utf8");
@@ -41,7 +43,13 @@ export class FactsUsage {
     else if (event.status === "unavailable") counts.unavailable++;
     else {
       if (event.returned > 0) counts.answered++;
-      else counts.empty++;
+      else {
+        counts.empty++;
+        if (event.shape) {
+          this.recentEmpty.push(event.shape);
+          if (this.recentEmpty.length > 5) this.recentEmpty.shift();
+        }
+      }
       if (event.status === "snapshot") counts.cursorPages++;
       for (const source of event.sources ?? []) {
         if (!Number.isSafeInteger(source.sourceBytes) || source.sourceBytes! < 0) continue;
@@ -64,6 +72,7 @@ export class FactsUsage {
       estimatedReductionTokens: this.credited.size
         ? Math.trunc((this.counters.baselineBytes - this.counters.responseBytes) / 4)
         : null,
+      recentEmptyQueries: [...this.recentEmpty],
     };
   }
 }
@@ -71,6 +80,9 @@ export class FactsUsage {
 export function factsUsageLines(usage: FactsUsageSnapshot): string[] {
   return [
     `Queries: ${usage.queries} · answered ${usage.answered} · empty ${usage.empty}`,
+    ...(usage.recentEmptyQueries.length > 0
+      ? [`Recent empty queries: ${usage.recentEmptyQueries.join("; ")}`]
+      : []),
     `Unavailable: ${usage.unavailable} · errors ${usage.errors} · cursor pages ${usage.cursorPages}`,
     `Response text: ${usage.responseBytes} bytes`,
     usage.estimatedReductionTokens === null

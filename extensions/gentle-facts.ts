@@ -69,7 +69,16 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     return usage;
   }
 
-  function tracked(execute: (...args: any[]) => Promise<any>) {
+  const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities"]);
+
+  function shapeFor(toolName: string, params: any): string {
+    const filters = Object.keys(params ?? {})
+      .filter((key) => key !== "offset" && key !== "limit" && key !== "cursor")
+      .sort();
+    return filters.length > 0 ? `${toolName}(${filters.join("+")})` : toolName;
+  }
+
+  function tracked(toolName: string, execute: (...args: any[]) => Promise<any>) {
     return async (...args: any[]) => {
       const ctx = args[4] as ExtensionContext;
       const usage = usageFor(ctx.cwd);
@@ -81,11 +90,15 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         if (usages.get(ctx.cwd) === usage) showCard(ctx, getService(ctx.cwd), usage);
         throw error;
       }
+      const emptyShape = EMPTY_SHAPE_TOOLS.has(toolName) && (result.details?.returned ?? 0) === 0 && result.details?.status !== "error" && result.details?.status !== "unavailable"
+        ? shapeFor(toolName, args[1])
+        : undefined;
       usage.record({
         status: result.details?.status ?? "error",
         returned: result.details?.returned ?? 0,
         text: result.content.filter((item: any) => item.type === "text").map((item: any) => item.text).join("\n"),
         sources: baselines.get(result),
+        ...(emptyShape ? { shape: emptyShape } : {}),
       });
       if (usages.get(ctx.cwd) === usage) showCard(ctx, getService(ctx.cwd), usage);
       return result;
@@ -194,7 +207,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         },
       },
     },
-    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: tracked("facts_query", async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
       signal?.throwIfAborted();
       if (params.name !== undefined && (typeof params.name !== "string" || !params.name.trim() || params.name.length > 1024)) {
         throw new Error("Invalid Facts query name");
@@ -283,7 +296,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         },
       },
     },
-    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: tracked("facts_dependents", async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
       signal?.throwIfAborted();
       const key = JSON.stringify(["dependents", params.target, params.transitive ?? false]);
       if (params.cursor) {
@@ -379,7 +392,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         },
       },
     },
-    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+    execute: tracked("facts_entities", async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
       signal?.throwIfAborted();
       if (params.name !== undefined && (typeof params.name !== "string" || !params.name.trim() || params.name.length > 1024)) {
         throw new Error("Invalid Facts entities name");
