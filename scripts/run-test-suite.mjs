@@ -19,6 +19,7 @@ import { buildStageProofInput, computeTreeDigest } from "../lib/proofs/proof-har
 import { computeProofFingerprint, proofInputsDigest } from "../lib/proofs/proof-fingerprint.ts";
 import { collectCoverageObservation } from "../lib/proofs/coverage-observation.ts";
 import { selectMinimumTestSet } from "../lib/proofs/proof-invalidation.ts";
+import { acquireVerifyLock } from "../lib/verify-lock.ts";
 
 export const DEFAULT_STAGES = Object.freeze([
 	{ name: "unit-tests", command: "node --experimental-strip-types --test tests/*.test.ts" },
@@ -413,7 +414,12 @@ function isDirectRun(argv1) {
 }
 
 if (isDirectRun(process.argv[1])) {
+	let lock;
 	try {
+		lock = await acquireVerifyLock(process.cwd(), `run-test-suite (GENTLE_PROOFS=${process.env.GENTLE_PROOFS ?? "0"})`);
+		if (lock.heldByOther) {
+			console.error(`WARNING: another verification run holds .pi/verify.lock (pid ${lock.owner?.pid}, started ${new Date(lock.owner?.startedAt).toISOString()}, command "${lock.owner?.command}"); results may be contended.`);
+		}
 		const stages = process.argv[2] ? readStagesFromJsonPath(process.argv[2]) : DEFAULT_STAGES;
 		// Proof-aware reuse is strictly opt-in (GENTLE_PROOFS=1): release and
 		// CI gates keep running every stage unless the operator asks for reuse.
@@ -470,5 +476,7 @@ if (isDirectRun(process.argv[1])) {
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
 		process.exitCode = 1;
+	} finally {
+		await lock?.release();
 	}
 }
