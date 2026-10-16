@@ -76,3 +76,21 @@ makes GENTLE_PROOFS selective verification possible (seconds instead of
 minutes per verification cycle). The ODD integration worth doing is narrow
 and cheap: map-with-facts in Explore, blast radius in briefs, focused tests
 in verification, dependents counts in task docs.
+
+## Post-fix verification (same day, after the reload)
+
+The two actionable gaps were fixed with TDD (commits `aed41ad91`,
+`6e433631b`, `8bfb67cbe`) and re-measured live:
+
+| Metric | Before | After | Verification |
+| --- | --- | --- | --- |
+| Flat importer list (session `facts_dependents`) | 10 rows + cursor = 2 calls for 15 files | **15 files in 1 call** (default 50 live) | live, session tool, post-reload |
+| File understanding (MCP `facts_query {file}`) | query + read (219 lines) | **1 call**, 4187 bytes, ~1s spawn-inclusive | live MCP probe; section equals grep ground truth |
+| File understanding (session `facts_query {file}`) | declarations only | declarations + imports section (shared renderer) | pinned by session-tool test (RED 36/37 -> 37/37); live in-session after the next reload |
+| Consistency | same file query answered differently per transport | single shared renderer in `facts-response.ts`, both transports | suite 375/375, typecheck 0, consumers 14/14 |
+
+Operational note: session tools run the extension loaded at the last
+`/reload`; bin and test fixes are live immediately, session-tool behavior
+changes land after the next reload. The live A/B loop caught both the
+stale-session effect and the transport inconsistency — dogfooding with
+metrics is what surfaced them, not the suites alone.
