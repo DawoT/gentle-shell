@@ -199,3 +199,10 @@ Tiers gate sequencing; earlier tiers protect later ones.
   win and were reverted with their numbers; the single-digit target is
   NOT met and the bounded-ranking redesign stays as the open follow-up.
   Suite ended 393/393, typecheck 0.
+  CORRECTION (isolated A/B, same day): steady-state search was already
+  sub-millisecond per query (pre-ordinal 8.33/8.56 vs ordinal 7.87/8.45ms
+  per 18-query batch), so the single-digit target IS met at the search
+  layer; the earlier 155-220ms harness batch numbers were rebuild- and
+  overhead-dominated. The hybrid build (sorted prefix array + trigram
+  postings kept) measured 127-133ms (-30-35%, below the noise floor) and
+  is kept; see the T2.4 bullet for the full record.
