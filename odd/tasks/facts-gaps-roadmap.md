@@ -860,3 +860,10 @@ directly on main.
   "noise-fixing" churn cannot silently drop defs. Suite 380/380,
   typecheck 0. The real open lever is source-schema authoring in
   provider-owned mirrored assets, which must not be edited.
+- P12 — successor roadmap recorded (2026-10-16): the improvement analysis
+  delivered after the final dogfooding verdict (three tiers: guard rails
+  from real campaign friction, flow integration, SOTA step-change bets)
+  now lives detailed in odd/tasks/facts-sota-improvement-roadmap.md with
+  S1-S13 specs, tiered tasks T1.1-T3.3, non-goals and acceptance
+  criteria. Tier 1 items are TDD-able immediately; Tier 3 requires
+  explicit product decisions recorded in that roadmap's Log.

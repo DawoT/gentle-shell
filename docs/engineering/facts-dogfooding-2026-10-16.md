@@ -202,3 +202,10 @@ contention — running `pnpm test:facts` concurrently with a GENTLE_PROOFS
 full pass produced 6 spurious failures (isolated rerun: 380/380 twice).
 Relevance verdict: relevant, objective fulfilled with measured wall-clock
 numbers, and dogfooding-grade — it caught real bugs, including in itself.
+
+## Successor roadmap
+
+The improvement analysis derived from this campaign (guard rails,
+flow integration, SOTA bets) is recorded in detail with specs, tiers,
+non-goals and acceptance criteria in
+`odd/tasks/facts-sota-improvement-roadmap.md`.
