@@ -867,3 +867,22 @@ directly on main.
   S1-S13 specs, tiered tasks T1.1-T3.3, non-goals and acceptance
   criteria. Tier 1 items are TDD-able immediately; Tier 3 requires
   explicit product decisions recorded in that roadmap's Log.
+- P13 — SOTA roadmap Tier 1 executed and verified (six guard-rail units,
+  tracker odd/tasks/facts-sota-improvement-roadmap.md T1.1-T1.6, commits
+  58bbba4b2, c31a5db1e, 632c7bcd0, 98f692de4, cc7bdcb2a, e77623154):
+  entry-point smoke guard (bin load + tools/list round-trip, standalone
+  pnpm run smoke:entrypoints), advisory contention lock (.pi/verify.lock,
+  30-minute TTL, loud WARNING — verified live during the exact incident
+  scenario), proof_coverage reverse query on the proofs MCP (which proofs
+  cover file X, from runtime observations), extension staleness indicator
+  in facts_status (loaded stamp vs disk), recent empty-query shapes in
+  facts_status (shape only, never values), and CONTRACT_PARSER_VERSION
+  stamp with forced contract re-parse plus fast-path ineligibility on
+  change (live: real index reports stamp 1, 190 entities intact). Suite
+  grew 380 -> 386 with 8 new tests; typecheck 0 throughout. Native assess
+  over the tier range: medium, reviewDue false (under_budget). Honest
+  incidents per unit, each caught by the verification battery before its
+  commit: a duplicated import that broke the MCP bin, a
+  suite-vs-GENTLE_PROOFS contention producing 6 spurious failures, a tool
+  definition replaced instead of inserted, and a readFileSync mis-import
+  that cascaded.

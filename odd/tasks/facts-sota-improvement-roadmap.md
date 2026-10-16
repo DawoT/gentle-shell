@@ -155,3 +155,15 @@ Tiers gate sequencing; earlier tiers protect later ones.
 - L1 (2026-10-16, user): "AGREGALO AL ROADMAP detalladamente" — this
   roadmap records the improvement analysis delivered after the final
   dogfooding verdict, grounded in the campaign's real friction.
+- L2 (2026-10-16): Tier 1 executed and verified. Commits: 58bbba4b2 (T1.1
+  smoke guard), c31a5db1e (T1.2 contention lock + WARNING, verified live
+  in the incident scenario), 632c7bcd0 (T1.3 proof_coverage reverse
+  query), 98f692de4 (T1.4 staleness indicator), cc7bdcb2a (T1.5
+  empty-query shapes), e77623154 (T1.6 parser-version stamp with forced
+  re-parse and fast-path ineligibility; live index reports stamp 1, 190
+  entities intact). Each unit observed RED before GREEN except the two
+  characterization/guard pins noted in the tracker (P13). Suite grew
+  380 -> 386; typecheck 0 throughout; native assess over the tier range:
+  medium, reviewDue false (under_budget). Tier 2 pending user approval
+  for asset edits (T2.3) and scheduling; Tier 3 pending recorded product
+  decisions.
