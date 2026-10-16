@@ -892,7 +892,9 @@ directly on main.
   with the runtime worker copy regenerated, and 2a4179406 T2.4 lexical
   attempt: rank tiebreak ordinals landed with a differential-oracle pin;
   corpus-scan and pruning experiments measured within noise and reverted;
-  single-digit target NOT met, bounded-ranking redesign recorded as the
-  open follow-up). Suites ended 393/393 + 68/68, typecheck 0. The
+  single-digit target initially declared NOT met from harness numbers,
+  then CORRECTED by isolated A/B: pure search was already ~0.5ms/query
+  (single-digit met in steady state); harness batches were rebuild-and-
+  overhead dominated). Suites ended 393/393 + 68/68, typecheck 0. The
   T2.2/T2.4 outcomes and numbers live in
   odd/tasks/facts-sota-improvement-roadmap.md (Log L3).

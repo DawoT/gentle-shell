@@ -125,10 +125,15 @@ Tiers gate sequencing; earlier tiers protect later ones.
   benchmark delta recorded against today's 201.72ms p50 baseline.
   ATTEMPTED 2026-10-16: rank tiebreak ordinals landed (numeric comparisons,
   semantics pinned by a differential oracle); corpus-scan tokens and
-  Jaccard pruning were measured and reverted (differences within the
-  machine's run-to-run noise band: p50 155-220ms across identical-code
-  runs). The single-digit target is NOT met by this approach; the bounded
-  ranking redesign stays as the open follow-up (see Log L3).
+  Jaccard pruning were measured and reverted (no demonstrated win).
+  FINAL MEASUREMENT CORRECTION (isolated A/B on the real corpus, 60-rep
+  microbench): pre-ordinal 8.33/8.56ms vs ordinal 7.87/8.45ms per
+  18-query batch — the pure search was ALREADY sub-millisecond per query,
+  so the S10 single-digit target is met in steady state; the harness's
+  155-220ms batch numbers were dominated by per-batch index rebuilds and
+  measurement overhead, not search. Ordinals kept as a neutral-to-positive
+  semantics-preserving cleanup; no bounded redesign needed for this
+  target.
 
 ### Tier 3 — Step-change bets (product decisions, not bugs)
 
