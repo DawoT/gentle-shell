@@ -832,3 +832,13 @@ directly on main.
   (default 50 verified live). Remaining known limits, documented not
   fixed: coverage-universe difference between live index and committed
   impact graphs, and the non-TS resolution layer.
+- P10 — third dogfooding round closed the last unexposed layer: contract
+  relations (19 live: 3 serves / 8 consumes / 8 validates) were queryable
+  through FactsService.queryEntityRelations but shown by no tool. Shared
+  entityRows renderer in facts-response.ts now renders bounded touching
+  relations on every facts_entities row (outgoing kind → other, incoming
+  kind ← other, cap 4), used identically by MCP bin and session extension
+  (commit c589ecc42). RED 42/44 → suite 379/379, typecheck 0, assess
+  medium/reviewDue false. One self-inflicted detour recorded honestly: a
+  duplicated import temporarily broke the MCP bin (5/5 failing) and was
+  caught by the same verification battery before commit.

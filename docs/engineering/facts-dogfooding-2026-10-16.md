@@ -115,3 +115,23 @@ both surfaces (unknown tool), GREEN with shared row format
 | Entity lookup by name | impossible through tools | `facts_entities {name:"Pets"}` -> `[openapi-schema] Pets` |
 | Entities by kind | impossible | `kind:"api-route"` -> 3 routes with paths, ~1.1s spawn-inclusive |
 | Suite | 375/375 | 377/377 (+2), typecheck 0 |
+
+## Third live round: contract relations on entity rows
+
+The same probe pattern then found the last unexposed layer: relations.
+`FactsService.queryEntityRelations({ from, to, kind })` exists and the live
+index carried 19 relations (3 serves, 8 consumes, 8 validates), but no tool
+showed them — an agent could list entities yet still not ask what a route
+serves or what validates a schema.
+
+Fix: `facts_entities` rows now carry a bounded relations line — outgoing as
+`kind → other`, incoming as `kind ← other`, names resolved through the full
+entity list, capped at 4 per row. The shared `entityRows` renderer lives in
+`facts-response.ts` and both transports use it. RED observed on both
+surfaces; suite 379/379 (+2), typecheck 0. Live: `facts_entities
+{name:"Pets"}` shows `relations (1): serves ← GET /pets` in-session.
+
+Verdict after three rounds: the Facts query surface now covers symbols,
+files (with imports), dependents, impact between revisions, entities and
+their relations — every layer verified live through the same tools agents
+use, with transport consistency as an explicit test target.
