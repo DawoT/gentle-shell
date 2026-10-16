@@ -264,3 +264,29 @@ test("the lexical index includes contract entities for fuzzy discovery", () => {
 	const exact = lexicalSearch(index, "capabilitiesprotocol");
 	assert.equal(exact[0]?.kind, "entity", "exact entity names rank as entity matches");
 });
+
+test("kind filter restricts results to the requested kind without changing scores", () => {
+	const dbWithEntities = {
+		files: {
+			"src/pets.ts": {
+				path: "src/pets.ts",
+				sha: "s",
+				symbols: [{ name: "PetsService", kind: "class", signature: "class PetsService {}", startLine: 1, endLine: 2, isExported: true }],
+				imports: [],
+				exports: [],
+			},
+		},
+		entities: [
+			{ id: "openapi-schema:src/pets.openapi.yaml:Pets", kind: "openapi-schema", name: "Pets", path: "src/pets.openapi.yaml" },
+		],
+	};
+	const index = buildLexicalIndex(dbWithEntities as unknown as FactsDatabase);
+	const all = lexicalSearch(index, "pets");
+	assert.ok(all.length >= 2, "unfiltered search must include both the symbol and the entity");
+	const entitiesOnly = lexicalSearch(index, "pets", { kind: "entity" });
+	assert.ok(entitiesOnly.length > 0, "kind-filtered search must return matches");
+	assert.ok(entitiesOnly.every((match) => match.kind === "entity"), "every match must honor the kind filter");
+	const symbolsOnly = lexicalSearch(index, "pets", { kind: "symbol" });
+	assert.ok(symbolsOnly.length > 0, "symbol-filtered search must return matches");
+	assert.ok(symbolsOnly.every((match) => match.kind === "symbol"), "symbol filter must exclude entity matches");
+});

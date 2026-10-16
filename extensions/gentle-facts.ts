@@ -526,7 +526,10 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const limit = typeof params.limit === "number" && params.limit >= 1 ? params.limit : 20;
       const service = await refreshService(ctx, signal);
       if (!service) return unavailableResult(ctx);
-      const matches = service.searchSymbols(params.query, { limit });
+      const kind = typeof params.kind === "string" ? params.kind : undefined;
+      // Filter BEFORE the caller limit: slicing the mixed ranking first could
+      // drop every match of the requested kind.
+      const matches = service.searchSymbols(params.query, {}).filter((match) => !kind || match.kind === kind);
       const rows = matches.map((match) => {
         const label = match.name ?? match.match.slice(0, 200);
         return `• [${match.kind}] ${label} — ${match.file} (score ${match.score})`;
