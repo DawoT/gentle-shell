@@ -33,3 +33,27 @@ test("queryUsageSites finds referencing files and marks recorded imports", async
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("queryUsageSites resolves class methods through their declaring class", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "usage-sites-methods-"));
+	try {
+		await writeFile(join(dir, "package.json"), JSON.stringify({ name: "methods-fixture", version: "1.0.0" }));
+		await writeFile(join(dir, "counter.ts"), "export class Counter {\n  increment(step: number): number { return step + 1; }\n}\n");
+		await writeFile(join(dir, "app.ts"), "import { Counter } from './counter.ts';\nexport const next = new Counter().increment(1);\n");
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: dir });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+		execFileSync("git", ["add", "."], { cwd: dir });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
+		const service = new FactsService(dir);
+		await service.sync(undefined, { mode: "full" });
+		const sites = service.queryUsageSites("increment");
+		const byFile = new Map(sites.map((site) => [site.file, site]));
+		assert.ok(byFile.has("app.ts"), "app.ts must be a usage site of the class method");
+		assert.equal(byFile.has("counter.ts"), false, "the declaring class file is not its own usage site");
+		service.close();
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

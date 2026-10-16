@@ -578,9 +578,20 @@ export class FactsService {
   queryUsageSites(name: string): Array<{ file: string; importsDeclaration: boolean }> {
     return this.timeSyncPhase("query_lookup", () => {
       if (!this.db) return [];
-      const declarations = this.querySymbols({ name });
-      if (declarations.length === 0) return [];
-      const declaringFiles = new Set(declarations.map((match) => match.file));
+      const declaringFiles = new Set<string>();
+      for (const match of this.querySymbols({ name })) declaringFiles.add(match.file);
+      // Class methods are recorded inside their class signature rather than
+      // as standalone symbols: resolve bare member names through the
+      // declaring class so usage-site queries cover methods too.
+      const memberPattern = ` ${name}(`;
+      for (const [path, file] of Object.entries(this.db.files)) {
+        for (const symbol of file.symbols) {
+          if (symbol.kind === "class" && symbol.signature.includes(memberPattern)) {
+            declaringFiles.add(path);
+            break;
+          }
+        }
+      }
       const importersOfDeclaring = new Set<string>();
       for (const edge of this.resolutionEdges) {
         if (edge.target !== undefined && declaringFiles.has(edge.target)) importersOfDeclaring.add(edge.importer);
