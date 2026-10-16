@@ -14,6 +14,8 @@ export interface LexicalMatch {
 
 export interface LexicalSearchOptions {
   limit?: number;
+  /** Restrict results to one entry kind (e.g. "entity"). */
+  kind?: LexicalKind;
 }
 
 interface LexicalEntry {
@@ -204,5 +206,7 @@ export function lexicalSearch(index: LexicalIndex, query: string, options: Lexic
     if (jaccard >= TRIGRAM_THRESHOLD) consider(entryIndex, SCORE_TRIGRAM * jaccard);
   }
 
-  return rank(candidates, index, options.limit);
+  const ranked = rank(candidates, index, undefined);
+  const filtered = options.kind ? ranked.filter((match) => match.kind === options.kind) : ranked;
+  return options.limit !== undefined ? filtered.slice(0, options.limit) : filtered;
 }
