@@ -171,3 +171,34 @@ assets, which must not be edited (provider-contract mirror check). A
 characterization test now pins the invariant that makes the repetition
 harmless: same-named defs in different files yield distinct,
 path-qualified entities (suite 380/380).
+
+## Final verdict (end of the dogfooding campaign)
+
+Objective (gaps.yaml): repeated unchanged queries measurably cheaper
+without weakening integrity, plus an Execution Proof Ledger — measured
+against the 2026-10-05 baseline (repeated sync 1871/1035/867ms, repeated
+MCP query 675/735ms, execution-reuse score 2.0).
+
+| Layer | Baseline (2026-10-05) | Live today (1224-file corpus) |
+| --- | --- | --- |
+| Unchanged repeated query | 675-735ms | **39.68ms p50** (fast path; ~17x) |
+| Repeated sync (full) | 867-1871ms | 195.82ms warm full sync (bigger corpus) |
+| Exact-name lookup | grep/manual | ~0.14ms/query indexed, 5.49ms/40 batch |
+| Full verification cycle | minutes (4128+ tests every run) | cold PASS + reuse REUSED in ~10-20s; ~368/370 files reused per-file |
+| False-reuse rate | n/a (no reuse existed) | 0 incidents, kill switch byte-identical |
+
+All eight gaps.yaml closure criteria verified live. Campaign totals: 6
+TDD fixes (list() over-200 truncation, imports in file queries for both
+transports, 50-row default pagination, facts_entities, relations on entity
+rows), 2 test-only pins (stage-input shape, path-qualified entity ids),
+4 quality gates verified live for the first time (kill-switch byte
+equality, impact with resolution changes, cursor continuation, catalog
+pagination).
+
+Honest limits confirmed: a small repo with grep stays competitive for flat
+questions; the non-TS resolution layer remains weak (builtin-heavy
+"unresolved"); and the tooling does not save you from your own process
+contention — running `pnpm test:facts` concurrently with a GENTLE_PROOFS
+full pass produced 6 spurious failures (isolated rerun: 380/380 twice).
+Relevance verdict: relevant, objective fulfilled with measured wall-clock
+numbers, and dogfooding-grade — it caught real bugs, including in itself.
