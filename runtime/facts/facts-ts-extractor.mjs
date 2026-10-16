@@ -54,7 +54,7 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
   const imports           = [];
   const exports           = [];
   const localExports                                                         = [];
-  const references = new Set        ();
+  const references = new Map                  ();
 
   let sourceFile               ;
   try {
@@ -269,7 +269,15 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
     if (references.size >= MAX_REFERENCES_PER_FILE) return;
     if (ts.isIdentifier(node)) {
       const text = typeof node.escapedText === "string" ? node.escapedText : node.getText(sourceFile);
-      if (text.length > 0) references.add(text);
+      if (text.length > 0) {
+        const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+        const lines = references.get(text);
+        if (lines) {
+          if (lines.length < 3 && lines[lines.length - 1] !== line) lines.push(line);
+        } else {
+          references.set(text, [line]);
+        }
+      }
     }
     ts.forEachChild(node, collectIdentifierReferences);
   }
@@ -296,6 +304,7 @@ export function extractTypeScriptFacts(filePath        , sourceText        , sha
     symbols,
     imports: imports.sort(),
     exports: exports.sort(),
-    references: [...references].sort(),
+    references: [...references.keys()].sort(),
+    referenceLines: Object.fromEntries([...references.entries()].map(([name, lines]) => [name, [...lines]])),
   };
 }

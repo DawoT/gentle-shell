@@ -55,6 +55,8 @@ export interface FileFacts {
   exports: string[];
   /** Optional: bounded sorted identifier references for usage-site queries. */
   references?: string[];
+  /** Optional: sample of usage lines per referenced identifier (bounded evidence). */
+  referenceLines?: Record<string, number[]>;
 }
 
 export interface ExecutionReceipts {

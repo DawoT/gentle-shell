@@ -57,3 +57,27 @@ test("queryUsageSites resolves class methods through their declaring class", asy
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("usage sites carry line evidence from the recorded references", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "usage-sites-lines-"));
+	try {
+		await writeFile(join(dir, "package.json"), JSON.stringify({ name: "lines-fixture", version: "1.0.0" }));
+		await writeFile(join(dir, "helper.ts"), "export function helper(value: number): number { return value * 2; }\n");
+		await writeFile(join(dir, "main.ts"), "import { helper } from './helper.ts';\nexport const doubled = helper(21);\n");
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: dir });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+		execFileSync("git", ["add", "."], { cwd: dir });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
+		const service = new FactsService(dir);
+		await service.sync(undefined, { mode: "full" });
+		const sites = service.queryUsageSites("helper");
+		const mainSite = sites.find((site) => site.file === "main.ts");
+		assert.ok(mainSite, "main.ts must be a usage site");
+		assert.deepEqual(mainSite.lines, [1, 2], "the import line and the usage line must be recorded as evidence");
+		service.close();
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

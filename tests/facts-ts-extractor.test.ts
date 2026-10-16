@@ -276,3 +276,17 @@ export function run(): number {
 	assert.ok(!facts.references.includes("definitely-absent-identifier"), "no phantom identifiers");
 	assert.deepEqual(facts.references, [...facts.references].sort(), "references must be sorted for determinism");
 });
+
+test("extractor records bounded line evidence per referenced identifier", () => {
+	const facts = extractTypeScriptFacts("main.ts", `import { helper } from './helper.ts';
+
+export function run(): number {
+	const first = helper(21);
+	return helper(first);
+}
+`, "sha");
+	assert.ok(facts.referenceLines, "referenceLines must be recorded");
+	const lines = facts.referenceLines["helper"];
+	assert.deepEqual(lines, [1, 4, 5], "the import line and both usage lines must be recorded in order");
+	assert.equal(facts.referenceLines["import"], undefined, "the import keyword is not an identifier reference");
+});

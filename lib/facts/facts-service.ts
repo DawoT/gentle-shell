@@ -575,7 +575,7 @@ export class FactsService {
    * exact name, excluding the declaring files. Files without recorded
    * references (legacy databases, non-TS sources) are not reported.
    */
-  queryUsageSites(name: string): Array<{ file: string; importsDeclaration: boolean }> {
+  queryUsageSites(name: string): Array<{ file: string; importsDeclaration: boolean; lines?: number[] }> {
     return this.timeSyncPhase("query_lookup", () => {
       if (!this.db) return [];
       const declaringFiles = new Set<string>();
@@ -600,7 +600,12 @@ export class FactsService {
       for (const [path, file] of Object.entries(this.db.files)) {
         if (declaringFiles.has(path)) continue;
         if (file.references?.includes(name) !== true) continue;
-        sites.push({ file: path, importsDeclaration: importersOfDeclaring.has(path) });
+        const lines = file.referenceLines?.[name];
+        sites.push({
+          file: path,
+          importsDeclaration: importersOfDeclaring.has(path),
+          ...(lines ? { lines } : {}),
+        });
       }
       return sites;
     });

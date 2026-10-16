@@ -43,7 +43,8 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
     if (!isRecord(file) || file.path !== path || typeof file.sha !== "string" ||
       (file.sourceBytes !== undefined && (!Number.isSafeInteger(file.sourceBytes) || (file.sourceBytes as number) < 0)) ||
       !isStringArray(file.imports) || !isStringArray(file.exports) || !Array.isArray(file.symbols) ||
-      (file.references !== undefined && !isStringArray(file.references))) {
+      (file.references !== undefined && !isStringArray(file.references)) ||
+      (file.referenceLines !== undefined && !isRecord(file.referenceLines))) {
       return false;
     }
     for (const symbol of file.symbols) {
