@@ -770,3 +770,8 @@ directly on main.
   reason empty_candidate_base_ref_required — no resumable validator slot is
   offered and no capture was attempted. The paused disposition stands;
   B1 still requires the human /reload precondition. No fabricated closure.
+- P5 — local merge authorized by the user and executed: main fast-forwarded
+  from ae7b4e2fb to e96a79e7c (feature tip; tree byte-identical to the
+  verified one, so no test re-run required). No push performed: main remains
+  local-only; origin/feat/gf-p2-003-contract-entity-facts already carries
+  the branch. Roadmap delivery decision closed on 2026-10-16.
