@@ -96,7 +96,7 @@ machine-specific config should remain local. A fresh Codex CLI turn on this
 workstation invoked `gentle_facts.facts_status` and received 6,425 symbols in
 495 files; tool discovery alone had failed the noninteractive approval gate.
 
-The extension exposes six deterministic tools: `facts_query`, `facts_dependents`, `facts_status`, `facts_history`, `facts_commit`, and `facts_impact`.
+The extension exposes eight deterministic tools: `facts_query`, `facts_dependents`, `facts_status`, `facts_history`, `facts_commit`, `facts_impact`, `facts_entities`, and `facts_usages`.
 
 `facts_query` and `facts_dependents` accept `offset` (default 0) and `limit` (default 10, maximum 50). Results use stable file ordering. The response includes `returned`, `nextOffset`, and `truncated`. A page can contain fewer results than requested to stay within the response budget. Oversized declarations are explicitly truncated; inspect the reported source location for the complete declaration. Use `nextCursor` for continuation over the original immutable result snapshot; expired or evicted cursors fail explicitly. A new offset query refreshes the workspace and can observe changes between calls. Cursor retention is bounded and defaults to five minutes.
 
@@ -141,6 +141,53 @@ Files depending on './billing.ts':
 • src/checkout.ts
 • src/invoice.ts
 • tests/billing.test.ts
+```
+
+### `facts_entities`
+Searches contract entities (routes, schemas, tables, messages) extracted from indexed contract files — OpenAPI, JSON Schema, GraphQL, protobuf, SQL — by exact name, path or kind. Every row carries its touching contract relations (consumes/serves/validates). With sibling roots configured, the answer also spans those repositories and sibling rows carry a `[repo]` tag.
+```json
+// Tool Call
+{
+  "name": "facts_entities",
+  "parameters": {
+    "name": "Pets",
+    "kind": "openapi-schema"
+  }
+}
+
+// Result
+Found 1 contract entity:
+
+• [openapi-schema] Pets — tests/fixtures/contracts/petstore.openapi.yaml
+    relations (1): serves ← GET /pets
+```
+
+#### Cross-repo federation
+Start the server with repeatable `--sibling-root /absolute/path` flags (or set
+`GENTLE_FACTS_SIBLING_ROOTS` for the session extension, path-delimiter
+separated). Each sibling root is indexed with its own Facts service and its
+matching entities are merged into the answer with a `[basename]` repository
+tag, so mirrored contracts can be compared across repositories. Sibling
+failures degrade to an explicit `(sibling unavailable)` marker; primary
+answers stay untagged.
+
+### `facts_usages`
+Finds files referencing a symbol by exact name (usage sites), marking whether each records an import of the declaring file. Class methods resolve through their declaring class. Files without recorded identifier references (legacy databases, contracts, non-source candidates) are not reported.
+```json
+// Tool Call
+{
+  "name": "facts_usages",
+  "parameters": {
+    "name": "acquireVerifyLock"
+  }
+}
+
+// Result
+Found 3 usage sites for 'acquireVerifyLock':
+
+• scripts/run-test-suite.mjs (imports the declaring file)
+• scripts/verify-lock-run.mjs (imports the declaring file)
+• tests/verify-lock.test.ts (imports the declaring file)
 ```
 
 ### `facts_status`
