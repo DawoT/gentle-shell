@@ -7,7 +7,7 @@ import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
-import { fileImportLines, paginationProperties } from "../lib/facts/facts-response.ts";
+import { fileImportLines, pageFacts, paginationProperties } from "../lib/facts/facts-response.ts";
 import { FactsService } from "../lib/facts/facts-service.ts";
 import { formatResolutionSummary } from "../lib/facts/facts-module-resolver.ts";
 import { sidebarPart } from "../lib/shell-sidebar.ts";
@@ -15,6 +15,7 @@ import { sidebarPart } from "../lib/shell-sidebar.ts";
 export const FACTS_TOOL_QUERY = "facts_query";
 export const FACTS_TOOL_DEPENDENTS = "facts_dependents";
 export const FACTS_TOOL_STATUS = "facts_status";
+export const FACTS_TOOL_ENTITIES = "facts_entities";
 
 const FACTS_WIDGET_KEY = "gentle-facts";
 
@@ -337,6 +338,60 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
         details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyReceipt, historyError: historyFailures.get(ctx.cwd) },
       };
     },
+  });
+
+  // Tool: facts_entities
+  pi.registerTool({
+    name: FACTS_TOOL_ENTITIES,
+    label: "Facts Entities",
+    description: "Search contract entities (routes, schemas, tables, messages) extracted from indexed contract files by exact name, path or kind.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ...paginationProperties,
+        name: {
+          type: "string",
+          maxLength: 1024,
+          description: "Exact entity name (case-insensitive).",
+        },
+        path: {
+          type: "string",
+          maxLength: 4096,
+          description: "Repository-relative contract file path.",
+        },
+        kind: {
+          type: "string",
+          enum: ["api-route", "openapi-schema", "json-schema", "graphql-type", "protobuf-message", "sql-table", "sql-migration", "consumer", "test"],
+          description: "Optional entity kind filter.",
+        },
+      },
+    },
+    execute: tracked(async (_toolCallId: string, params: any, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) => {
+      signal?.throwIfAborted();
+      if (params.name !== undefined && (typeof params.name !== "string" || !params.name.trim() || params.name.length > 1024)) {
+        throw new Error("Invalid Facts entities name");
+      }
+      const service = await refreshService(ctx, signal);
+      if (!service) return unavailableResult(ctx);
+      const entities = service.queryEntities({
+        name: typeof params.name === "string" ? params.name : undefined,
+        path: typeof params.path === "string" ? params.path : undefined,
+        kind: typeof params.kind === "string" ? params.kind : undefined,
+      });
+      if (entities.length === 0) {
+        return {
+          content: [{ type: "text", text: "No matching contract entities found. Contract entities are extracted from indexed contract files (OpenAPI, JSON Schema, GraphQL, protobuf, SQL)." }],
+          details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, returned: 0, nextOffset: null },
+        };
+      }
+      const rows = entities.map((entity) => `• [${entity.kind}] ${entity.name} — ${entity.path}${typeof entity.line === "number" ? `:${entity.line}` : ""}`);
+      const page = pageFacts(rows, params, (row) => row);
+      return {
+        content: [{ type: "text", text: `Found ${entities.length} contract entit${entities.length === 1 ? "y" : "ies"}:\n\n${page.text}` }],
+        details: { status: "ready", diagnostics: service.getDiagnostics(), found: entities.length, ...page.details },
+      };
+    }),
   });
 
   // Lifecycle hooks

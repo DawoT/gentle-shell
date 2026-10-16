@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import gentleFacts from "../extensions/gentle-facts.ts";
@@ -880,6 +880,24 @@ test("facts_query file mode reports resolved and unresolved imports in the sessi
 		assert.match(text, /node:path/, "the builtin specifier must be listed");
 		assert.match(text, /external-pkg/, "the external specifier must be listed");
 		assert.match(text, /unresolved/, "unresolved imports must be marked as such");
+	} finally {
+		await cleanup();
+	}
+});
+
+test("facts_entities surfaces contract entities in the session tool", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(dir, "petstore.openapi.yaml"), petstore);
+		const result = await pi.getTool("facts_entities").execute("entities", { name: "Pets" }, undefined, undefined, ctx);
+		const text = result.content[0].text;
+		assert.match(text, /\[openapi-schema\] Pets/, "the exact-name entity lookup must return the entity with its kind");
+		assert.match(text, /petstore\.openapi\.yaml/, "entity rows must state their source path");
 	} finally {
 		await cleanup();
 	}

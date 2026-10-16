@@ -2,6 +2,7 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { formatResolutionSummary } from "./facts-module-resolver.ts";
 import { FactsService } from "./facts-service.ts";
+import type { EntityKind } from "./facts-types.ts";
 import { fileImportLines } from "./facts-response.ts";
 import { indexFactsCommit } from "./facts-commit.ts";
 import { analyzeFactsImpact } from "./facts-impact.ts";
@@ -43,6 +44,21 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
       properties: {
         target: { type: "string", description: "Symbol name or repository-relative file path" },
         transitive: { type: "boolean", default: false, description: "Whether to include indirect dependents" },
+        offset: { type: "integer", minimum: 0, default: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "facts_entities",
+    description: "Search contract entities (routes, schemas, tables, messages) extracted from indexed contract files by exact name, path or kind.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Exact entity name (case-insensitive)" },
+        path: { type: "string", description: "Repository-relative contract file path" },
+        kind: { type: "string", enum: ["api-route", "openapi-schema", "json-schema", "graphql-type", "protobuf-message", "sql-table", "sql-migration", "consumer", "test"], description: "Optional entity kind filter" },
         offset: { type: "integer", minimum: 0, default: 0 },
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
       },
@@ -299,6 +315,24 @@ export class FactsMcpServer {
           const lines = paged.map(
             (d) => `• ${d.file} [depth ${d.depth}; via ${d.via}; evidence: ${d.evidence}]`
           );
+          return { content: [{ type: "text", text: lines.join("\n") }] };
+        }
+
+        case "facts_entities": {
+          await this.factsService.sync(signal);
+          signal.throwIfAborted();
+          const offset = args.offset ?? 0;
+          const limit = args.limit ?? 20;
+          const entities = this.factsService.queryEntities({
+            name: typeof args.name === "string" ? args.name : undefined,
+            path: typeof args.path === "string" ? args.path : undefined,
+            kind: typeof args.kind === "string" ? (args.kind as EntityKind) : undefined,
+          });
+          const paged = entities.slice(offset, offset + limit);
+          if (paged.length === 0) {
+            return { content: [{ type: "text", text: "No matching contract entities found." }] };
+          }
+          const lines = paged.map((entity) => `• [${entity.kind}] ${entity.name} — ${entity.path}${typeof entity.line === "number" ? `:${entity.line}` : ""}`);
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ProjectMemory } from "../lib/codex-web/project-memory.ts";
@@ -293,6 +293,57 @@ export function run(): string {
 			assert.match(text, /node:path/, "the builtin specifier must be listed");
 			assert.match(text, /external-pkg/, "the external specifier must be listed");
 			assert.match(text, /unresolved/, "unresolved imports must be marked as such");
+		} finally {
+			proc.kill("SIGKILL");
+		}
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+test("facts_entities surfaces contract entities extracted from indexed contract files", async () => {
+	const workspace = await mkdtemp(join(tmpdir(), "facts-mcp-entities-"));
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+
+	try {
+		await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "mcp-entities-fixture", version: "1.0.0" }));
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(workspace, "petstore.openapi.yaml"), petstore);
+
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: workspace });
+		execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspace });
+		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspace });
+		execFileSync("git", ["add", "."], { cwd: workspace });
+		execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace });
+
+		const proc = spawn(process.execPath, [binPath, "--workspace", workspace], {
+			stdio: ["pipe", "pipe", "pipe"],
+			cwd: workspace,
+		});
+		const client = createRpcClient(proc);
+
+		try {
+			await client.request("initialize", {
+				protocolVersion: "2024-11-05",
+				capabilities: {},
+				clientInfo: { name: "test", version: "1.0.0" },
+			});
+			client.notify("notifications/initialized");
+
+			const result = await client.request("tools/call", {
+				name: "facts_entities",
+				arguments: { name: "Pets" },
+			});
+			const text = result.content[0].text;
+			assert.match(text, /\[openapi-schema\] Pets/, "the exact-name entity lookup must return the entity with its kind");
+			assert.match(text, /petstore\.openapi\.yaml/, "entity rows must state their source path");
+
+			const byKind = await client.request("tools/call", {
+				name: "facts_entities",
+				arguments: { kind: "api-route" },
+			});
+			assert.match(byKind.content[0].text, /api-route/, "kind filtering must work");
 		} finally {
 			proc.kill("SIGKILL");
 		}
