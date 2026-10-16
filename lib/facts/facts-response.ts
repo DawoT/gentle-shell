@@ -13,7 +13,7 @@ export const paginationProperties = {
     type: "integer",
     minimum: 1,
     maximum: 50,
-    description: "Maximum results per page (default 10). The response budget may reduce this.",
+    description: "Maximum results per page (default 50). The response budget may reduce this.",
   },
 };
 
@@ -36,7 +36,7 @@ export function symbolRow(filePath: string, symbol: { startLine: number; endLine
 
 export function pageFacts<T>(items: T[], options: PageOptions, format: (item: T) => string) {
   const offset = options.offset ?? 0;
-  const limit = options.limit ?? 10;
+  const limit = options.limit ?? 50;
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
     throw new RangeError("offset must be a nonnegative integer and limit must be between 1 and 50");
   }
