@@ -226,7 +226,7 @@ coverage is absent.
   tools — every response must state the exact fingerprint, age, confidence
   class, inputs and the exact validity/staleness reason, with the smallest
   re-verification command when stale.
-- [ ] S8.2 Suite proof composition: suite proof as a Merkle-like aggregate
+- [x] S8.2 Suite proof composition: suite proof as a Merkle-like aggregate
   of per-test/shard proofs; cheap rebuild on subset change; provenance from
   the aggregate down to each constituent. Precondition: Sprint 7 per-test
   granularity.
@@ -716,3 +716,29 @@ directly on main.
   Remaining known limitation (documented): the smallest
   re-verification command is not stored (secrets policy); responses
   guide re-verification by inputs digest.
+
+### 2026-10-15 — S8.2 constituent provenance executed; roadmap implementation complete
+
+- Writer agent unavailable (two failed launches); implemented inline with
+  the explorer's map: ProofRecord.constituents (file, per-file fingerprint,
+  disposition reused|executed, terminal status; cap 500; fail-closed
+  validation in the ledger; legacy records without provenance stay valid).
+  The granular consolidation materializes provenance from reused +
+  executed constituents and proof_status exposes aggregate-to-constituent
+  provenance (bounded to 10 rows plus a counter).
+- RED->GREEN (4 new tests); one mid-flight fix of my own test authoring
+  (singular constituent message regex; stage aggregates are the only
+  records that carry provenance — pinned via the hermetic_static
+  confidence discriminator).
+- Live verification: the real stage proof carries constituents: 426,
+  visible through proof_status against the real ledger. Proofs 64/64,
+  facts 370/370, typecheck 0. S7.4 false-reuse audit untouched (runs
+  before consolidation); exact fingerprints unchanged.
+- ROADMAP IMPLEMENTATION COMPLETE: all mandatory units executed and
+  committed — S0 metrics/baseline, S1 fast path + single-flight, S2
+  caches, S3 proof ledger/fingerprint/lease/policy, S4 invalidation +
+  minimum set + runner, S5 query/lexical indexes, S6 contract/entity
+  facts, S7 coverage capture + layer-4 + per-file granularity + tuning,
+  S8.1 agent tools + S8.2 composition. Deferred by design: S2.1
+  (measured defer), S8.3 (optional, gated), S0.4/B1-L2 (external),
+  W4-W6 (user decision).
