@@ -789,3 +789,16 @@ directly on main.
   branch content itself retains its recorded native review outcome
   (corrections executed; validator capture blocked by the facade defect,
   externally tracked).
+- P7 — live audit after reload+push found and fixed one real gap (TDD,
+  commit 44868c064): ProofLedger.list() capped the directory scan at 200
+  readdir (lexicographic) entries BEFORE the recency sort, so with 497
+  records on disk the consolidated unit-tests stage proof e75121944375
+  (position 453) was invisible to proof_query and to prefix resolution in
+  proof_status minutes after the runner had reused it via current(). RED:
+  deterministic fabricated-ledger test (250 records, controlled finishedAt;
+  the true newest 200 must be returned exactly) failed on the old scan
+  order. GREEN: the 200 bound now applies to the recency-sorted result only.
+  Proofs 67/67, runner 12/12, typecheck 0. Live verification on the real
+  ledger: the prefix now resolves with full validity reason and 427
+  constituents. Native assess on the committed range: medium, reviewDue
+  false (under_budget); writer self-verification stands.
