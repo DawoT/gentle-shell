@@ -154,11 +154,14 @@ export class FactsMcpServer {
   private readonly factsService: FactsService;
   private readonly memoryBinding?: FactsMcpMemoryBinding;
   private readonly inFlight = new Map<string | number, AbortController>();
+  private readonly siblings: Array<{ name: string; root: string }>;
+  private readonly siblingServices = new Map<string, FactsService>();
 
-  constructor(workspaceRoot: string, input: Readable, output: Writable, memoryBinding?: FactsMcpMemoryBinding) {
+  constructor(workspaceRoot: string, input: Readable, output: Writable, memoryBinding?: FactsMcpMemoryBinding, siblings: Array<{ name: string; root: string }> = []) {
     this.workspaceRoot = workspaceRoot;
     this.input = input;
     this.output = output;
+    this.siblings = siblings;
     this.factsService = new FactsService(workspaceRoot);
     this.memoryBinding = memoryBinding;
   }
@@ -333,16 +336,45 @@ export class FactsMcpServer {
           signal.throwIfAborted();
           const offset = args.offset ?? 0;
           const limit = args.limit ?? 20;
-          const entities = this.factsService.queryEntities({
+          const filters = {
             name: typeof args.name === "string" ? args.name : undefined,
             path: typeof args.path === "string" ? args.path : undefined,
             kind: typeof args.kind === "string" ? (args.kind as EntityKind) : undefined,
-          });
+          };
+          const entities = this.factsService.queryEntities(filters);
           const paged = entities.slice(offset, offset + limit);
-          if (paged.length === 0) {
+          const lines = paged.length > 0
+            ? entityRows(paged, this.factsService.queryEntities(), this.factsService.queryEntityRelations({}))
+            : [];
+          // Cross-repo federation (T3.2 v1): sibling roots configured through
+          // --sibling-root are queried with the same filters and their rows
+          // carry a repository tag. Sibling failures degrade to an
+          // unavailable marker: they never fail the primary answer.
+          for (const sibling of this.siblings) {
+            try {
+              let siblingService = this.siblingServices.get(sibling.root);
+              if (!siblingService) {
+                siblingService = new FactsService(sibling.root);
+                this.siblingServices.set(sibling.root, siblingService);
+              }
+              await siblingService.sync(signal);
+              signal.throwIfAborted();
+              const siblingEntities = siblingService.queryEntities(filters);
+              const siblingPaged = siblingEntities.slice(offset, offset + limit);
+              if (siblingPaged.length > 0) {
+                const siblingLines = entityRows(siblingPaged, siblingService.queryEntities(), siblingService.queryEntityRelations({}))
+                  .map((row) => row.replace("• ", `• [${sibling.name}] `));
+                lines.push(...siblingLines);
+              } else if (siblingEntities.length > 0) {
+                lines.push(`• [${sibling.name}] (no more rows at this offset)`);
+              }
+            } catch {
+              lines.push(`• [${sibling.name}] (sibling unavailable)`);
+            }
+          }
+          if (lines.length === 0) {
             return { content: [{ type: "text", text: "No matching contract entities found." }] };
           }
-          const lines = entityRows(paged, this.factsService.queryEntities(), this.factsService.queryEntityRelations({}));
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

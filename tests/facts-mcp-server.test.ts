@@ -426,3 +426,49 @@ test("facts_usages answers which files reference a symbol over MCP", async () =>
 		await rm(workspace, { recursive: true, force: true });
 	}
 });
+
+test("facts_entities federates sibling repositories with tagged rows", async () => {
+	const parent = await mkdtemp(join(tmpdir(), "facts-mcp-fed-"));
+	const workspace = join(parent, "primary");
+	const sibling = join(parent, "sibling-repo");
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+	try {
+		const { execFileSync } = await import("node:child_process");
+		for (const root of [workspace, sibling]) {
+			await mkdir(root, { recursive: true });
+			await writeFile(join(root, "package.json"), JSON.stringify({ name: "fed-fixture", version: "1.0.0" }));
+			const { execFileSync } = await import("node:child_process");
+			execFileSync("git", ["init", "-b", "main"], { cwd: root });
+			execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+			execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+		}
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(workspace, "petstore.openapi.yaml"), petstore);
+		await writeFile(join(sibling, "sibling.schema.json"), JSON.stringify({ title: "SiblingContract", type: "object" }));
+		for (const root of [workspace, sibling]) {
+			execFileSync("git", ["add", "."], { cwd: root });
+			execFileSync("git", ["commit", "-m", "init"], { cwd: root });
+		}
+
+		const proc = spawn(process.execPath, [binPath, "--workspace", workspace, "--sibling-root", sibling], {
+			cwd: workspace,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		const client = createRpcClient(proc);
+		try {
+			await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+			client.notify("notifications/initialized");
+
+			const siblingEntity = await client.request("tools/call", { name: "facts_entities", arguments: { name: "SiblingContract" } });
+			assert.match(siblingEntity.content[0].text, /\[sibling-repo\] \[json-schema\] SiblingContract/, "sibling rows must carry the sibling tag");
+
+			const primaryEntity = await client.request("tools/call", { name: "facts_entities", arguments: { name: "Pets" } });
+			assert.match(primaryEntity.content[0].text, /\[openapi-schema\] Pets/, "primary rows stay untagged");
+			assert.doesNotMatch(primaryEntity.content[0].text, /\[sibling-repo\]/, "primary-only results must not carry the sibling tag");
+		} finally {
+			proc.kill("SIGKILL");
+		}
+	} finally {
+		await rm(parent, { recursive: true, force: true });
+	}
+});

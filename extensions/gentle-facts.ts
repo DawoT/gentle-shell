@@ -8,6 +8,7 @@ import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
 import { entityRows, fileImportLines, pageFacts, paginationProperties } from "../lib/facts/facts-response.ts";
+import { basename, delimiter, isAbsolute } from "node:path";
 import { isSourceStale, sourceStamp, syncSourceStamp } from "../lib/facts/facts-extension-stamp.ts";
 import { fileURLToPath } from "node:url";
 import { FactsService } from "../lib/facts/facts-service.ts";
@@ -71,6 +72,21 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
   }
 
   const impactHintsEnabled = env.GENTLE_FACTS_DISABLE_IMPACT_HINTS !== "1";
+  // Cross-repo entity federation (T3.2 v1): opt-in sibling repository roots.
+  const siblingRoots = (env.GENTLE_FACTS_SIBLING_ROOTS ?? "")
+    .split(delimiter)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0 && isAbsolute(root))
+    .map((root) => ({ name: basename(root), root }));
+  const siblingServices = new Map<string, FactsService>();
+  function siblingServiceFor(root: string): FactsService {
+    let service = siblingServices.get(root);
+    if (!service) {
+      service = new FactsService(root);
+      siblingServices.set(root, service);
+    }
+    return service;
+  }
   const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities", "facts_usages"]);
 
   function shapeFor(toolName: string, params: any): string {
@@ -401,22 +417,38 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       }
       const service = await refreshService(ctx, signal);
       if (!service) return unavailableResult(ctx);
-      const entities = service.queryEntities({
+      const filters = {
         name: typeof params.name === "string" ? params.name : undefined,
         path: typeof params.path === "string" ? params.path : undefined,
         kind: typeof params.kind === "string" ? params.kind : undefined,
-      });
-      if (entities.length === 0) {
-        return {
-          content: [{ type: "text", text: "No matching contract entities found. Contract entities are extracted from indexed contract files (OpenAPI, JSON Schema, GraphQL, protobuf, SQL)." }],
-          details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, returned: 0, nextOffset: null },
-        };
+      };
+      const entities = service.queryEntities(filters);
+      const rows = entities.length > 0
+        ? entityRows(entities, service.queryEntities(), service.queryEntityRelations({}))
+        : [];
+      const page = rows.length > 0 ? pageFacts(rows, params, (row) => row) : null;
+      let text = entities.length > 0
+        ? `Found ${entities.length} contract entit${entities.length === 1 ? "y" : "ies"}:\n\n${page!.text}`
+        : "No matching contract entities found. Contract entities are extracted from indexed contract files (OpenAPI, JSON Schema, GraphQL, protobuf, SQL).";
+      let found = entities.length;
+      for (const sibling of siblingRoots) {
+        try {
+          const siblingService = siblingServiceFor(sibling.root);
+          await siblingService.sync(signal);
+          const siblingEntities = siblingService.queryEntities(filters);
+          if (siblingEntities.length === 0) continue;
+          const siblingRows = entityRows(siblingEntities, siblingService.queryEntities(), siblingService.queryEntityRelations({}))
+            .slice(0, typeof params.limit === "number" ? params.limit : 50)
+            .map((row) => row.replace("• ", `• [${sibling.name}] `));
+          text += `\n\n[sibling ${sibling.name}] ${siblingEntities.length} matches:\n${siblingRows.join("\n")}`;
+          found += siblingEntities.length;
+        } catch {
+          // Siblings are advisory: skip unreachable roots.
+        }
       }
-      const rows = entityRows(entities, service.queryEntities(), service.queryEntityRelations({}));
-      const page = pageFacts(rows, params, (row) => row);
       return {
-        content: [{ type: "text", text: `Found ${entities.length} contract entit${entities.length === 1 ? "y" : "ies"}:\n\n${page.text}` }],
-        details: { status: "ready", diagnostics: service.getDiagnostics(), found: entities.length, ...page.details },
+        content: [{ type: "text", text }],
+        details: { status: "ready", diagnostics: service.getDiagnostics(), found, ...page?.details },
       };
     }),
   });

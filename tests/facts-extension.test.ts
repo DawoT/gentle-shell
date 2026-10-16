@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { dirname, delimiter, join } from "node:path";
 import gentleFacts from "../extensions/gentle-facts.ts";
 
 test("facts_query refreshes external edits before returning signatures", async () => {
@@ -1011,5 +1011,31 @@ test("facts_usages answers which files reference a symbol", async () => {
 		assert.match(text, /main\.ts/, "main.ts references and imports multiply");
 	} finally {
 		await cleanup();
+	}
+});
+
+test("facts_entities federates sibling repositories from the environment", async () => {
+	const { dir, cleanup } = await createFixture();
+	const sibling = join(dirname(dir), "facts-ext-sibling-repo");
+	try {
+		const { pi, entries } = createMockPi();
+		gentleFacts(pi as any, { GENTLE_FACTS_SIBLING_ROOTS: sibling });
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await mkdir(sibling, { recursive: true });
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: sibling });
+		execFileSync("git", ["config", "user.name", "T"], { cwd: sibling });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: sibling });
+		await writeFile(join(sibling, "package.json"), JSON.stringify({ name: "sibling-fixture", version: "1.0.0" }));
+		await writeFile(join(sibling, "sibling.schema.json"), JSON.stringify({ title: "SiblingContract", type: "object" }));
+		execFileSync("git", ["add", "."], { cwd: sibling });
+		execFileSync("git", ["commit", "-m", "init"], { cwd: sibling });
+
+		const result = await pi.getTool("facts_entities").execute("entities", { name: "SiblingContract" }, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /\[facts-ext-sibling-repo\] \[json-schema\] SiblingContract/, "sibling rows must carry the sibling tag");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+		await rm(sibling, { recursive: true, force: true });
 	}
 });
