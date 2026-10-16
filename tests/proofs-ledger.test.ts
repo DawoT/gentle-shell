@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProofLedger, ProofLifecycleError } from "../lib/proofs/proof-ledger.ts";
+import { ProofLedger, ProofLifecycleError, type ProofConstituent } from "../lib/proofs/proof-ledger.ts";
 import { computeProofFingerprint, proofInputsDigest, canonicalProofInputsForStorage, type ProofFingerprintInput } from "../lib/proofs/proof-fingerprint.ts";
 
 function fingerprintInput(overrides: Partial<ProofFingerprintInput> = {}): ProofFingerprintInput {
@@ -224,6 +224,53 @@ test("raw command output is rejected as proof material", async () => {
       () => ledger.finish(record, { status: "passed", stdout: "the full test output" } as never),
       /raw output|stdout/i,
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the ledger persists constituent provenance for composed stage proofs", async () => {
+  const { ledger, cleanup } = await ledgerFixture();
+  try {
+    const input = fingerprintInput();
+    const fingerprint = computeProofFingerprint(input);
+    const record = await ledger.start({ fingerprint, inputsDigest: proofInputsDigest(input), confidence: "hermetic_static", sideEffects: "pure_validation" });
+    const constituents: ProofConstituent[] = [
+      { file: "tests/alpha.test.ts", fingerprint: "a".repeat(64), disposition: "reused", status: "passed" },
+      { file: "tests/gamma.test.ts", fingerprint: "c".repeat(64), disposition: "executed", status: "passed" },
+    ];
+    const finished = await ledger.finish(record, { status: "passed", exitCode: 0, constituents });
+    assert.deepEqual(finished.constituents, constituents);
+    assert.deepEqual((await ledger.current(fingerprint))?.constituents, constituents);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("constituent provenance fails closed and legacy records stay valid without it", async () => {
+  const { ledger, cleanup } = await ledgerFixture();
+  try {
+    const startWith = (fingerprint: string) => ledger.start({ fingerprint, inputsDigest: fingerprint, confidence: "hermetic_static", sideEffects: "pure_validation" });
+    const tooMany: ProofConstituent[] = Array.from({ length: 501 }, (_, index) => ({
+      file: `tests/f${index}.test.ts`, fingerprint: "a".repeat(64), disposition: "reused", status: "passed",
+    }));
+    await assert.rejects(
+      ledger.finish(await startWith("a".repeat(64)), { status: "passed", constituents: tooMany }),
+      /constituents/i,
+    );
+
+    const invalid: ProofConstituent[] = [{ file: "tests/x.test.ts", fingerprint: "not-hex", disposition: "reused", status: "passed" }];
+    const mutated = invalid[0] as { disposition: string; fingerprint: string };
+    mutated.disposition = "sideways";
+    mutated.fingerprint = "not-hex";
+    await assert.rejects(
+      ledger.finish(await startWith("b".repeat(64)), { status: "passed", constituents: invalid }),
+      /constituent/i,
+    );
+
+    const legacy = await ledger.finish(await startWith("c".repeat(64)), { status: "passed", exitCode: 0 });
+    assert.equal(legacy.constituents, undefined);
+    assert.equal((await ledger.current("c".repeat(64)))?.status, "passed");
   } finally {
     await cleanup();
   }

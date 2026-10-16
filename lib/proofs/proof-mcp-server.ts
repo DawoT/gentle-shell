@@ -88,6 +88,13 @@ function statusText(record: ProofRecord): string {
   if (record.invalidationReason !== undefined) lines.push(`invalidationReason: ${record.invalidationReason}`);
   lines.push(`allowed transitions: ${transitions}`);
   lines.push(`re-verification: recompute the verification inputs and compare inputsDigest ${record.inputsDigest}; raw commands are not stored.`);
+  if (record.constituents !== undefined && record.constituents.length > 0) {
+    lines.push(`constituents: ${record.constituents.length}`);
+    for (const constituent of record.constituents.slice(0, 10)) {
+      lines.push(`  ${constituent.file} (${constituent.disposition}, ${constituent.status})`);
+    }
+    if (record.constituents.length > 10) lines.push(`  ... ${record.constituents.length - 10} more`);
+  }
   return lines.join("\n");
 }
 

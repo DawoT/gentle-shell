@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { ProofLedger } from "../lib/proofs/proof-ledger.ts";
+import { ProofLedger, type ProofConstituent } from "../lib/proofs/proof-ledger.ts";
 
 function createRpcClient(proc: ReturnType<typeof spawn>) {
   let seq = 1;
@@ -247,6 +247,28 @@ test("proof_status resolves unambiguous fingerprint prefixes from proof_query ou
     const status = await client.request("tools/call", { name: "proof_status", arguments: { fingerprint: fingerprint.slice(0, 16) } });
     assert.match(textOf(status), new RegExp(fingerprint));
     assert.match(textOf(status), /status: passed/);
+  } finally {
+    proc.kill();
+    await rm(ledgerRoot, { recursive: true, force: true });
+  }
+});
+
+test("proof_status exposes aggregate-to-constituent provenance when present", async () => {
+  const ledgerRoot = await mkdtemp(join(tmpdir(), "proofs-mcp-ledger-"));
+  const ledger = new ProofLedger(ledgerRoot);
+  const constituents: ProofConstituent[] = [
+    { file: "tests/alpha.test.ts", fingerprint: "a".repeat(64), disposition: "reused", status: "passed" },
+    { file: "tests/gamma.test.ts", fingerprint: "c".repeat(64), disposition: "executed", status: "failed" },
+  ];
+  const started = await ledger.start({ fingerprint: "e".repeat(64), inputsDigest: "e".repeat(64), confidence: "hermetic_static", sideEffects: "pure_validation" });
+  await ledger.finish(started, { status: "passed", constituents });
+  const { proc, client } = await startServer(ledgerRoot);
+  try {
+    const status = await client.request("tools/call", { name: "proof_status", arguments: { fingerprint: "e".repeat(64) } });
+    const text = textOf(status);
+    assert.match(text, /constituents: 2/);
+    assert.match(text, /tests\/alpha\.test\.ts \(reused, passed\)/);
+    assert.match(text, /tests\/gamma\.test\.ts \(executed, failed\)/);
   } finally {
     proc.kill();
     await rm(ledgerRoot, { recursive: true, force: true });

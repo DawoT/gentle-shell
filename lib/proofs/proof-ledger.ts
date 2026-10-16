@@ -24,6 +24,15 @@ export interface ProofRecord {
   /** Runtime coverage is attached evidence and never part of the exact fingerprint. */
   runtimeObservation?: RuntimeCoverageObservation;
   invalidationReason?: string;
+  /** Provenance of a composed stage proof: the per-file constituents it was built from. */
+  constituents?: ProofConstituent[];
+}
+
+export interface ProofConstituent {
+  file: string;
+  fingerprint: string;
+  disposition: "reused" | "executed";
+  status: Exclude<ProofStatus, "running">;
 }
 
 export interface ProofStartInput {
@@ -98,7 +107,7 @@ export class ProofLedger {
    * current view. The running record lives with the caller (the execution
    * lease); the disk only ever holds published views.
    */
-  async finish(record: ProofRecord, patch: { status: Extract<ProofStatus, "passed" | "failed" | "aborted">; exitCode?: number; durationMs?: number; outputDigests?: { stdout: string; stderr: string }; runtimeObservation?: RuntimeCoverageObservation }): Promise<ProofRecord> {
+  async finish(record: ProofRecord, patch: { status: Extract<ProofStatus, "passed" | "failed" | "aborted">; exitCode?: number; durationMs?: number; outputDigests?: { stdout: string; stderr: string }; runtimeObservation?: RuntimeCoverageObservation; constituents?: ProofConstituent[] }): Promise<ProofRecord> {
     const raw = Object.keys(patch).find((key) => RAW_OUTPUT_KEYS.has(key));
     if (raw) throw new Error(`Raw output ("${raw}") is not proof material; store outputDigests only`);
     if (record.proofVersion !== PROOF_VERSION || !FINGERPRINT.test(record.fingerprint) || record.status !== "running") {
@@ -116,6 +125,7 @@ export class ProofLedger {
       ...(patch.durationMs !== undefined ? { durationMs: patch.durationMs } : {}),
       ...(patch.outputDigests ? { outputDigests: validateOutputDigests(patch.outputDigests) } : {}),
       ...(patch.runtimeObservation ? { runtimeObservation: validateRuntimeObservation(patch.runtimeObservation) } : {}),
+      ...(patch.constituents ? { constituents: validateConstituents(patch.constituents) } : {}),
     };
     await publishArtifact(this.root, record.fingerprint, record.seq, JSON.stringify(finished));
     return finished;
@@ -180,6 +190,7 @@ export class ProofLedger {
     const record = JSON.parse(text) as ProofRecord;
     if (record.fingerprint !== fingerprint) throw new Error("Proof record fingerprint mismatch");
     if (record.runtimeObservation) validateRuntimeObservation(record.runtimeObservation);
+    if (record.constituents) validateConstituents(record.constituents);
     return record;
   }
 
@@ -205,6 +216,25 @@ export class ProofLedger {
       throw error;
     }
   }
+}
+
+const CONSTITUENT_CAP = 500;
+const CONSTITUENT_DISPOSITIONS = new Set(["reused", "executed"]);
+const CONSTITUENT_STATUSES = new Set(["passed", "failed", "stale", "expired", "invalidated", "aborted"]);
+
+function validateConstituents(constituents: ProofConstituent[]): ProofConstituent[] {
+  if (!Array.isArray(constituents) || constituents.length === 0 || constituents.length > CONSTITUENT_CAP) {
+    throw new Error(`Proof constituents must be a non-empty array of at most ${CONSTITUENT_CAP} entries`);
+  }
+  for (const constituent of constituents) {
+    if (!constituent || typeof constituent.file !== "string" || constituent.file.length === 0 ||
+      !FINGERPRINT.test(constituent.fingerprint) ||
+      typeof constituent.disposition !== "string" || !CONSTITUENT_DISPOSITIONS.has(constituent.disposition) ||
+      typeof constituent.status !== "string" || !CONSTITUENT_STATUSES.has(constituent.status)) {
+      throw new Error("Invalid proof constituent entry");
+    }
+  }
+  return constituents.map((constituent) => ({ ...constituent }));
 }
 
 function validateRuntimeObservation(value: RuntimeCoverageObservation): RuntimeCoverageObservation {

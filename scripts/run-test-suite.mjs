@@ -130,7 +130,7 @@ async function recordProof(proofLedger, fingerprint, code, runtimeObservation, c
 	});
 }
 
-async function recordStageProof(proofLedger, stage, proofs, code, runtimeObservation) {
+async function recordStageProof(proofLedger, stage, proofs, code, runtimeObservation, constituents) {
 	const input = stageProofInput(stage, proofs.treeDigest);
 	const record = await proofLedger.start({
 		fingerprint: computeProofFingerprint(input),
@@ -143,6 +143,7 @@ async function recordStageProof(proofLedger, stage, proofs, code, runtimeObserva
 		status: code === 0 ? "passed" : "failed",
 		exitCode: code,
 		...(runtimeObservation ? { runtimeObservation } : {}),
+		...(constituents ? { constituents } : {}),
 	});
 }
 
@@ -273,6 +274,7 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 			if (!granularFallback) {
 				const byName = new Map(inventory.map((entry) => [entry.name, entry]));
 				const observations = new Map(priorObservations);
+				const executedStatus = new Map();
 				let code = 0;
 				for (const item of selection.execute) {
 					const entry = byName.get(item.name);
@@ -287,6 +289,7 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 						break;
 					}
 					observations.set(entry.name, execution.runtimeObservation);
+					executedStatus.set(item.name, execution.result.code === 0 ? "passed" : "failed");
 					if (execution.result.code !== 0 && code === 0) code = execution.result.code;
 				}
 				if (!granularFallback) {
@@ -317,9 +320,23 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 					}
 					write(`false-reuse incidents: ${falseReuseIncidents}`);
 					if (!granularFallback) {
+						const constituents = [
+							...selection.reuse.map((item) => {
+								const entry = byName.get(item.name);
+								const prior = entry ? proofByFingerprint.get(entry.fingerprint) : undefined;
+								return { file: item.name, fingerprint: entry?.fingerprint ?? "", disposition: "reused", status: prior?.status ?? "passed" };
+							}),
+							...selection.execute.map((item) => ({
+								file: item.name,
+								fingerprint: byName.get(item.name)?.fingerprint ?? "",
+								disposition: "executed",
+								status: executedStatus.get(item.name) ?? "failed",
+							})),
+						];
+						const provenance = constituents.length > 0 && constituents.length <= 500 ? constituents : undefined;
 						const files = [...new Set([...observations.values()].flatMap((observation) => observation.files))].sort();
 						const runtimeObservation = { kind: "v8-coverage", files };
-						await recordStageProof(proofLedger, stage, proofs, code, runtimeObservation);
+						await recordStageProof(proofLedger, stage, proofs, code, runtimeObservation, provenance);
 						results.push({ name: stage.name, code });
 						continue;
 					}

@@ -391,6 +391,42 @@ test("unit-test stage executes only selected files when selection is trustworthy
   }
 });
 
+test("the granular unit-tests stage consolidates constituent provenance into its stage proof", async () => {
+  const fx = await perFileStageFixture();
+  try {
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "9".repeat(64), repoRoot: fx.root },
+    });
+    fx.executions.length = 0;
+    await writeFile(join(fx.root, "tests", "gamma.test.ts"), 'import "../src/gamma.ts";\n');
+    await writeFile(join(fx.root, "src", "gamma.ts"), "export const gamma = true;\n");
+    await runTestSuite([fx.stage], {
+      runStageImpl: fx.runStageImpl,
+      write: () => {},
+      proofs: { ledgerRoot: fx.ledgerRoot, treeDigest: "b".repeat(64), repoRoot: fx.root },
+    });
+
+    const ledger = new ProofLedger(fx.ledgerRoot);
+    const records = await ledger.list(10);
+    const stageProof = records.find((record) => record.constituents !== undefined);
+    assert.ok(stageProof, "the granular stage proof must carry constituent provenance");
+    const rows = stageProof.constituents!.map((c) => `${c.file} ${c.disposition} ${c.status}`).sort();
+    assert.deepEqual(rows, [
+      "tests/alpha.test.ts reused passed",
+      "tests/beta.test.ts reused passed",
+      "tests/gamma.test.ts executed passed",
+    ]);
+    for (const record of records) {
+      if (record === stageProof || record.confidence === "hermetic_static") continue;
+      assert.equal(record.constituents, undefined, "only the stage aggregate carries provenance");
+    }
+  } finally {
+    await fx.cleanup();
+  }
+});
+
 test("committed changes still select granularly through coverage digest drift", async () => {
   const fx = await perFileStageFixture();
   try {
