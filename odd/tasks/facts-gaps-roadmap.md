@@ -910,3 +910,12 @@ directly on main.
   visible from both repos. MCP 7/7, ext 45/45, suite 396/396, typecheck
   0. Remaining Tier 3 scope (shared ledger trust design, semantic tier)
   stays gated on explicit product decisions.
+- P16 — SOTA roadmap Tier 3 resolved with facts (user delegated the
+  decisions): T3.1 shared ledger and T3.3 semantic tier DECIDED NOT
+  SELECTED (no multi-machine flow recorded; no lexical miss beyond
+  token/trigram reach; embeddings against the verified-evidence grain).
+  The demonstrated gap was closed instead — entity lexical discovery
+  through facts_search on both surfaces (commit 62c3283ec): live
+  'capabilities' returns 10 rows with 5 entity matches where exact-name
+  matching returned zero. Remaining Tier 3 scope revisits only with new
+  evidence.

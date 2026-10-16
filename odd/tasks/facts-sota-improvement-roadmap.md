@@ -141,6 +141,12 @@ Tiers gate sequencing; earlier tiers protect later ones.
   namespace, revocation), then MVP behind a flag; the maturity gate
   (false-reuse 0) is already recorded — the open question is trust, not
   correctness.
+  DECIDED NOT SELECTED (2026-10-16, facts, user delegated the decision):
+  the ledger is already shared across sessions on a repository by design
+  (.pi/proofs is repository-scoped) and the campaign recorded no
+  multi-machine verification flow — cross-machine sharing has no paying
+  consumer in this dogfooding. Revisit only with an actual multi-machine
+  workflow.
 - T3.2 [S12] Cross-repo entity federation: contract entities resolve
   across sibling repositories in the same workspace profile; start with
   the gentle-ai <-> gentle-shell contracts as the real pilot.
@@ -157,6 +163,13 @@ Tiers gate sequencing; earlier tiers protect later ones.
 - T3.3 [S13] Semantic tier: opt-in hybrid discovery, isolated behind a
   flag, never part of fingerprint/reuse decisions; ship only with a
   measured query-quality delta, else drop.
+  DECIDED NOT SELECTED (2026-10-16, facts, user delegated the decision):
+  no campaign query missed results that token/trigram matching could not
+  fix, and embeddings would add external dependencies against the
+  verified-evidence grain. The one demonstrated discovery gap
+  (exact-name-only entities, 'capabilities' -> 0 rows) was closed instead
+  with the hermetic lexical slice: entity entries in the lexical index +
+  facts_search on both surfaces (commit 62c3283ec).
 
 ## Acceptance criteria
 
