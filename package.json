@@ -1,112 +1,113 @@
 {
-	"name": "gentle-pi",
-	"version": "4.2.0",
-	"description": "Turn Pi into el Gentleman: an ODD development harness with focused subagents, configured TDD evidence, native review, and skill discovery.",
-	"license": "MIT",
-	"type": "module",
-	"bin": {
-		"gentle-shell": "bin/gentle-shell.mjs"
-	},
-	"keywords": [
-		"pi-package",
-		"pi",
-		"pi-coding-agent",
-		"gentle-pi",
-		"gentle-ai",
-		"odd",
-		"subagents",
-		"tdd",
-		"code-review",
-		"ai-coding-agent",
-		"agent-harness"
-	],
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/Gentleman-Programming/gentle-shell.git"
-	},
-	"files": [
-		"assets/",
-		"bin/",
-		"contracts/",
-		"docs/",
-		"extensions/",
-		"lib/",
-		"prompts/",
-		"runtime/",
-		"skills/",
-		"scripts/",
-		"tests/",
-		"!tests/fixtures/legacy/sdd-research-v2.5.0.md",
-		"themes/",
-		"README.md"
-	],
-	"scripts": {
-		"check:provider-contract": "node scripts/check-provider-contract.mjs",
-		"mirror:odd-routing": "node scripts/mirror-odd-routing.mjs",
-		"postinstall": "node scripts/install-gentle-ai.mjs",
-		"test": "node scripts/run-test-suite.mjs",
-		"test:harness": "node --experimental-strip-types tests/runtime-harness.mjs",
-		"test:dev-binary": "node --experimental-strip-types --test tests/devbinary/*.devtest.ts",
-		"test:cross-lane": "node tests/crosslane/cross-lane.mjs",
-		"test:maintainer": "node --experimental-strip-types --test tests/maintainer/*.maintest.ts",
-		"build:runtime-modules": "node scripts/build-runtime-modules.mjs --write",
-		"check:runtime-modules": "node scripts/build-runtime-modules.mjs --check",
-		"test:packed-package": "node scripts/test-packed-runner.mjs",
-		"test:facts": "node --experimental-strip-types --test tests/facts-*.test.ts",
-		"test:facts:packed": "node scripts/test-facts-packed.mjs",
-		"benchmark:facts": "node --expose-gc --experimental-strip-types scripts/benchmark-facts.mjs",
-		"benchmark:facts:real": "node --expose-gc --experimental-strip-types scripts/benchmark-facts-real.mjs",
-		"prepack": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs",
-		"prepublishOnly": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs && pnpm run test:packed-package && pnpm run test:facts:packed",
-		"typecheck": "node scripts/check-types.mjs"
-	},
-	"pi": {
-		"image": "https://cdn.jsdelivr.net/npm/gentle-pi/assets/gentle-logo-only.png",
-		"extensions": [
-			"./extensions"
-		],
-		"themes": [
-			"./themes"
-		],
-		"prompts": [
-			"./prompts"
-		],
-		"skills": [
-			"./skills"
-		]
-	},
-	"dependencies": {
-		"@heyhuynhgiabuu/pi-pretty": "0.6.27"
-	},
-	"optionalDependencies": {
-		"typescript": "^5.9.3"
-	},
-	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": ">=1.2.0",
-		"@earendil-works/pi-ai": "*",
-		"@earendil-works/pi-tui": "*",
-		"typebox": "*"
-	},
-	"peerDependenciesMeta": {
-		"@earendil-works/pi-coding-agent": {
-			"optional": true
-		},
-		"@earendil-works/pi-ai": {
-			"optional": true
-		},
-		"@earendil-works/pi-tui": {
-			"optional": true
-		}
-	},
-	"devDependencies": {
-		"@earendil-works/pi-coding-agent": ">=1.2.0",
-		"@earendil-works/pi-ai": ">=1.2.0",
-		"@earendil-works/pi-tui": ">=1.2.0",
-		"@types/node": "^24.13.3",
-		"typescript": "^5.9.3"
-	},
-	"engines": {
-		"node": ">=22.19.0"
-	},
-	"packageManager": "pnpm@11.1.1"
+  "name": "gentle-pi",
+  "version": "4.2.0",
+  "description": "Turn Pi into el Gentleman: an ODD development harness with focused subagents, configured TDD evidence, native review, and skill discovery.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "gentle-shell": "bin/gentle-shell.mjs"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "gentle-pi",
+    "gentle-ai",
+    "odd",
+    "subagents",
+    "tdd",
+    "code-review",
+    "ai-coding-agent",
+    "agent-harness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gentleman-Programming/gentle-shell.git"
+  },
+  "files": [
+    "assets/",
+    "bin/",
+    "contracts/",
+    "docs/",
+    "extensions/",
+    "lib/",
+    "prompts/",
+    "runtime/",
+    "skills/",
+    "scripts/",
+    "tests/",
+    "!tests/fixtures/legacy/sdd-research-v2.5.0.md",
+    "themes/",
+    "README.md"
+  ],
+  "scripts": {
+    "benchmark:facts": "node --expose-gc --experimental-strip-types scripts/benchmark-facts.mjs",
+    "benchmark:facts:real": "node --expose-gc --experimental-strip-types scripts/benchmark-facts-real.mjs",
+    "build:runtime-modules": "node scripts/build-runtime-modules.mjs --write",
+    "check:provider-contract": "node scripts/check-provider-contract.mjs",
+    "check:runtime-modules": "node scripts/build-runtime-modules.mjs --check",
+    "mirror:odd-routing": "node scripts/mirror-odd-routing.mjs",
+    "postinstall": "node scripts/install-gentle-ai.mjs",
+    "prepack": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs",
+    "prepublishOnly": "pnpm test && pnpm run check:runtime-modules && node scripts/verify-package-files.mjs && pnpm run test:packed-package && pnpm run test:facts:packed",
+    "smoke:entrypoints": "node scripts/smoke-facts-entrypoints.mjs",
+    "test": "node scripts/run-test-suite.mjs",
+    "test:cross-lane": "node tests/crosslane/cross-lane.mjs",
+    "test:dev-binary": "node --experimental-strip-types --test tests/devbinary/*.devtest.ts",
+    "test:facts": "node --experimental-strip-types --test tests/facts-*.test.ts",
+    "test:facts:packed": "node scripts/test-facts-packed.mjs",
+    "test:harness": "node --experimental-strip-types tests/runtime-harness.mjs",
+    "test:maintainer": "node --experimental-strip-types --test tests/maintainer/*.maintest.ts",
+    "test:packed-package": "node scripts/test-packed-runner.mjs",
+    "typecheck": "node scripts/check-types.mjs"
+  },
+  "pi": {
+    "image": "https://cdn.jsdelivr.net/npm/gentle-pi/assets/gentle-logo-only.png",
+    "extensions": [
+      "./extensions"
+    ],
+    "themes": [
+      "./themes"
+    ],
+    "prompts": [
+      "./prompts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "dependencies": {
+    "@heyhuynhgiabuu/pi-pretty": "0.6.27"
+  },
+  "optionalDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.2.0",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.2.0",
+    "@earendil-works/pi-ai": ">=1.2.0",
+    "@earendil-works/pi-tui": ">=1.2.0",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "packageManager": "pnpm@11.1.1"
 }
