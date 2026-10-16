@@ -239,3 +239,64 @@ test("Facts MCP Server returns standard JSON-RPC 2.0 errors on malformed message
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+test("facts_query file mode reports the file's resolved and unresolved imports", async () => {
+	const workspace = await mkdtemp(join(tmpdir(), "facts-mcp-imports-"));
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+
+	try {
+		await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "mcp-imports-fixture", version: "1.0.0" }));
+		await writeFile(join(workspace, "index.ts"), `
+export function authenticate(sessionId: string): string {
+	return sessionId;
+}
+`);
+		await writeFile(join(workspace, "app.ts"), `
+import { authenticate } from "./index.ts";
+import { join } from "node:path";
+import { helper } from "external-pkg";
+
+export function run(): string {
+	return join(".", authenticate("1"), helper());
+}
+`);
+
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: workspace });
+		execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspace });
+		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspace });
+		execFileSync("git", ["add", "."], { cwd: workspace });
+		execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace });
+
+		const proc = spawn(process.execPath, [binPath, "--workspace", workspace], {
+			stdio: ["pipe", "pipe", "pipe"],
+			cwd: workspace,
+		});
+		const client = createRpcClient(proc);
+
+		try {
+			await client.request("initialize", {
+				protocolVersion: "2024-11-05",
+				capabilities: {},
+				clientInfo: { name: "test", version: "1.0.0" },
+			});
+			client.notify("notifications/initialized");
+
+			const result = await client.request("tools/call", {
+				name: "facts_query",
+				arguments: { file: "app.ts" },
+			});
+			const text = result.content[0].text;
+
+			assert.match(text, /imports \(/, "file-mode responses must include an imports section");
+			assert.match(text, /index\.ts/, "the relative import must show its resolved target");
+			assert.match(text, /node:path/, "the builtin specifier must be listed");
+			assert.match(text, /external-pkg/, "the external specifier must be listed");
+			assert.match(text, /unresolved/, "unresolved imports must be marked as such");
+		} finally {
+			proc.kill("SIGKILL");
+		}
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
