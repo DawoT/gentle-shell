@@ -775,3 +775,17 @@ directly on main.
   verified one, so no test re-run required). No push performed: main remains
   local-only; origin/feat/gf-p2-003-contract-entity-facts already carries
   the branch. Roadmap delivery decision closed on 2026-10-16.
+- P6 — native review of the session delta closed APPROVED: the full-range
+  candidate (ae7b4e2fb..e96a79e7c, 40 paths) exceeded the native lens
+  context budget (lens_context_budget_exceeded, no authority created), so it
+  was reduced per the stop's continuation to the unreviewed session delta
+  (2cbb6f851..e96a79e7c: 5 paths, 182 lines). Lineage
+  review-b67a8cb215906009, tier medium, lenses risk+reliability, both
+  reviewers admitted, APPROVED with one non-blocking advisory
+  (R3-001, SUGGESTION, tests/proofs-stage-input.test.ts:22-35 — separate
+  later work). Receipt: acknowledged store_revision
+  sha256:63bbd4e69f80873580b089abcbce8502f78432c75af9416dacfe6d8b4bf2d5f4,
+  authority burned, delivery under ordinary repository policy. The S6-S8
+  branch content itself retains its recorded native review outcome
+  (corrections executed; validator capture blocked by the facade defect,
+  externally tracked).
