@@ -54,6 +54,14 @@ async function extract(path: string, source: string, sha: string, signal?: Abort
   return { ...facts, language, sourceBytes: Buffer.byteLength(source, "utf8") };
 }
 
+/**
+ * Bump when source extraction output changes shape or policy (e.g. "2":
+ * FileFacts gained bounded identifier references). FactsService re-indexes
+ * every source file when this differs from the stored stamp, even for
+ * content-unchanged files.
+ */
+export const SOURCE_EXTRACTOR_VERSION = "2";
+
 export async function extractSourceFacts(path: string, source: string, sha: string, signal?: AbortSignal): Promise<FileFacts> {
   try {
     return await extract(path, source, sha, signal);

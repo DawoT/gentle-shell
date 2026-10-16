@@ -112,6 +112,8 @@ export interface FactsDatabase {
   entityRelations?: EntityRelation[];
   /** Optional: contract parser version that produced the current entities. */
   contractParserVersion?: string;
+  /** Optional: source extractor version that produced the current facts. */
+  sourceExtractorVersion?: string;
   version: string;
   root: string;
   lastHeadCommit?: string;

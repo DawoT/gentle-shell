@@ -37,6 +37,7 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
   }
 
   if (value.contractParserVersion !== undefined && typeof value.contractParserVersion !== "string") return false;
+  if (value.sourceExtractorVersion !== undefined && typeof value.sourceExtractorVersion !== "string") return false;
 
   for (const [path, file] of Object.entries(value.files)) {
     if (!isRecord(file) || file.path !== path || typeof file.sha !== "string" ||

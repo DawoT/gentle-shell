@@ -4,7 +4,7 @@ import { encodeFacts } from "./facts-codec.ts";
 import { calculateFactsDelta, computeGitBlobSha, scanGitWorkspace } from "./facts-git-indexer.ts";
 import { extractExecutionReceipts } from "./facts-receipts-extractor.ts";
 import { FactsStore } from "./facts-store.ts";
-import { extractSourceFacts, factsLanguage } from "./facts-languages.ts";
+import { extractSourceFacts, factsLanguage, SOURCE_EXTRACTOR_VERSION } from "./facts-languages.ts";
 import { CONTRACT_PARSER_VERSION, isContractFile, parseContractFacts } from "./facts-contract-parser.ts";
 import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact, type EntityFact, type EntityRelation, type EntityKind, type EntityRelationKind } from "./facts-types.ts";
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
@@ -149,6 +149,7 @@ export class FactsService {
 
   private fastPathEligible(): boolean {
     return this.fastPathEnabled && this.db !== null && this.db.contractParserVersion === CONTRACT_PARSER_VERSION &&
+      this.db.sourceExtractorVersion === SOURCE_EXTRACTOR_VERSION &&
       this.diagnostics.status === "ready" &&
       this.epoch !== undefined && this.epoch.isClean() &&
       this.autoRefreshesSinceFullSync < this.reconcileEvery &&
@@ -302,10 +303,14 @@ export class FactsService {
     // A contract parser change invalidates stored entities even for unchanged
     // files: re-parse every contract file when the parser version differs.
     const parserChanged = db.contractParserVersion !== CONTRACT_PARSER_VERSION;
+    const sourceVersionChanged = db.sourceExtractorVersion !== SOURCE_EXTRACTOR_VERSION;
     const toIndex = [...delta.added, ...delta.modified];
-    if (parserChanged) {
+    if (parserChanged || sourceVersionChanged) {
+      // A parser or extractor change invalidates stored facts even for
+      // unchanged files: re-index every candidate (contracts for the parser,
+      // sources and contracts for the extractor).
       for (const relPath of scan.files.keys()) {
-        if (isContractFile(relPath) && !toIndex.includes(relPath)) toIndex.push(relPath);
+        if (isCandidate(relPath) && !toIndex.includes(relPath)) toIndex.push(relPath);
       }
     }
 
@@ -374,6 +379,7 @@ export class FactsService {
     });
 
     db.contractParserVersion = CONTRACT_PARSER_VERSION;
+    db.sourceExtractorVersion = SOURCE_EXTRACTOR_VERSION;
 
     // Contract usage relations (S6.3): derive consumes/validates edges from
     // recorded imports of indexed source files into contract files. Test
