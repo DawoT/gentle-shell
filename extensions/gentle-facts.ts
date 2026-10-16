@@ -8,9 +8,21 @@ import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
 import { entityRows, fileImportLines, pageFacts, paginationProperties } from "../lib/facts/facts-response.ts";
+import { isSourceStale, sourceStamp, syncSourceStamp } from "../lib/facts/facts-extension-stamp.ts";
+import { fileURLToPath } from "node:url";
 import { FactsService } from "../lib/facts/facts-service.ts";
 import { formatResolutionSummary } from "../lib/facts/facts-module-resolver.ts";
 import { sidebarPart } from "../lib/shell-sidebar.ts";
+
+const EXTENSION_SOURCE = fileURLToPath(import.meta.url);
+const LOADED_STAMP = syncSourceStamp(EXTENSION_SOURCE);
+
+/** Makes extension staleness visible: the loaded source hash vs the working tree. */
+async function extensionCodeLine(): Promise<string> {
+	if (!(await isSourceStale(LOADED_STAMP, EXTENSION_SOURCE))) return `\n- Extension code: current (${LOADED_STAMP})`;
+	const disk = await sourceStamp(EXTENSION_SOURCE).catch(() => "unavailable");
+	return `\n- Extension code: STALE — the working tree changed since this session loaded the extension; /reload to pick it up (loaded ${LOADED_STAMP}, disk ${disk})`;
+}
 
 export const FACTS_TOOL_QUERY = "facts_query";
 export const FACTS_TOOL_DEPENDENTS = "facts_dependents";
@@ -333,7 +345,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       return {
         content: [{
           type: "text",
-          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n${formatResolutionSummary(edges)}${historyReceipt ? `\n- Snapshot digest: ${historyReceipt.digest}` : ""}${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}`,
+          text: `${block}\n${factsUsageLines(usageFor(ctx.cwd).snapshot()).join("\n")}\n${formatResolutionSummary(edges)}${historyReceipt ? `\n- Snapshot digest: ${historyReceipt.digest}` : ""}${historyFailures.has(ctx.cwd) ? "\n- History snapshot unavailable; check transcript storage permissions and retention limits." : ""}${await extensionCodeLine()}`,
         }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), resolution, usage: usageFor(ctx.cwd).snapshot(), historyReceipt, historyError: historyFailures.get(ctx.cwd) },
       };

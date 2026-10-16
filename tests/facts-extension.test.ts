@@ -918,3 +918,17 @@ test("facts_entities rows carry the touching contract relations in the session t
 		await cleanup();
 	}
 });
+
+test("facts_status reports whether the loaded extension code matches the working tree", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		const result = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /Extension code: current \(/, "the staleness indicator must be present (fresh in tests: the loaded file is the working tree)");
+	} finally {
+		await cleanup();
+	}
+});
