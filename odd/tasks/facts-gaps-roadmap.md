@@ -898,3 +898,15 @@ directly on main.
   overhead dominated). Suites ended 393/393 + 68/68, typecheck 0. The
   T2.2/T2.4 outcomes and numbers live in
   odd/tasks/facts-sota-improvement-roadmap.md (Log L3).
+- P15 — SOTA roadmap Tier 3 started with the product decision the user
+  authorized ("implementa lo mejor en el dogfooding con pruebas live"):
+  T3.2 cross-repo entity federation v1 selected (T3.1 already shared
+  per-repo by design; T3.3 semantic tier conflicts with the verified-
+  evidence grain — both documented as not selected). Commit c8520e80:
+  facts_entities federates sibling repositories (--sibling-root MCP flags
+  + GENTLE_FACTS_SIBLING_ROOTS env), sibling rows tagged, failures
+  degrade to explicit markers. LIVE on the real pair: 190 local + 200
+  [gentle-ai] entities in one answer; the provider-contract mirror case
+  visible from both repos. MCP 7/7, ext 45/45, suite 396/396, typecheck
+  0. Remaining Tier 3 scope (shared ledger trust design, semantic tier)
+  stays gated on explicit product decisions.

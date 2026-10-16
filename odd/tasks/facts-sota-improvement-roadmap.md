@@ -144,6 +144,16 @@ Tiers gate sequencing; earlier tiers protect later ones.
 - T3.2 [S12] Cross-repo entity federation: contract entities resolve
   across sibling repositories in the same workspace profile; start with
   the gentle-ai <-> gentle-shell contracts as the real pilot.
+  EXECUTED v1 2026-10-16 (commit c8520e80): repeatable --sibling-root MCP
+  flags + GENTLE_FACTS_SIBLING_ROOTS env for the session extension; per-
+  sibling FactsService; facts_entities merges primary and sibling rows
+  (sibling rows carry a '[name]' repository tag; sibling failures degrade
+  to an explicit unavailable marker). LIVE on the real pair: catalog
+  returns 190 local + 200 [gentle-ai] entities in one answer (cold sibling
+  sync 21.3s, once per session), and the mirror case is visible — the same
+  provider-contract entity appears in both repos, each tagged with its
+  origin. Documented v1 limits: exact-name matching (fuzzy discovery is
+  the lexical/semantic tier's job) and per-root pagination.
 - T3.3 [S13] Semantic tier: opt-in hybrid discovery, isolated behind a
   flag, never part of fingerprint/reuse decisions; ship only with a
   measured query-quality delta, else drop.
