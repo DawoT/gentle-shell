@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { computeTreeDigest } from "../lib/proofs/proof-harness.ts";
+import { buildStageProofInput, computeTreeDigest } from "../lib/proofs/proof-harness.ts";
 import { computeProofFingerprint, proofInputsDigest } from "../lib/proofs/proof-fingerprint.ts";
 import { collectCoverageObservation } from "../lib/proofs/coverage-observation.ts";
 import { selectMinimumTestSet } from "../lib/proofs/proof-invalidation.ts";
@@ -25,15 +25,6 @@ export const DEFAULT_STAGES = Object.freeze([
 	{ name: "provider-contract", command: "pnpm run check:provider-contract" },
 	{ name: "runtime-harness", command: "pnpm run test:harness" },
 ]);
-
-function stageProofInput(stage, treeDigest) {
-	return {
-		command: { argv: [stage.command], cwd: ".", taskKind: "test-suite-stage", selection: [stage.name] },
-		repository: { treeDigest },
-		toolchain: { runtime: "node", runtimeVersion: process.version, os: process.platform, arch: process.arch },
-		environment: { declared: {}, sensitive: {}, hmacKey: "stage-proof-layer" },
-	};
-}
 
 export async function runStage(stage) {
 	// Unit fixtures must not inherit the terminal's Git overrides, child-session
@@ -131,7 +122,7 @@ async function recordProof(proofLedger, fingerprint, code, runtimeObservation, c
 }
 
 async function recordStageProof(proofLedger, stage, proofs, code, runtimeObservation, constituents) {
-	const input = stageProofInput(stage, proofs.treeDigest);
+	const input = buildStageProofInput(stage, proofs.treeDigest);
 	const record = await proofLedger.start({
 		fingerprint: computeProofFingerprint(input),
 		inputsDigest: proofInputsDigest(input),
@@ -372,7 +363,7 @@ export async function runTestSuite(stages = DEFAULT_STAGES, { runStageImpl = run
 			if (coverageDir) rmSync(coverageDir, { recursive: true, force: true });
 		}
 		if (layer && proofLedger) {
-			const input = stageProofInput(stage, proofs.treeDigest);
+			const input = buildStageProofInput(stage, proofs.treeDigest);
 			const fingerprint = computeProofFingerprint(input);
 			try {
 				const record = await proofLedger.start({

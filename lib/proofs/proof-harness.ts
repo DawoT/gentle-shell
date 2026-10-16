@@ -22,7 +22,7 @@ export interface StageExecutionDecision {
   reason: string;
 }
 
-function stageInput(stage: HarnessStage, treeDigest: string) {
+export function buildStageProofInput(stage: HarnessStage, treeDigest: string) {
   return {
     command: { argv: [stage.command], cwd: ".", taskKind: "test-suite-stage", selection: [stage.name] },
     repository: { treeDigest },
@@ -42,7 +42,7 @@ export function createStageProofLayer(options: StageProofLayerOptions) {
   const { ledger, treeDigest } = options;
   return {
     async shouldExecute(stage: HarnessStage): Promise<StageExecutionDecision> {
-      const input = stageInput(stage, treeDigest);
+      const input = buildStageProofInput(stage, treeDigest);
       const fingerprint = computeProofFingerprint(input);
       const proof = await ledger.current(fingerprint);
       if (!proof) return { execute: true, reason: "no published proof for this stage and tree" };
@@ -50,7 +50,7 @@ export function createStageProofLayer(options: StageProofLayerOptions) {
       return { execute: false, reason: `reused stage proof ${fingerprint.slice(0, 12)} (seq ${proof.seq})` };
     },
     async recordResult(stage: HarnessStage, code: number): Promise<void> {
-      const input = stageInput(stage, treeDigest);
+      const input = buildStageProofInput(stage, treeDigest);
       const fingerprint = computeProofFingerprint(input);
       const record = await ledger.start({
         fingerprint,
