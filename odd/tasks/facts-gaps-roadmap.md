@@ -886,3 +886,13 @@ directly on main.
   suite-vs-GENTLE_PROOFS contention producing 6 spurious failures, a tool
   definition replaced instead of inserted, and a readFileSync mis-import
   that cascaded.
+- P14 — SOTA roadmap Tier 2 executed (commits 1c308155b T2.1 impact hints,
+  fb424f5d5 T2.3 ODD/skills integration — user-authorized asset edits —,
+  af0dc5b08 T2.2 usage-site queries via recorded identifier references
+  with the runtime worker copy regenerated, and 2a4179406 T2.4 lexical
+  attempt: rank tiebreak ordinals landed with a differential-oracle pin;
+  corpus-scan and pruning experiments measured within noise and reverted;
+  single-digit target NOT met, bounded-ranking redesign recorded as the
+  open follow-up). Suites ended 393/393 + 68/68, typecheck 0. The
+  T2.2/T2.4 outcomes and numbers live in
+  odd/tasks/facts-sota-improvement-roadmap.md (Log L3).

@@ -123,6 +123,12 @@ Tiers gate sequencing; earlier tiers protect later ones.
 - T2.4 [S10] Lexical performance: bounded ranking structure (trigram or
   precomputed candidate sets) targeting single-digit ms on this corpus;
   benchmark delta recorded against today's 201.72ms p50 baseline.
+  ATTEMPTED 2026-10-16: rank tiebreak ordinals landed (numeric comparisons,
+  semantics pinned by a differential oracle); corpus-scan tokens and
+  Jaccard pruning were measured and reverted (differences within the
+  machine's run-to-run noise band: p50 155-220ms across identical-code
+  runs). The single-digit target is NOT met by this approach; the bounded
+  ranking redesign stays as the open follow-up (see Log L3).
 
 ### Tier 3 — Step-change bets (product decisions, not bugs)
 
