@@ -28,7 +28,9 @@ export interface LexicalIndex {
   dbRef: FactsDatabase;
   entries: LexicalEntry[];
   byLowerText: Map<string, number[]>;
-  prefixes: Map<string, number[]>;
+  /** Entry lower texts sorted lexicographically, with their entry indexes. */
+  sortedLowers: string[];
+  sortedIndexByLower: number[];
   trigrams: Map<string, number[]>;
   trigramSets: (Set<string> | null)[];
   /** Precomputed localeCompare ordinals for the rank tiebreaks (numeric sort). */
@@ -37,7 +39,6 @@ export interface LexicalIndex {
   nameOrder: number[];
 }
 
-const MAX_PREFIX_LENGTH = 64;
 const TRIGRAM_THRESHOLD = 0.35;
 const SCORE_EXACT = 1;
 const SCORE_PREFIX = 0.75;
@@ -70,7 +71,6 @@ function tokenize(lower: string): string[] {
 export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
   const entries: LexicalEntry[] = [];
   const byLowerText = new Map<string, number[]>();
-  const prefixes = new Map<string, number[]>();
   const trigrams = new Map<string, number[]>();
   const trigramSets: (Set<string> | null)[] = [];
   const push = (kind: LexicalKind, file: string, text: string, name?: string) => {
@@ -80,24 +80,7 @@ export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
     const exact = byLowerText.get(lower);
     if (exact) exact.push(index);
     else byLowerText.set(lower, [index]);
-    const prefixLength = Math.min(lower.length, MAX_PREFIX_LENGTH);
-    for (let length = 1; length <= prefixLength; length++) {
-      const prefix = lower.slice(0, length);
-      const bucket = prefixes.get(prefix);
-      if (bucket) bucket.push(index);
-      else prefixes.set(prefix, [index]);
-    }
-    if (lower.length >= 3) {
-      const set = trigramsOf(lower);
-      trigramSets[index] = set;
-      for (const trigram of set) {
-        const list = trigrams.get(trigram);
-        if (list) list.push(index);
-        else trigrams.set(trigram, [index]);
-      }
-    } else {
-      trigramSets[index] = null;
-    }
+    trigramSets[index] = lower.length >= 3 ? trigramsOf(lower) : null;
   };
   for (const [path, facts] of Object.entries(db.files)) {
     push("path", path, path);
@@ -106,6 +89,22 @@ export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
       if (symbol.docstring) push("docstring", path, symbol.docstring, symbol.name);
     }
   }
+  // Hybrid: only the prefix map (the dominant ~800k-operation component) is
+  // replaced by a sorted array; trigram postings keep the original map.
+  const sortedEntries = entries
+    .map((entry, entryIndex) => ({ lower: entry.lower, entryIndex }))
+    .sort((a, b) => (a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : a.entryIndex - b.entryIndex));
+  entries.forEach((entry, entryIndex) => {
+    if (entry.lower.length < 3) return;
+    const set = trigramsOf(entry.lower);
+    trigramSets[entryIndex] = set;
+    for (const trigram of set) {
+      const list = trigrams.get(trigram);
+      if (list) list.push(entryIndex);
+      else trigrams.set(trigram, [entryIndex]);
+    }
+  });
+
   // Tiebreak ordinals: sorting the distinct values with the same
   // localeCompare the rank uses preserves the exact pairwise order while
   // letting rank() compare numbers instead of calling localeCompare
@@ -116,7 +115,18 @@ export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
   const kindOrder = entries.map((entry) => kindIndex.get(entry.kind)!);
   const fileOrder = entries.map((entry) => fileIndex.get(entry.file)!);
   const nameOrder = entries.map((entry) => nameIndex.get(entry.name ?? "")!);
-  return { dbRef: db, entries, byLowerText, prefixes, trigrams, trigramSets, kindOrder, fileOrder, nameOrder };
+  return {
+    dbRef: db,
+    entries,
+    byLowerText,
+    sortedLowers: sortedEntries.map((entry) => entry.lower),
+    sortedIndexByLower: sortedEntries.map((entry) => entry.entryIndex),
+    trigrams,
+    trigramSets,
+    kindOrder,
+    fileOrder,
+    nameOrder,
+  };
 }
 
 /** Ranks candidates: exact > prefix > token > trigram, then a deterministic kind/file/name order (precomputed ordinals). */
@@ -149,9 +159,16 @@ export function lexicalSearch(index: LexicalIndex, query: string, options: Lexic
   // Exact matches.
   for (const entryIndex of index.byLowerText.get(lower) ?? []) consider(entryIndex, SCORE_EXACT);
 
-  // Prefix matches via the precomputed prefix map.
-  for (const entryIndex of index.prefixes.get(lower) ?? []) {
-    if (index.entries[entryIndex].lower.startsWith(lower)) consider(entryIndex, SCORE_PREFIX);
+  // Prefix matches via the sorted lower index (binary search range).
+  let prefixLow = 0;
+  let prefixHigh = index.sortedLowers.length;
+  while (prefixLow < prefixHigh) {
+    const mid = (prefixLow + prefixHigh) >> 1;
+    if (index.sortedLowers[mid] < lower) prefixLow = mid + 1;
+    else prefixHigh = mid;
+  }
+  for (let i = prefixLow; i < index.sortedLowers.length && index.sortedLowers[i].startsWith(lower); i++) {
+    consider(index.sortedIndexByLower[i], SCORE_PREFIX);
   }
 
   // Token matches: every whitespace/alphanumeric token must appear.
