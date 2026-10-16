@@ -135,3 +135,27 @@ Verdict after three rounds: the Facts query surface now covers symbols,
 files (with imports), dependents, impact between revisions, entities and
 their relations — every layer verified live through the same tools agents
 use, with transport consistency as an explicit test target.
+
+## Fourth live round: quality gates verified, no corrections needed
+
+After the final reload, the round verified what earlier fixes could only
+pin with tests, plus two gates never exercised live before:
+
+- Kill-switch equivalence (first live check):
+  `GENTLE_FACTS_DISABLE_QUERY_INDEX=1` produced byte-identical dependents
+  output to the indexed path (1473 = 1473 bytes) — the documented
+  "indexed == linear" gate holds on the real repository.
+- `facts_entities` pagination: `limit: 2` + `offset: 2` continuation
+  returned the remaining rows with per-row relations intact (inline rows
+  also resolved the earlier backlog note about sections missing on
+  continuation pages).
+- Catalog: 190 contract entities across contract mirrors and fixtures,
+  default page 50 with continuation.
+
+Named opportunity (product decision, deliberately not churned): the
+json-schema parser promotes top-level properties to entities, so generic
+names repeat across files ("sha256" appears once per schema). Exact name +
+path filters disambiguate, but a cleaner extraction policy (skip untitled
+primitive properties, or namespace them) would reduce catalog noise —
+changing it alters the entity corpus and relation derivation, so it needs
+an explicit product call.

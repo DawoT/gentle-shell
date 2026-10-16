@@ -842,3 +842,13 @@ directly on main.
   medium/reviewDue false. One self-inflicted detour recorded honestly: a
   duplicated import temporarily broke the MCP bin (5/5 failing) and was
   caught by the same verification battery before commit.
+- P11 — fourth dogfooding round: no corrections needed; quality gates
+  verified live for the first time. GENTLE_FACTS_DISABLE_QUERY_INDEX
+  produced byte-identical dependents output vs the indexed path (1473 =
+  1473 bytes) on the real repository; facts_entities pagination and
+  continuation carried per-row relations; catalog holds 190 contract
+  entities (default page 50). Named product opportunity, documented not
+  churned: the json-schema parser promotes top-level properties to
+  entities, so generic names repeat across files ("sha256" once per
+  schema) — an extraction-policy change alters the entity corpus and
+  relation derivation and needs an explicit product call.
