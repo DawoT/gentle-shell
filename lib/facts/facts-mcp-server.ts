@@ -1,7 +1,8 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { classifyUnresolvedSpecifier, formatResolutionSummary } from "./facts-module-resolver.ts";
+import { formatResolutionSummary } from "./facts-module-resolver.ts";
 import { FactsService } from "./facts-service.ts";
+import { fileImportLines } from "./facts-response.ts";
 import { indexFactsCommit } from "./facts-commit.ts";
 import { analyzeFactsImpact } from "./facts-impact.ts";
 import type { FactsMcpMemoryBinding } from "./facts-mcp-memory-binding.ts";
@@ -116,29 +117,10 @@ const BOUND_MEMORY_TOOLS: McpToolDefinition[] = [
  * Renders the bounded resolved/unresolved import section for file-mode
  * queries. Resolution evidence comes from the live module snapshot; declared
  * specifiers without a resolved edge are classified by shape so agents see
- * why an import could not be followed without opening the file.
+ * why an import could not be followed without opening the file. Shared with
+ * the session extension via facts-response.ts so both transports answer
+ * file queries identically.
  */
-function fileImportLines(factsService: FactsService, file: string): string[] {
-	const specifiers = factsService.getDatabase()?.files[file]?.imports ?? [];
-	const bySpecifier = new Map(
-		factsService.getResolutionEdges().filter((edge) => edge.importer === file).map((edge) => [edge.specifier, edge]),
-	);
-	const resolved: string[] = [];
-	const unresolved: string[] = [];
-	for (const specifier of specifiers) {
-		const edge = bySpecifier.get(specifier);
-		if (edge?.target && edge.evidence !== "unresolved") resolved.push(`  → ${edge.target} (from "${specifier}")`);
-		else unresolved.push(`  → "${specifier}" [unresolved: ${classifyUnresolvedSpecifier(specifier)}]`);
-	}
-	const total = resolved.length + unresolved.length;
-	if (total === 0) return [];
-	const cap = 20;
-	const rows = [`imports (${resolved.length} resolved / ${unresolved.length} unresolved${total > cap ? `; first ${cap}` : ""}):`];
-	rows.push(...[...resolved, ...unresolved].slice(0, cap));
-	if (total > cap) rows.push(`  …and ${total - cap} more`);
-	return rows;
-}
-
 export class FactsMcpServer {
   private readonly workspaceRoot: string;
   private readonly input: Readable;
@@ -297,7 +279,9 @@ export class FactsMcpServer {
           const lines = paged.map(
             (s) => `• [${s.symbol.kind}] ${s.symbol.name} (${s.file}:${s.symbol.startLine}-${s.symbol.endLine})${s.symbol.signature ? `\n    ${s.symbol.signature}` : ""}`
           );
-          if (typeof args.file === "string" && args.file.trim()) lines.push(...fileImportLines(this.factsService, args.file));
+          if (typeof args.file === "string" && args.file.trim()) {
+            lines.push(...fileImportLines(args.file, this.factsService.getDatabase()?.files[args.file]?.imports ?? [], this.factsService.getResolutionEdges()));
+          }
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

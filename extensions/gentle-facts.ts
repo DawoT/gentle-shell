@@ -7,7 +7,7 @@ import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
-import { paginationProperties } from "../lib/facts/facts-response.ts";
+import { fileImportLines, paginationProperties } from "../lib/facts/facts-response.ts";
 import { FactsService } from "../lib/facts/facts-service.ts";
 import { formatResolutionSummary } from "../lib/facts/facts-module-resolver.ts";
 import { sidebarPart } from "../lib/shell-sidebar.ts";
@@ -166,7 +166,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
           type: "string",
           minLength: 1,
           maxLength: 4096,
-          description: "Exact repository-relative source path; lists its declarations without knowing symbol names.",
+          description: "Exact repository-relative source path; lists its declarations without knowing symbol names. File-mode responses append a bounded resolved/unresolved imports section.",
         },
         name: {
           type: "string",
@@ -235,10 +235,11 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
       const database = service.getDatabase()!;
       const page = queryCursors(ctx.cwd).start(key, generation(service), rows, params, filtered.map((match) => database.files[match.file]));
 
+      const importLines = file ? fileImportLines(file, database.files[file]?.imports ?? [], service.getResolutionEdges()) : [];
       const result = {
         content: [{
           type: "text" as const,
-          text: `Found ${filtered.length} symbol(s) matching '${queryLabel}':\n\n${page.text || `No rows at this offset; ${filtered.length} total match${filtered.length === 1 ? "" : "es"}. Restart with offset=0.`}`,
+          text: `Found ${filtered.length} symbol(s) matching '${queryLabel}':\n\n${page.text || `No rows at this offset; ${filtered.length} total match${filtered.length === 1 ? "" : "es"}. Restart with offset=0.`}${importLines.length ? `\n\n${importLines.join("\n")}` : ""}`,
         }],
         details: { status: "ready", diagnostics: service.getDiagnostics(), found: filtered.length, query: queryLabel, file, ...page.details },
       };

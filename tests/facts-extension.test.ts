@@ -864,3 +864,23 @@ test("facts_query explains exhausted pages instead of a bare total header", asyn
     await cleanup();
   }
 });
+
+test("facts_query file mode reports resolved and unresolved imports in the session tool", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await writeFile(join(dir, "app.ts"), "import { multiply } from './math.ts';\nimport { join } from 'node:path';\nimport { helper } from 'external-pkg';\nexport function run(): string { return join('.', helper(), String(multiply(2, 3))); }\n");
+		const result = await pi.getTool("facts_query").execute("query", { file: "app.ts" }, undefined, undefined, ctx);
+		const text = result.content[0].text;
+		assert.match(text, /imports \(/, "file-mode responses must include an imports section");
+		assert.match(text, /math\.ts/, "the relative import must show its resolved target");
+		assert.match(text, /node:path/, "the builtin specifier must be listed");
+		assert.match(text, /external-pkg/, "the external specifier must be listed");
+		assert.match(text, /unresolved/, "unresolved imports must be marked as such");
+	} finally {
+		await cleanup();
+	}
+});

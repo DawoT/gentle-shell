@@ -1,3 +1,5 @@
+import { classifyUnresolvedSpecifier, type FactsModuleEdge } from "./facts-module-resolver.ts";
+
 export const paginationProperties = {
   cursor: {
     type: "string",
@@ -64,4 +66,30 @@ export function pageFacts<T>(items: T[], options: PageOptions, format: (item: T)
       truncated,
     },
   };
+}
+
+/**
+ * Renders the bounded resolved/unresolved import section for file-mode
+ * queries. Resolution evidence comes from the module snapshot; declared
+ * specifiers without a resolved edge are classified by shape so agents see
+ * why an import could not be followed without opening the file. Shared by
+ * the MCP server and the session extension so both transports answer file
+ * queries identically.
+ */
+export function fileImportLines(file: string, imports: readonly string[], edges: readonly FactsModuleEdge[]): string[] {
+	const bySpecifier = new Map(edges.filter((edge) => edge.importer === file).map((edge) => [edge.specifier, edge]));
+	const resolved: string[] = [];
+	const unresolved: string[] = [];
+	for (const specifier of imports) {
+		const edge = bySpecifier.get(specifier);
+		if (edge?.target && edge.evidence !== "unresolved") resolved.push(`  → ${edge.target} (from "${specifier}")`);
+		else unresolved.push(`  → "${specifier}" [unresolved: ${classifyUnresolvedSpecifier(specifier)}]`);
+	}
+	const total = resolved.length + unresolved.length;
+	if (total === 0) return [];
+	const cap = 20;
+	const rows = [`imports (${resolved.length} resolved / ${unresolved.length} unresolved${total > cap ? `; first ${cap}` : ""}):`];
+	rows.push(...[...resolved, ...unresolved].slice(0, cap));
+	if (total > cap) rows.push(`  …and ${total - cap} more`);
+	return rows;
 }
