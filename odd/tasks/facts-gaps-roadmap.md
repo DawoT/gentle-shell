@@ -245,9 +245,10 @@ verifiable.
 - W4-W6: v4 publication + Shell pin + npm — deferred by user decision; the
   notes draft is ready at gentle-ai docs/releases/v4.0.0-notes-draft.md
   (re-derive numbers against the actual publication tag).
-- Binary fixtures (gentle-ai): give the isolated HOME fixtures of
-  tests/gentle-ai-binary.test.ts a dev binary (2 pre-existing environmental
-  failures, documented in the tracker).
+- Binary fixtures (gentle-ai): RESOLVED by reverification on 2026-10-16 —
+  tests/gentle-ai-binary.test.ts passes 12/12 twice consecutively on the
+  roadmap-complete tree (the v4.2 merge delivered the dev-binary seam the
+  fixtures needed); no code change required.
 - Cross-process lease (file-lock variant) — after Sprint 8 if real
   multi-agent demand appears.
 - S2.1 (receipt fingerprint) — reactivate only if manifest cost exceeds 5%
@@ -742,3 +743,30 @@ directly on main.
   S8.1 agent tools + S8.2 composition. Deferred by design: S2.1
   (measured defer), S8.3 (optional, gated), S0.4/B1-L2 (external),
   W4-W6 (user decision).
+
+### 2026-10-16 — gap-closure pass: criterion 8 report, S7.1 debt closed, backlog reconciled
+
+- P1 — consolidated closure report: fresh full harness run (7 samples per
+  scenario, 1224-file corpus, tmpfs, HEAD 2cbb6f851) recorded in
+  docs/bench/facts-roadmap-closure-2026-10.md: autoRead fast path p50
+  51.58ms vs warm full sync 242.07ms (4.7x), nameQuery ~0.14ms/query vs
+  0.794ms linear baseline, false-reuse 0 (S7.4 audit) with conservative
+  fallback pinned by tests, and the eight gaps.yaml closure criteria mapped
+  to evidence. Absolute full-sync costs are compared per-corpus only (corpus
+  grew 910 -> 1224 files during the roadmap); ratio invariants stable.
+- P2 — S7.1 recorded debt CLOSED (commit 506c0ebaf): the runner no longer
+  keeps a local copy of the harness stageInput shape; both consumers import
+  buildStageProofInput from lib/proofs/proof-harness.ts. RED observed first
+  (missing named export), then GREEN: new tests/proofs-stage-input.test.ts
+  pins the exact input shape and proves the stage layer reuses with the same
+  fingerprint the shared builder computes. Proofs 66/66, runner tests 12/12,
+  typecheck 0 diagnostics. Default (non-GENTLE_PROOFS) path untouched.
+- P3 — binary fixtures backlog item resolved by reverification (no code
+  change): tests/gentle-ai-binary.test.ts passes 12/12 twice consecutively;
+  the two environmental failures recorded earlier are gone on this tree.
+- P4 — native review probes (read-only): fresh bound STATUS for both
+  recorded lineages (review-786a02b33e841875 and review-8daf826bb2cb243c)
+  returns status blocked, applicability unrelated, empty collect set with
+  reason empty_candidate_base_ref_required — no resumable validator slot is
+  offered and no capture was attempted. The paused disposition stands;
+  B1 still requires the human /reload precondition. No fabricated closure.
