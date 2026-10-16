@@ -919,3 +919,13 @@ directly on main.
   'capabilities' returns 10 rows with 5 entity matches where exact-name
   matching returned zero. Remaining Tier 3 scope revisits only with new
   evidence.
+- P17 — precision phase on the discovery surface (commits d5c89cf76,
+  43aa251b3, 4e196657b, 8717dd03f): usage sites now carry bounded line
+  evidence (referenceLines, cap 3 per identifier via the extractor
+  SOURCE_EXTRACTOR_VERSION 3 with forced re-index + fast-path
+  ineligibility), facts_search gained a kind filter applied BEFORE the
+  caller limit (the filter-first ordering caught and fixed a real
+  zero-rows bug: kind queries could rank outside the first page of mixed
+  results), and the lexical build switched to the hybrid measured at
+  -30-35% (sorted prefix array, trigram postings kept). Suite ended
+  404/404, typecheck 0, live probes verified on the real repository.

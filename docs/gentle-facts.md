@@ -185,10 +185,15 @@ Finds files referencing a symbol by exact name (usage sites), marking whether ea
 // Result
 Found 3 usage sites for 'acquireVerifyLock':
 
-• scripts/run-test-suite.mjs (imports the declaring file)
-• scripts/verify-lock-run.mjs (imports the declaring file)
-• tests/verify-lock.test.ts (imports the declaring file)
+• scripts/run-test-suite.mjs (imports the declaring file) (lines 148)
+• scripts/verify-lock-run.mjs (imports the declaring file) (lines 6)
+• tests/verify-lock.test.ts (imports the declaring file) (lines 6, 148)
 ```
+
+`facts_search` accepts an optional `kind` filter (`symbol`, `path`,
+`docstring`, `entity`) applied BEFORE the caller limit, so a kind query
+returns that kind even when it ranks outside the first page of the mixed
+results.
 
 ### `facts_status`
 Reports the inventory summary, total indexed files, symbol counts, and declared package commands. `details.diagnostics` includes the current state, last successful sync timestamp, duration of the latest attempt, last disk cache load outcome, and a failure code/recovery hint when unavailable. A no-change successful refresh updates the sync timestamp without rewriting the cache.
