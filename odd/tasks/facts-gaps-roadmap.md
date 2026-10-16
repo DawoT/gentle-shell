@@ -802,3 +802,18 @@ directly on main.
   ledger: the prefix now resolves with full validity reason and 427
   constituents. Native assess on the committed range: medium, reviewDue
   false (under_budget); writer self-verification stands.
+- P8 — dogfooding gaps fixed with TDD (commits aed41ad91, 6e433631b),
+  closing the two actionable gaps from the same-day dogfooding doc:
+  (1) facts_query file mode now appends a bounded imports section (resolved
+  targets from the module snapshot + shape-classified unresolved specifiers,
+  cap 20) — one call instead of query+read, equivalence vs grep verified
+  live on proof-ledger.ts (1 resolved / 2 builtin); (2) the omitted-limit
+  default is now a full 50-row page across pageFacts and the FactsCursors
+  path the session tools use, ending forced continuation hops (a
+  15-importer list needed two calls before). RED observed for both units
+  (MCP 2/3 then 3/3; response 1/3 then 3/3). Suite 374/374, typecheck 0,
+  consumer tests 14/14. Live metrics: file understanding 1 call / 4187
+  bytes / ~1s spawn-inclusive; cursors probe returned 50 default / honored
+  explicit 10. NOTE: the pi session tools run the extension loaded at the
+  last /reload — the new default is visible to session tools only after the
+  next reload; the MCP bin picks it up on the next spawn immediately.
