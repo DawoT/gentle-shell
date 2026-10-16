@@ -167,3 +167,14 @@ Tiers gate sequencing; earlier tiers protect later ones.
   medium, reviewDue false (under_budget). Tier 2 pending user approval
   for asset edits (T2.3) and scheduling; Tier 3 pending recorded product
   decisions.
+- L3 (2026-10-16, user authorized Tier 2 + asset edits): Tier 2 executed.
+  Commits: 1c308155b (T2.1 impact hints, ext 43/43), fb424f5d5 (T2.3
+  ODD/skills integration: delegation briefs, verification focused-test
+  selection, Explore facts_query, Specs dependents counts), af0dc5b08
+  (T2.2 usage-site queries via recorded identifier references, suite
+  392/392, runtime worker copy regenerated). T2.4 lexical performance:
+  rank tiebreak ordinals landed with a differential-oracle pin; two
+  further experiments (corpus-scan tokens, Jaccard pruning) measured no
+  win and were reverted with their numbers; the single-digit target is
+  NOT met and the bounded-ranking redesign stays as the open follow-up.
+  Suite ended 393/393, typecheck 0.

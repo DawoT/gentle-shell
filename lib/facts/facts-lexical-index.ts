@@ -31,6 +31,10 @@ export interface LexicalIndex {
   prefixes: Map<string, number[]>;
   trigrams: Map<string, number[]>;
   trigramSets: (Set<string> | null)[];
+  /** Precomputed localeCompare ordinals for the rank tiebreaks (numeric sort). */
+  kindOrder: number[];
+  fileOrder: number[];
+  nameOrder: number[];
 }
 
 const MAX_PREFIX_LENGTH = 64;
@@ -102,16 +106,26 @@ export function buildLexicalIndex(db: FactsDatabase): LexicalIndex {
       if (symbol.docstring) push("docstring", path, symbol.docstring, symbol.name);
     }
   }
-  return { dbRef: db, entries, byLowerText, prefixes, trigrams, trigramSets };
+  // Tiebreak ordinals: sorting the distinct values with the same
+  // localeCompare the rank uses preserves the exact pairwise order while
+  // letting rank() compare numbers instead of calling localeCompare
+  // thousands of times per query.
+  const kindIndex = new Map([...new Set(entries.map((entry) => entry.kind))].sort((a, b) => a.localeCompare(b)).map((value, order) => [value, order]));
+  const fileIndex = new Map([...new Set(entries.map((entry) => entry.file))].sort((a, b) => a.localeCompare(b, "en")).map((value, order) => [value, order]));
+  const nameIndex = new Map([...new Set(entries.map((entry) => entry.name ?? ""))].sort((a, b) => a.localeCompare(b, "en")).map((value, order) => [value, order]));
+  const kindOrder = entries.map((entry) => kindIndex.get(entry.kind)!);
+  const fileOrder = entries.map((entry) => fileIndex.get(entry.file)!);
+  const nameOrder = entries.map((entry) => nameIndex.get(entry.name ?? "")!);
+  return { dbRef: db, entries, byLowerText, prefixes, trigrams, trigramSets, kindOrder, fileOrder, nameOrder };
 }
 
-/** Ranks candidates: exact > prefix > token > trigram, then a deterministic kind/file/name order. */
-function rank(candidates: Map<number, number>, entries: LexicalEntry[], limit: number | undefined): LexicalMatch[] {
+/** Ranks candidates: exact > prefix > token > trigram, then a deterministic kind/file/name order (precomputed ordinals). */
+function rank(candidates: Map<number, number>, index: LexicalIndex, limit: number | undefined): LexicalMatch[] {
+  const { entries, kindOrder, fileOrder, nameOrder } = index;
   const ranked = [...candidates.entries()]
-    .sort((a, b) => b[1] - a[1] || entries[a[0]].kind.localeCompare(entries[b[0]].kind) ||
-      entries[a[0]].file.localeCompare(entries[b[0]].file, "en") ||
-      (entries[a[0]].name ?? "").localeCompare(entries[b[0]].name ?? "", "en") ||
-      a[0] - b[0])
+    .sort((a, b) => b[1] - a[1] || kindOrder[a[0]] - kindOrder[b[0]] ||
+      fileOrder[a[0]] - fileOrder[b[0]] ||
+      nameOrder[a[0]] - nameOrder[b[0]] || a[0] - b[0])
     .map(([index, score]) => ({ entry: entries[index], score }));
   const matches = ranked.map(({ entry, score }) => ({
     kind: entry.kind,
@@ -150,6 +164,9 @@ export function lexicalSearch(index: LexicalIndex, query: string, options: Lexic
   }
 
   // Trigram fuzzy: candidates sharing at least one trigram, ranked by Jaccard.
+  // A corpus-scan variant plus threshold pruning were measured (2026-10-16)
+  // and were slower than this direct posting-list union on the real corpus;
+  // reverted per the baseline-first rule. See the SOTA tracker for numbers.
   const queryTrigrams = trigramsOf(lower);
   const overlap = new Map<number, number>();
   for (const trigram of queryTrigrams) {
@@ -165,5 +182,5 @@ export function lexicalSearch(index: LexicalIndex, query: string, options: Lexic
     if (jaccard >= TRIGRAM_THRESHOLD) consider(entryIndex, SCORE_TRIGRAM * jaccard);
   }
 
-  return rank(candidates, index.entries, options.limit);
+  return rank(candidates, index, options.limit);
 }
