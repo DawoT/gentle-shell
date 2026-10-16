@@ -82,7 +82,7 @@ function textOf(result: any): string {
   return result.content[0].text;
 }
 
-test("proof MCP announces exactly proof_query, proof_status, and proof_invalidate with bounded input schemas", async () => {
+test("proof MCP announces exactly proof_query, proof_status, proof_invalidate, and proof_coverage with bounded input schemas", async () => {
   const ledgerRoot = await mkdtemp(join(tmpdir(), "proofs-mcp-ledger-"));
   const { proc, client } = await startServer(ledgerRoot);
   try {
@@ -117,6 +117,16 @@ test("proof MCP announces exactly proof_query, proof_status, and proof_invalidat
             reason: { type: "string", minLength: 1, maxLength: 500 },
           },
           required: ["fingerprint", "reason"],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "proof_coverage",
+        description: "List stored proofs whose runtime coverage covers a repository-relative file (which tests exercise this file).",
+        inputSchema: {
+          type: "object",
+          required: ["file"],
+          properties: { file: { type: "string", description: "Repository-relative file path" } },
           additionalProperties: false,
         },
       },
@@ -293,4 +303,37 @@ test("proof_status states the exact validity reason for passed and invalidated p
     proc.kill();
     await rm(ledgerRoot, { recursive: true, force: true });
   }
+});
+
+test("proof_coverage answers which stored proofs cover a file", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "proofs-mcp-coverage-"));
+	try {
+		const ledger = new ProofLedger(dir);
+		const started = await ledger.start({
+			fingerprint: "a".repeat(64),
+			inputsDigest: "d".repeat(64),
+			confidence: "hermetic_static",
+			sideEffects: "pure_validation",
+		});
+		await ledger.finish(started, {
+			status: "passed",
+			exitCode: 0,
+			runtimeObservation: { kind: "v8-coverage", files: ["lib/math.ts", "tests/math.test.ts"] },
+		});
+		const { proc, client } = await startServer(dir);
+		try {
+			const covered = await client.request("tools/call", { name: "proof_coverage", arguments: { file: "lib/math.ts" } });
+			assert.match(
+				covered.content[0].text,
+				/covers 'lib\/math\.ts' via tests\/math\.test\.ts/,
+				"the reverse query must identify the covering test file",
+			);
+			const none = await client.request("tools/call", { name: "proof_coverage", arguments: { file: "lib/nope.ts" } });
+			assert.match(none.content[0].text, /No stored proofs cover/, "an uncovered file must be answered explicitly");
+		} finally {
+			proc.kill("SIGKILL");
+		}
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });

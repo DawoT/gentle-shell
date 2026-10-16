@@ -45,6 +45,16 @@ export const PROOF_MCP_TOOLS: McpToolDefinition[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "proof_coverage",
+    description: "List stored proofs whose runtime coverage covers a repository-relative file (which tests exercise this file).",
+    inputSchema: {
+      type: "object",
+      required: ["file"],
+      properties: { file: { type: "string", description: "Repository-relative file path" } },
+      additionalProperties: false,
+    },
+  },
 ];
 
 const FINGERPRINT = /^[a-f0-9]{64}$/;
@@ -155,6 +165,21 @@ export function createProofMcpServer({ ledgerRoot }: { ledgerRoot: string }) {
       if (!current) throw new Error(`Unknown proof fingerprint: ${fingerprint}`);
       const invalidated = await ledger.transition(fingerprint, "invalidated", input.reason);
       return { content: [{ type: "text", text: statusText(invalidated) }] };
+    }
+
+    if (name === "proof_coverage") {
+      const file = typeof input.file === "string" ? input.file : "";
+      if (file.trim().length === 0) throw new Error("file must be a non-empty repository-relative path");
+      const records = await ledger.list(200);
+      const covering = records.filter((record) => record.runtimeObservation?.files.includes(file) === true);
+      if (covering.length === 0) {
+        return { content: [{ type: "text", text: `No stored proofs cover '${file}'. Coverage answers only include proofs with a recorded V8 runtime observation.` }] };
+      }
+      const lines = covering.map((record) => {
+        const via = record.runtimeObservation?.files.find((candidate) => candidate.startsWith("tests/")) ?? "unknown test file";
+        return `- fingerprint: ${record.fingerprint.slice(0, 12)} | status: ${record.status} | age: ${formatAge(record)} | covers '${file}' via ${via}`;
+      });
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     }
 
     throw new Error(`Unknown tool: ${String(name)}`);
