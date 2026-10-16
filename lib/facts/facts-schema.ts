@@ -36,6 +36,8 @@ export function isFactsDatabase(value: unknown): value is FactsDatabase {
         typeof entry.path === "string" && ["symlink", "submodule"].includes(entry.reason as string))) return false;
   }
 
+  if (value.contractParserVersion !== undefined && typeof value.contractParserVersion !== "string") return false;
+
   for (const [path, file] of Object.entries(value.files)) {
     if (!isRecord(file) || file.path !== path || typeof file.sha !== "string" ||
       (file.sourceBytes !== undefined && (!Number.isSafeInteger(file.sourceBytes) || (file.sourceBytes as number) < 0)) ||

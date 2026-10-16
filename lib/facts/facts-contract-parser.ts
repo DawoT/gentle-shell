@@ -3,6 +3,13 @@ import { parse as parseYaml } from "yaml";
 import { MAX_SOURCE_BYTES, FactsLimitError } from "./facts-limits.ts";
 import type { EntityFact, EntityRelation, EntityKind } from "./facts-types.ts";
 
+/**
+ * Bump on any change to parseContractFacts output (entities, relations or
+ * extraction policy). FactsService re-parses every contract file when this
+ * differs from the stored stamp, even for content-unchanged files.
+ */
+export const CONTRACT_PARSER_VERSION = "1";
+
 export interface ParsedContractFacts {
   entities: EntityFact[];
   entityRelations: EntityRelation[];

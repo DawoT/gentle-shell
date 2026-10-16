@@ -5,7 +5,7 @@ import { calculateFactsDelta, computeGitBlobSha, scanGitWorkspace } from "./fact
 import { extractExecutionReceipts } from "./facts-receipts-extractor.ts";
 import { FactsStore } from "./facts-store.ts";
 import { extractSourceFacts, factsLanguage } from "./facts-languages.ts";
-import { isContractFile, parseContractFacts } from "./facts-contract-parser.ts";
+import { CONTRACT_PARSER_VERSION, isContractFile, parseContractFacts } from "./facts-contract-parser.ts";
 import { FACTS_DATABASE_VERSION, type ExecutionReceipts, type FactsDatabase, type SymbolFact, type EntityFact, type EntityRelation, type EntityKind, type EntityRelationKind } from "./facts-types.ts";
 import { describeFactsFailure, type FactsDiagnostics, type FactsPhase } from "./facts-diagnostics.ts";
 import { FactsPhaseMetrics, type FactsMetricPhase, type FactsPhaseMetricsSnapshot } from "./facts-phase-metrics.ts";
@@ -148,7 +148,8 @@ export class FactsService {
   }
 
   private fastPathEligible(): boolean {
-    return this.fastPathEnabled && this.db !== null && this.diagnostics.status === "ready" &&
+    return this.fastPathEnabled && this.db !== null && this.db.contractParserVersion === CONTRACT_PARSER_VERSION &&
+      this.diagnostics.status === "ready" &&
       this.epoch !== undefined && this.epoch.isClean() &&
       this.autoRefreshesSinceFullSync < this.reconcileEvery &&
       Date.now() - this.lastFullSyncAt < this.reconcileIntervalMs;
@@ -298,6 +299,15 @@ export class FactsService {
     }
 
     const delta = calculateFactsDelta(previousHashes, scan.files);
+    // A contract parser change invalidates stored entities even for unchanged
+    // files: re-parse every contract file when the parser version differs.
+    const parserChanged = db.contractParserVersion !== CONTRACT_PARSER_VERSION;
+    const toIndex = [...delta.added, ...delta.modified];
+    if (parserChanged) {
+      for (const relPath of scan.files.keys()) {
+        if (isContractFile(relPath) && !toIndex.includes(relPath)) toIndex.push(relPath);
+      }
+    }
 
     // 1. Purge deleted files
     for (const delPath of delta.deleted) {
@@ -315,7 +325,6 @@ export class FactsService {
     }
 
     // 2. Index added and modified files
-    const toIndex = [...delta.added, ...delta.modified];
     let indexedCount = 0;
     let indexedBytes = 0;
     this.phase = "source_index";
@@ -363,6 +372,8 @@ export class FactsService {
         }
       }
     });
+
+    db.contractParserVersion = CONTRACT_PARSER_VERSION;
 
     // Contract usage relations (S6.3): derive consumes/validates edges from
     // recorded imports of indexed source files into contract files. Test

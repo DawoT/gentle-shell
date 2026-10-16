@@ -108,6 +108,8 @@ export interface FactsDatabase {
   /** Optional Sprint 6 extension: omitted for legacy databases. */
   entities?: EntityFact[];
   entityRelations?: EntityRelation[];
+  /** Optional: contract parser version that produced the current entities. */
+  contractParserVersion?: string;
   version: string;
   root: string;
   lastHeadCommit?: string;
