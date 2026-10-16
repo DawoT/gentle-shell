@@ -69,6 +69,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     return usage;
   }
 
+  const impactHintsEnabled = env.GENTLE_FACTS_DISABLE_IMPACT_HINTS !== "1";
   const EMPTY_SHAPE_TOOLS = new Set(["facts_query", "facts_dependents", "facts_entities"]);
 
   function shapeFor(toolName: string, params: any): string {
@@ -443,8 +444,42 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
     }
   });
 
-  pi.on("tool_execution_end", async (event: { toolName: string; isError?: boolean }, ctx: ExtensionContext) => {
+  const pendingToolPaths = new Map<string, string>();
+
+  pi.on("tool_execution_start", (event: { toolCallId: string; toolName: string; args?: any }) => {
+    if (!impactHintsEnabled) return;
+    const args = event.args && typeof event.args === "object" ? event.args as Record<string, unknown> : {};
+    const candidate = [args.path, args.file_path, args.filePath].find((value) => typeof value === "string" && value.length > 0);
+    if (typeof candidate !== "string") return;
+    if (pendingToolPaths.size >= 200) {
+      const oldest = pendingToolPaths.keys().next().value;
+      if (oldest !== undefined) pendingToolPaths.delete(oldest);
+    }
+    pendingToolPaths.set(event.toolCallId, candidate);
+  });
+
+  function appendImpactHint(ctx: ExtensionContext, toolCallId: string): void {
+    try {
+      const file = pendingToolPaths.get(toolCallId);
+      pendingToolPaths.delete(toolCallId);
+      if (file === undefined) return;
+      const service = services.get(ctx.cwd);
+      if (!service || service.getDatabase() === null) return;
+      const dependents = service.queryDependencyEvidence(file, { transitive: true }).length;
+      pi.appendEntry("gentle-facts-impact-hint", {
+        text: `Impact hint: '${file}' — ${dependents} dependents (facts, advisory)`,
+        file,
+      });
+    } catch {
+      // Advisory only: a hint must never fail the tool execution.
+    }
+  }
+
+  pi.on("tool_execution_end", async (event: { toolCallId?: string; toolName: string; isError?: boolean }, ctx: ExtensionContext) => {
     if (event.isError) return;
+    if (impactHintsEnabled && (event.toolName === "write" || event.toolName === "edit" || event.toolName === "apply_diff")) {
+      appendImpactHint(ctx, event.toolCallId ?? "");
+    }
     if (event.toolName === "write" || event.toolName === "edit" || event.toolName === "apply_diff") {
       // Lazy invalidation: mark the epoch dirty and let the next consumer pay
       // for the refresh instead of forcing duplicate full scans per edit.

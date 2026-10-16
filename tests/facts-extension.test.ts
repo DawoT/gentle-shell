@@ -94,9 +94,12 @@ async function createFixture() {
 function createMockPi() {
   const tools = new Map<string, any>();
   const handlers = new Map<string, Function[]>();
+  const entries: Array<{ customType: string; data: unknown }> = [];
 
   const pi = {
-    appendEntry() {},
+    appendEntry(customType: string, data?: unknown) {
+      entries.push({ customType, data });
+    },
     registerTool(tool: any) {
       tools.set(tool.name, tool);
     },
@@ -118,7 +121,7 @@ function createMockPi() {
     },
   };
 
-  return { pi, tools, handlers };
+  return { pi, entries, tools, handlers };
 }
 
 test("facts_status exposes the current snapshot digest for project-memory validation", async () => {
@@ -137,6 +140,7 @@ test("facts_status exposes the current snapshot digest for project-memory valida
     };
     await pi.emit("session_start", {}, ctx);
     const result = await pi.getTool("facts_status").execute("status", {}, undefined, undefined, ctx);
+    if (!result.details.historyReceipt) console.log("DIGEST-DEBUG:", JSON.stringify({ status: result.details.status, lastSyncPath: result.details.diagnostics?.lastSyncPath, historyError: result.details.historyError, text: result.content[0].text.slice(-200) }));
     assert.match(result.details.historyReceipt.digest, /^[a-f0-9]{64}$/);
     assert.match(result.content[0].text, /Snapshot digest: [a-f0-9]{64}/);
     (pi as any).appendEntry = () => {
@@ -951,6 +955,44 @@ test("facts_status surfaces recent empty query shapes without values", async () 
 			status.content[0].text,
 			/definitely-missing-symbol/,
 			"values must not leak into the telemetry",
+		);
+	} finally {
+		await cleanup();
+	}
+});
+
+test("write executions append an impact hint with the dependents count", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi, entries } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await pi.emit("tool_execution_start", { toolCallId: "t1", toolName: "write", args: { path: "math.ts" } }, ctx);
+		await pi.emit("tool_execution_end", { toolCallId: "t1", toolName: "write", result: {}, isError: false }, ctx);
+		const hint = entries.find((entry) => entry.customType === "gentle-facts-impact-hint");
+		assert.ok(hint, "an impact hint entry must be appended");
+		const text = String((hint.data as { text?: string })?.text ?? "");
+		assert.match(text, /Impact hint: 'math\.ts'/, "the hint must name the touched file");
+		assert.match(text, /\d+ dependents?/, "the hint must carry the dependents count");
+	} finally {
+		await cleanup();
+	}
+});
+
+test("the impact hint honors its kill switch", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi, entries } = createMockPi();
+		gentleFacts(pi as any, { GENTLE_FACTS_DISABLE_IMPACT_HINTS: "1" });
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		await pi.emit("tool_execution_start", { toolCallId: "t1", toolName: "write", args: { path: "math.ts" } }, ctx);
+		await pi.emit("tool_execution_end", { toolCallId: "t1", toolName: "write", result: {}, isError: false }, ctx);
+		assert.equal(
+			entries.find((entry) => entry.customType === "gentle-facts-impact-hint"),
+			undefined,
+			"the kill switch must suppress hints",
 		);
 	} finally {
 		await cleanup();
