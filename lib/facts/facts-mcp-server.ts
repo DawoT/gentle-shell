@@ -83,6 +83,7 @@ export const FACTS_MCP_TOOLS: McpToolDefinition[] = [
       required: ["query"],
       properties: {
         query: { type: "string", description: "Fuzzy query text", minLength: 1 },
+        kind: { type: "string", description: "Optional kind filter (symbol, path, docstring, entity)" },
         limit: { type: "integer", minimum: 1, maximum: 200 },
       },
       additionalProperties: false,
@@ -402,7 +403,7 @@ export class FactsMcpServer {
           if (paged.length === 0) {
             return { content: [{ type: "text", text: `No usage sites found for '${args.name}'.` }] };
           }
-          const lines = paged.map((site) => `• ${site.file}${site.importsDeclaration ? " (imports the declaring file)" : " (references without recorded import)"}`);
+          const lines = paged.map((site) => `• ${site.file}${site.importsDeclaration ? " (imports the declaring file)" : " (references without recorded import)"}${site.lines?.length ? ` (lines ${site.lines.join(", ")})` : ""}`);
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 
@@ -411,7 +412,10 @@ export class FactsMcpServer {
           signal.throwIfAborted();
           if (typeof args.query !== "string" || args.query.trim().length === 0) throw new Error("query must be a non-empty string");
           const limit = typeof args.limit === "number" && args.limit >= 1 ? args.limit : 20;
-          const matches = this.factsService.searchSymbols(args.query, { limit });
+          const kind = typeof args.kind === "string" ? args.kind : undefined;
+          // Filter BEFORE applying the caller limit: slicing the mixed ranking
+          // first could drop every match of the requested kind.
+          const matches = this.factsService.searchSymbols(args.query, {}).filter((match) => !kind || match.kind === kind).slice(0, limit);
           if (matches.length === 0) {
             return { content: [{ type: "text", text: `No matches found for '${args.query}'.` }] };
           }
