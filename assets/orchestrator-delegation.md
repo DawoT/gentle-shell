@@ -69,7 +69,7 @@ Before work beyond small direct tasks, publish own `state` with `subject` via `o
 
 Use the platform's native bounded worker for delegated-direct work.
 
-Keep each delegated writer bounded, with a short synthesized handoff. Delegation is mandatory only when a mechanism's own trigger fires, and remains an ODD implementation route.
+Keep each delegated writer bounded, with a short synthesized handoff. When the Gentle Facts index is available, include each touched surface's dependents count (`facts_dependents`) in the handoff so the writer receives blast radius, not just paths; when Facts is unavailable, say so instead of guessing. Delegation is mandatory only when a mechanism's own trigger fires, and remains an ODD implementation route.
 
 #### Mandatory Delegation Triggers
 

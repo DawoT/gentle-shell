@@ -43,9 +43,9 @@ clarify → scout/context-builder when context-heavy → inline, or a writer onl
 
 Hard delegation triggers:
 
-- **Evidence-budget rule**: read inline only when the evidence fits one parallel batch of at most 3 calls, ~10k tokens (grep and line ranges, never whole large files). When understanding needs more reading or more than ~5 sequential lookups, delegate one explorer that returns a handoff of at most ~2k tokens with `path:line` evidence. Never force delegation for a small targeted question; do not re-read what the handoff covered beyond one spot check.
+- **Evidence-budget rule**: read inline only when the evidence fits one parallel batch of at most 3 calls, ~10k tokens (grep and line ranges, never whole large files). When the Gentle Facts tools are available, answer surface-map questions with one `facts_query` on the file (declarations plus imports) before opening it, and reserve grep for flat importer lists. When understanding needs more reading or more than ~5 sequential lookups, delegate one explorer that returns a handoff of at most ~2k tokens with `path:line` evidence. Never force delegation for a small targeted question; do not re-read what the handoff covered beyond one spot check.
 - **Writer rule**: a writer only for a reason (parallel units launched together, or context); size and file count never fire it.
-- **Verification rule**: a high-risk change gets an independent verifier; otherwise the change's own focused test and suite run inline.
+- **Verification rule**: a high-risk change gets an independent verifier; otherwise the change's own focused test and suite run inline. With Facts available, choose the focused test via `facts_dependents(<changed file>)` first; fall back to the full suite when the mapping is empty.
 - **Incident rule**: after wrong cwd, accidental worktree/repo mutation, merge recovery, confusing test command, or environment workaround, diagnose separately.
 - **Context backstop**: when the parent context passes ~150k tokens, pause and delegate the next bounded unit of work to a non-review subagent. Keep command output bounded (counts, `--stat`, `tail`).
 
