@@ -902,3 +902,19 @@ test("facts_entities surfaces contract entities in the session tool", async () =
 		await cleanup();
 	}
 });
+
+test("facts_entities rows carry the touching contract relations in the session tool", async () => {
+	const { dir, cleanup } = await createFixture();
+	try {
+		const { pi } = createMockPi();
+		gentleFacts(pi as any);
+		const ctx = { cwd: dir, hasUI: false };
+		await pi.emit("session_start", {}, ctx);
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(dir, "petstore.openapi.yaml"), petstore);
+		const result = await pi.getTool("facts_entities").execute("entities", { name: "Pets" }, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /relations \(1\): serves ← GET \/pets/, "the schema must show its incoming serves relation");
+	} finally {
+		await cleanup();
+	}
+});

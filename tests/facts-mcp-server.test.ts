@@ -351,3 +351,52 @@ test("facts_entities surfaces contract entities extracted from indexed contract 
 		await rm(workspace, { recursive: true, force: true });
 	}
 });
+
+test("facts_entities rows carry the touching contract relations", async () => {
+	const workspace = await mkdtemp(join(tmpdir(), "facts-mcp-relations-"));
+	const binPath = join(process.cwd(), "bin", "gentle-facts-mcp.mjs");
+
+	try {
+		await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "mcp-relations-fixture", version: "1.0.0" }));
+		const petstore = await readFile(join(process.cwd(), "tests", "fixtures", "contracts", "petstore.openapi.yaml"), "utf8");
+		await writeFile(join(workspace, "petstore.openapi.yaml"), petstore);
+
+		const { execFileSync } = await import("node:child_process");
+		execFileSync("git", ["init", "-b", "main"], { cwd: workspace });
+		execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspace });
+		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspace });
+		execFileSync("git", ["add", "."], { cwd: workspace });
+		execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace });
+
+		const proc = spawn(process.execPath, [binPath, "--workspace", workspace], {
+			stdio: ["pipe", "pipe", "pipe"],
+			cwd: workspace,
+		});
+		const client = createRpcClient(proc);
+
+		try {
+			await client.request("initialize", {
+				protocolVersion: "2024-11-05",
+				capabilities: {},
+				clientInfo: { name: "test", version: "1.0.0" },
+			});
+			client.notify("notifications/initialized");
+
+			const schema = await client.request("tools/call", {
+				name: "facts_entities",
+				arguments: { name: "Pets" },
+			});
+			assert.match(schema.content[0].text, /relations \(1\): serves ← GET \/pets/, "the schema must show its incoming serves relation");
+
+			const route = await client.request("tools/call", {
+				name: "facts_entities",
+				arguments: { name: "GET /pets" },
+			});
+			assert.match(route.content[0].text, /relations \(\d+\): serves → Pets/, "the route must show its outgoing serves relation");
+		} finally {
+			proc.kill("SIGKILL");
+		}
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});

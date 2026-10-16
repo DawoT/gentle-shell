@@ -3,7 +3,7 @@ import type { Readable, Writable } from "node:stream";
 import { formatResolutionSummary } from "./facts-module-resolver.ts";
 import { FactsService } from "./facts-service.ts";
 import type { EntityKind } from "./facts-types.ts";
-import { fileImportLines } from "./facts-response.ts";
+import { entityRows, fileImportLines } from "./facts-response.ts";
 import { indexFactsCommit } from "./facts-commit.ts";
 import { analyzeFactsImpact } from "./facts-impact.ts";
 import type { FactsMcpMemoryBinding } from "./facts-mcp-memory-binding.ts";
@@ -332,7 +332,7 @@ export class FactsMcpServer {
           if (paged.length === 0) {
             return { content: [{ type: "text", text: "No matching contract entities found." }] };
           }
-          const lines = paged.map((entity) => `• [${entity.kind}] ${entity.name} — ${entity.path}${typeof entity.line === "number" ? `:${entity.line}` : ""}`);
+          const lines = entityRows(paged, this.factsService.queryEntities(), this.factsService.queryEntityRelations({}));
           return { content: [{ type: "text", text: lines.join("\n") }] };
         }
 

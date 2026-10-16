@@ -1,4 +1,5 @@
 import { classifyUnresolvedSpecifier, type FactsModuleEdge } from "./facts-module-resolver.ts";
+import type { EntityFact, EntityRelation } from "./facts-types.ts";
 
 export const paginationProperties = {
   cursor: {
@@ -92,4 +93,37 @@ export function fileImportLines(file: string, imports: readonly string[], edges:
 	rows.push(...[...resolved, ...unresolved].slice(0, cap));
 	if (total > cap) rows.push(`  …and ${total - cap} more`);
 	return rows;
+}
+
+/**
+ * Renders contract entity rows including the relations touching each
+ * entity, so one entity query answers "what does this route serve?" without
+ * a second call. Outgoing relations render as "kind → other" and incoming
+ * as "kind ← other", capped per entity to keep rows bounded. Shared by the
+ * MCP server and the session extension.
+ */
+export function entityRows(
+	entities: readonly EntityFact[],
+	allEntities: readonly EntityFact[],
+	relations: readonly EntityRelation[],
+): string[] {
+	const nameById = new Map(allEntities.map((entity) => [entity.id, entity.name] as const));
+	const touching = new Map<string, string[]>();
+	for (const relation of relations) {
+		const fromName = nameById.get(relation.from) ?? relation.from;
+		const toName = nameById.get(relation.to) ?? relation.to;
+		const outgoing = touching.get(relation.from) ?? [];
+		outgoing.push(`${relation.kind} → ${toName}`);
+		touching.set(relation.from, outgoing);
+		const incoming = touching.get(relation.to) ?? [];
+		incoming.push(`${relation.kind} ← ${fromName}`);
+		touching.set(relation.to, incoming);
+	}
+	const cap = 4;
+	return entities.map((entity) => {
+		const base = `• [${entity.kind}] ${entity.name} — ${entity.path}${typeof entity.line === "number" ? `:${entity.line}` : ""}`;
+		const rels = touching.get(entity.id);
+		if (!rels || rels.length === 0) return base;
+		return `${base}\n    relations (${rels.length}): ${rels.slice(0, cap).join("; ")}${rels.length > cap ? ` …+${rels.length - cap} more` : ""}`;
+	});
 }

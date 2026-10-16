@@ -7,7 +7,7 @@ import { registerFactsCommit } from "../lib/facts/facts-commit-extension.ts";
 import { FactsCursors } from "../lib/facts/facts-cursors.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFactsCard } from "../lib/facts/facts-card.ts";
-import { fileImportLines, pageFacts, paginationProperties } from "../lib/facts/facts-response.ts";
+import { entityRows, fileImportLines, pageFacts, paginationProperties } from "../lib/facts/facts-response.ts";
 import { FactsService } from "../lib/facts/facts-service.ts";
 import { formatResolutionSummary } from "../lib/facts/facts-module-resolver.ts";
 import { sidebarPart } from "../lib/shell-sidebar.ts";
@@ -385,7 +385,7 @@ export default function gentleFacts(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
           details: { status: "ready", diagnostics: service.getDiagnostics(), found: 0, returned: 0, nextOffset: null },
         };
       }
-      const rows = entities.map((entity) => `• [${entity.kind}] ${entity.name} — ${entity.path}${typeof entity.line === "number" ? `:${entity.line}` : ""}`);
+      const rows = entityRows(entities, service.queryEntities(), service.queryEntityRelations({}));
       const page = pageFacts(rows, params, (row) => row);
       return {
         content: [{ type: "text", text: `Found ${entities.length} contract entit${entities.length === 1 ? "y" : "ies"}:\n\n${page.text}` }],
