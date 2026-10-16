@@ -163,7 +163,7 @@ export class ProofLedger {
     }
 
     const records: ProofRecord[] = [];
-    for (const entry of entries.filter((candidate) => candidate.isDirectory()).slice(0, 200)) {
+    for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
       try {
         const text = (await readFile(join(this.root, entry.name, "current.json"))).toString("utf8");
         const record = JSON.parse(text) as ProofRecord;

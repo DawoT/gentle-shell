@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProofLedger, ProofLifecycleError, type ProofConstituent } from "../lib/proofs/proof-ledger.ts";
@@ -274,4 +274,40 @@ test("constituent provenance fails closed and legacy records stay valid without 
   } finally {
     await cleanup();
   }
+});
+
+test("list returns the true newest records even when the ledger holds more than 200", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "proofs-ledger-"));
+	const ledger = new ProofLedger(join(dir, "proofs"));
+	try {
+		const total = 250;
+		const recordsDir = join(dir, "proofs", "records");
+		const fingerprints: string[] = [];
+		for (let index = 0; index < total; index += 1) {
+			const fingerprint = index < total - 1 ? "0".repeat(62) + index.toString(16).padStart(2, "0") : "f" + "a".repeat(63);
+			fingerprints.push(fingerprint);
+			const record = {
+				seq: index + 1,
+				fingerprint,
+				status: "passed",
+				confidence: "hermetic_static",
+				sideEffects: "pure_validation",
+				inputsDigest: "d".repeat(64),
+				startedAt: index + 1,
+				finishedAt: index + 1,
+			};
+			await mkdir(join(recordsDir, fingerprint), { recursive: true });
+			await writeFile(join(recordsDir, fingerprint, "current.json"), JSON.stringify(record));
+		}
+		const target = fingerprints[total - 1]!;
+		const listed = await ledger.list(200);
+		assert.equal(listed.length, 200, "the 200-record bound still holds");
+		const expected = new Set(fingerprints.slice(total - 200));
+		for (const record of listed) {
+			assert.ok(expected.has(record.fingerprint), `unexpected record among the newest 200: ${record.fingerprint}`);
+		}
+		assert.equal(listed[0]!.fingerprint, target, "the newest record leads the list regardless of its directory name");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
