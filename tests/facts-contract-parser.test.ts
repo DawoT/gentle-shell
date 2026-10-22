@@ -98,3 +98,14 @@ test("characterization: the same def name in different files yields distinct pat
   const ids = [...first, ...second].map((entity) => entity.id);
   assert.equal(new Set(ids).size, ids.length, "entity ids must stay path-qualified and unique");
 });
+
+test("ignores lockfiles and non-contract multi-document YAML gracefully", () => {
+  assert.equal(isContractFile("pnpm-lock.yaml"), false);
+  assert.equal(isContractFile("sub/pnpm-lock.yaml"), false);
+  assert.equal(isContractFile("package-lock.json"), false);
+  assert.equal(isContractFile("yarn.lock"), false);
+
+  const multiDocYaml = "name: doc1\n---\nname: doc2\n";
+  const result = parse("docs/archive/notes.yaml", multiDocYaml);
+  assert.deepEqual(result, { entities: [], entityRelations: [] });
+});

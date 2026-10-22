@@ -17,6 +17,18 @@ export interface ParsedContractFacts {
 
 export function isContractFile(filePath: string): boolean {
   const normalized = filePath.toLowerCase();
+  const base = path.basename(normalized);
+  if (
+    base === "pnpm-lock.yaml" ||
+    base === "package-lock.json" ||
+    base === "yarn.lock" ||
+    base.endsWith("-lock.yaml") ||
+    base.endsWith("-lock.yml") ||
+    base.endsWith(".lock.yaml") ||
+    base.endsWith(".lock.yml")
+  ) {
+    return false;
+  }
   if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
     return true;
   }
@@ -213,7 +225,15 @@ export function parseContractFacts(filePath: string, buffer: Buffer): ParsedCont
   const normalized = filePath.toLowerCase();
 
   if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
-    const data = parseYaml(text);
+    let data: any;
+    try {
+      data = parseYaml(text);
+    } catch (e) {
+      if (!isYamlContractMarker(buffer.subarray(0, 4096))) {
+        return { entities: [], entityRelations: [] };
+      }
+      throw e;
+    }
     if (typeof data === "object" && data !== null) {
       if (data.openapi || data.swagger || data.paths) {
         return parseOpenApiFacts(filePath, data);
