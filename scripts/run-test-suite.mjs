@@ -36,6 +36,10 @@ export async function runStage(stage) {
 		return !normalizedKey.startsWith("GIT_") && !normalizedKey.startsWith("GENTLE_PI_AGENTS_") && normalizedKey !== "GENTLE_PI_CONFIG_HOME";
 	})) : process.env;
 	if (configHome) env.GENTLE_PI_CONFIG_HOME = configHome;
+	// Unit fixtures also get a private temp dir, removed with the stage, so a
+	// fixture that leaves a subagent unfinished cannot leave its TMPDIR behind.
+	const unitTmp = configHome ? mkdtempSync(join(tmpdir(), "gentle-pi-unit-tmp-")) : undefined;
+	if (unitTmp) env.TMPDIR = unitTmp;
 	try {
 		return await new Promise((resolve) => {
 			const child = spawn(stage.command, { shell: true, stdio: "inherit", env });
@@ -47,6 +51,7 @@ export async function runStage(stage) {
 		});
 	} finally {
 		if (configHome) rmSync(configHome, { recursive: true, force: true });
+		if (unitTmp) rmSync(unitTmp, { recursive: true, force: true });
 	}
 }
 
